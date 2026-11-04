@@ -7,3 +7,5 @@ export interface WaClient {
   markReadTyping(messageId: string): Promise<void>;
   fetchMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string }>;
 }
+export type { Usage, Llm, StreamCall, ObjectCall } from "../llm";
+export type { ReasoningSetting, ModelChoice } from "../models";
