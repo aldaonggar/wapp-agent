@@ -1,0 +1,116 @@
+# Manual setup (owner)
+
+Everything here happens in web dashboards and cannot be scripted. Do the sections in order; each one ends with a value you paste into `.dev.vars` (git-ignored, already created with the key names). When all eight values are filled in, tell Claude and it uploads them to the Worker.
+
+| Value | From |
+|---|---|
+| `WHATSAPP_PHONE_NUMBER_ID` | section 1, API Setup page |
+| `WHATSAPP_APP_SECRET` | section 2 |
+| `WHATSAPP_TOKEN` | section 3, system user token |
+| `WHATSAPP_VERIFY_TOKEN` | already generated in `.dev.vars`; you paste it into Meta in section 6 |
+| `CLOUDFLARE_API_TOKEN` | section 4 |
+| `CLOUDFLARE_ACCOUNT_ID` | already filled in |
+| `OPENROUTER_API_KEY` | section 5 |
+| `ALLOWED_PHONES` | your number now, reviewers' numbers later (section 7) |
+
+Where a button label below might differ from what you see, the text says what to look for.
+
+## 1. Meta app and test number (about 15 minutes)
+
+1. Go to https://developers.facebook.com, click **Get Started**, log in with a Facebook account, accept the terms, verify your email.
+2. https://developers.facebook.com/apps → **Create App**.
+   - App details: any name (for example `wapp-agent`), your email → Next.
+   - Use cases: pick **Connect with customers through WhatsApp** (not "Other", not "Business") → Next.
+   - Business: **Create a business portfolio** (business name, your name, email). It does not need to be verified. → Next.
+   - Requirements → Next. Overview → **Go to dashboard**.
+3. In the dashboard open the WhatsApp use case → **Quickstart** → **Start using the API** (or the left-menu item **API Setup**).
+4. On API Setup, connect or create a Messaging account when asked. Note the **Messaging account ID** (also called WhatsApp Business Account ID) shown there; you need it once in section 6.
+5. The **From** dropdown shows the auto-created test number (`+1 555 ...`). Next to it is **Phone number ID**: copy it into `.dev.vars` as `WHATSAPP_PHONE_NUMBER_ID`. It is a 15-16 digit id, not the phone number itself.
+6. **To** dropdown → **Manage phone number list** → **Add phone number** → your own WhatsApp number with country code → Meta sends a code to your phone → enter it. Put your number in `.dev.vars` as `ALLOWED_PHONES` as digits only, no plus sign (for example `77011234567`).
+7. Click **Send message** on that page. You receive a "hello world" template on WhatsApp. **Reply to it from your phone** with anything; that opens the 24-hour window the bot needs to answer you.
+
+The app stays in Development mode. No App Review is needed. The access token shown on this page expires within hours; do not use it. Section 3 makes the permanent one.
+
+## 2. App secret
+
+App dashboard → left menu **App settings → Basic** → **App secret** → **Show** (Facebook may ask for your password). Copy the 32-character hex string into `.dev.vars` as `WHATSAPP_APP_SECRET`.
+
+## 3. Permanent access token (system user)
+
+1. Open https://business.facebook.com/settings/ for the portfolio you created in section 1.
+2. Left menu **Users → System users** → **Add**. Name `wapp-agent`, role **Admin** → create.
+3. Click the new system user → **Assign assets** (older UI: "Add assets").
+   - **Apps** → your app → turn on **Manage app** (full control) → assign.
+   - **WhatsApp accounts** → the test WhatsApp Business account → turn on **Manage WhatsApp Business accounts** (full control) → assign.
+   - Reload and confirm the user shows **Full control** on both. Permissions can take a few minutes to appear.
+4. **Generate token** → choose your app → token expiration **Never** → tick these three permissions: `business_management`, `whatsapp_business_management`, `whatsapp_business_messaging` (type "whatsapp" in the search box) → **Generate token** → copy it now; it is shown once. Paste into `.dev.vars` as `WHATSAPP_TOKEN`.
+5. Check it works (replace the two placeholders):
+
+```bash
+curl "https://graph.facebook.com/v26.0/<WHATSAPP_PHONE_NUMBER_ID>" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
+```
+
+A JSON object with `display_phone_number` means the token and the asset assignments are right. An error with code `200` means step 3 is incomplete.
+
+## 4. Cloudflare API token (2 minutes)
+
+1. https://dash.cloudflare.com/profile/api-tokens → **Create Token** → scroll down to **Create Custom Token → Get started**.
+2. Token name `wapp-agent`. Permissions, three rows, all under **Account**:
+   - **Workers AI → Read**
+   - **Workers AI → Edit**
+   - **Browser Run → Edit** (older dashboards call it **Browser Rendering → Edit**; type "Browser" in the search box, it is one permission)
+3. Account Resources: Include → your account. Leave zone resources, IP filtering and TTL empty.
+4. **Continue to summary → Create Token** → copy (starts with `cfut_`) into `.dev.vars` as `CLOUDFLARE_API_TOKEN`.
+5. Check:
+
+```bash
+curl "https://api.cloudflare.com/client/v4/user/tokens/verify" -H "Authorization: Bearer <CLOUDFLARE_API_TOKEN>"
+```
+
+`"status":"active"` means it is good.
+
+## 5. OpenRouter (5 minutes)
+
+1. Sign up at https://openrouter.ai.
+2. https://openrouter.ai/settings/credits → **Add credits**. $10 covers the eval runs (under $5 with the default candidates) and demo traffic.
+3. https://openrouter.ai/settings/keys → **Create Key** → name `wapp-agent`, set a credit limit (for example $25) → copy (starts with `sk-or-v1-`) into `.dev.vars` as `OPENROUTER_API_KEY`.
+4. https://openrouter.ai/settings/privacy: leave "allow providers that may train on your data" **off** for both paid and free models. Leave ZDR enforcement **off** (it would route the Chinese-lab models to their own hosts in China and Singapore, which is the opposite of what we want; the code excludes those hosts itself).
+
+## 6. Webhook (after Claude's first deploy; 3 minutes)
+
+Claude tells you when the Worker is live. Then:
+
+1. App dashboard → WhatsApp use case → **Configuration** (for use-case apps: **Use cases → Customize → Configuration**).
+2. Webhook card → **Edit**. Callback URL: `https://wapp-agent.alda-onggar.workers.dev/webhook`. Verify token: the `WHATSAPP_VERIFY_TOKEN` value from `.dev.vars`. → **Verify and save**. If it fails, the Worker is not up yet or the token differs; nothing is saved until it succeeds.
+3. In **Webhook fields** → **Manage**, subscribe to **messages**. If the dialog has a version dropdown, pick the newest.
+4. Subscribe the app to the Messaging account (idempotent; run it once). Replace the two placeholders:
+
+```bash
+curl -X POST "https://graph.facebook.com/v26.0/<MESSAGING_ACCOUNT_ID>/subscribed_apps" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
+```
+
+Expected: `{"success":true}`.
+
+5. Text the test number from your phone. The bot should answer within a few seconds.
+
+## 7. Adding a reviewer (2 minutes each, needs the reviewer on the phone)
+
+Meta's test number only talks to numbers on its recipient list, and the list is small (historically 5 including you). For each reviewer:
+
+1. Ask for their WhatsApp number in international format.
+2. API Setup → **To** → **Manage phone number list** → **Add phone number** → enter it → Meta sends a one-time code **to the reviewer's phone**.
+3. The reviewer sends you the code; you enter it.
+4. Add their digits-only number to `ALLOWED_PHONES` in `.dev.vars` (comma-separated) and tell Claude, or run it yourself:
+
+```bash
+npx wrangler secret put ALLOWED_PHONES   # paste the full comma-separated list when prompted
+```
+
+5. The reviewer must text first. The bot can only send free-form messages within 24 hours of a person's last message; it cannot start a conversation.
+
+## Known limits of this setup (also in the README)
+
+- Replies only within 24 hours of the person's last message (Meta rule). Proactive check-ins outside that window are skipped.
+- Recipient list on the test number: a handful of verified numbers, each needing a code from that phone.
+- Cloudflare free plan: 10 browser-minutes per day for page previews and one page request every 10 seconds; 10,000 Workers AI neurons per day (about 200 minutes of voice notes).
+- Meta's free tier is 1,000 delivered service messages per month per number; past that, with no payment method on the Messaging account, messages are not delivered.

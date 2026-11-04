@@ -1,0 +1,224 @@
+# WhatsApp agent with memory: design
+
+Date: 2026-11-04. Requirements live in [`init.md`](../../../init.md) (the brief). This document records the decisions made on top of the brief, why, and what is left to the builder. Where this document and the brief disagree, this document says so and why. API facts come from the verified notes in [`docs/superpowers/research/`](../research/); the builder codes from those notes, not from memory.
+
+## 1. Intent
+
+An agent people text on WhatsApp that feels like a person with a memory. Reviewers will text it from their own phones over several days, then read this repo through Claude. UX first; speed to something usable second; code quality and scale are not judged. The memory system is the work being judged.
+
+## 2. Goals, non-goals, anti-goals
+
+Goals (from the brief): short-term memory, long-term memory with judgement, derived insights, human reply cadence, live on WhatsApp, web page viewing, evals that show the memory working, a README that makes the repo navigable.
+
+Non-goals: anything not in the brief. No admin UI, no multi-tenant anything, no voice replies, no template messages beyond what Meta's test number forces, no follow-ups outside the 24h window. The brief's "no memory library, no vector DB" line was the owner's own addition, not the assessors'; the owner's actual criterion is that short-term and long-term memory are great. The memory stays in-house anyway (see 4.8 for why), so the line still holds in practice.
+
+Anti-goals (would make it a failure even if it technically works): replies that say "I remember" or "according to my notes"; asking for something it already knows; three replies to a three-message burst; a first bubble that takes 10 seconds; a repo the reviewer cannot find their way around.
+
+## 3. Constraints and what already exists
+
+- **Cloudflare**: account `ca2eab2f1e6412d4da10548be926c8fa`, logged in via wrangler, **Workers Free plan** (owner's decision: fine for the demo). Worker URL will be `https://wapp-agent.alda-onggar.workers.dev`. Free-plan numbers that shape the design: Browser Rendering (now called Browser Run) allows **1 REST request per 10 seconds** and 10 browser-minutes per day; Workers AI 10,000 neurons per day; Durable Objects and Workers 100,000 requests per day each; 50 subrequests per invocation; SQLite-backed Durable Objects are available on Free.
+- **Meta**: nothing exists yet. The owner will create the app and test number by hand following `SETUP.md`. Meta's test number only talks to numbers added to its recipient list (historically 5, each verified by a one-time code on that phone). Free-form messages are only allowed within 24 hours of the person's last message. Pair rate limit: 1 message per 6 seconds to the same person with a 45-message burst allowance; error 131056 when exceeded.
+- **Models**: owner's decision: **OpenRouter only**. No native OpenAI/Anthropic/DeepSeek packages. One API key.
+- **GitHub**: `gh` is logged in as `aldaonggar`. Owner's decision: a public repo `aldaonggar/wapp-agent`.
+- **Local**: Node 24.18, npm 11, no bun. Node's built-in `node:sqlite` works (verified: BLOB round-trips as Uint8Array, JSON functions, RETURNING).
+- **Versions (pin at install)**: `ai@^7` (7.0.162 today; v7 renamed several things, see the AI SDK note), `@openrouter/ai-sdk-provider@^3` (3.1.0), `zod@^4`, `wrangler@^4.157`, `vitest@^5.1`, `yaml@^2`, TypeScript latest for typecheck only. ESM throughout. Graph API version `v26.0` (v27.0 is announced but its changelog page does not exist yet).
+
+## 4. Decisions on top of the brief
+
+### 4.1 Models through OpenRouter
+
+The brief's short model names map to these OpenRouter ids. Prices are OpenRouter's list prices on 2026-11-04 in USD per 1M tokens (in / out / cached-in). They differ from the brief's table; the brief's own rule is "check each provider's pricing page", and OpenRouter is the provider we pay.
+
+| Job | Default (cheapest in row) | Other candidates |
+|---|---|---|
+| reply | `deepseek/deepseek-v4.1-flash` (0.045 / 0.50 / 0.018; takes images) | `openai/gpt-6.1-terra` (1 / 5 / 0.05), `openai/gpt-6.1-sol` (2 / 10 / 0.10), `anthropic/claude-sonnet-5.5` (2 / 10 / 0.10), `moonshotai/kimi-k2.6` (0.65 / 3.41 / 0.15, takes images), `z-ai/glm-5.2` (0.006 / 6.80 / 0.005, text only) |
+| vision | the reply model when its `input_modalities` include `image` (all candidates except GLM-5.2); otherwise `openai/gpt-6.1-terra` | `anthropic/claude-sonnet-5.5` |
+| extraction | `deepseek/deepseek-v4.1-flash` | `openai/gpt-6-luna` (0.10 / 0.50 / 0.01), `anthropic/claude-haiku-5.5` (0.10 / 0.50 / 0.01) |
+| derived insights | `deepseek/deepseek-v4-pro` (1.60 / 3.20 / 0.135) | `openai/gpt-6.1-sol`, `anthropic/claude-sonnet-5.5` |
+| eval judge (fixed) | `anthropic/claude-opus-5.5` (4 / 20 / 0.20) | none |
+| transcription | Workers AI `@cf/openai/whisper-large-v3-turbo` ($0.000513 per audio minute) | |
+| embeddings | Workers AI `@cf/baai/bge-m3` (1024 dims, $0.012 per 1M tokens) | |
+
+- `src/models.ts` holds this table (id, price, whether it takes images, its lowest-thinking setting) and the per-job default; each job is overridable by env var (`MODEL_REPLY`, `MODEL_EXTRACT`, `MODEL_DERIVE`) and by eval flag.
+- **Thinking off or lowest** on the reply call, per model, from OpenRouter's live per-model `reasoning` descriptor: `effort: "none"` for DeepSeek V4.1 Flash, GPT-6.1 Terra and GLM-5.2; `effort: "low"` for GPT-6.1 Sol and Claude Sonnet 5.5 (thinking cannot be disabled on those); `reasoning: { enabled: false }` for Kimi K2.6. Sent via `providerOptions.openrouter.reasoning` (the AI SDK's top-level `reasoning` option is ignored by the provider). Extraction and insights use the provider default (no `reasoning` key). The eval `--effort` flag overrides the reply setting with `low | medium | high` for every candidate alike.
+- **Data residency**: every call for a DeepSeek, Moonshot or Z.ai model carries `provider: { ignore: ["deepseek", "moonshotai", "z-ai", "alibaba", "baidu", "siliconflow", "streamlake"] }`, which removes the China- and Singapore-hosted first-party endpoints and leaves US/EU hosts (DeepInfra, Parasail, Together, BaseTen, Azure, and others). The host that served each call is recorded from `providerMetadata.openrouter.provider`. README states this. If a Chinese-lab model wins a job, the README names the hosts that served it in the comparison.
+- **Prompt caching**: system prompt is byte-stable and first; per-turn dynamic content comes after it. For Anthropic models the system message carries `providerOptions.openrouter.cacheControl = { type: "ephemeral" }`; OpenAI, DeepSeek, Moonshot and Z.ai cache automatically on third-party hosts that advertise `supports_implicit_caching`. Every call sends `session_id` = the contact id so OpenRouter keeps routing a contact to the host that has their cache warm. Cached tokens are read from `usage.inputTokenDetails.cacheReadTokens` and logged per call.
+- **Cost per call**: computed from the price table (brief) and, since it costs nothing, OpenRouter's own `cost` from the usage object is stored next to it. EVALS.md reports the table-based figure and notes the OpenRouter-reported total.
+- **Structured output** (extraction, insights, judge) uses `generateText({ output: Output.object({ schema }) })` with the model setting `structuredOutputs: { strict: false }` (strict JSON schema empties the endpoint pool for open-weight models). Zod validates the result; one retry on parse failure.
+
+### 4.2 Runtime shape: Worker, Durable Object shell, portable core
+
+```
+Meta webhook ──► Worker (src/index.ts) ──► ContactAgent DO (one per wa_id) ──► ContactCore
+                 verify signature,          SQLite storage + one alarm          all behaviour
+                 return 200, fan out        thin shell: ingest(), alarm()       (pure TS, injected deps)
+```
+
+- The **Worker** handles GET verification and POST webhooks: verifies `X-Hub-Signature-256` over the raw body, drops senders not in `ALLOWED_PHONES`, logs statuses, and for each inbound message calls `env.CONTACT.getByName(from).ingest(msg)` (awaited; it returns in milliseconds because it only writes SQL and sets the alarm), then returns 200. One POST can carry several contacts; fan out per `from`.
+- **`ContactAgent`** (Durable Object, `exports` config form with `storage: "sqlite"`) owns the SQLite database and the alarm. It constructs a `ContactCore` with real dependencies and delegates `ingest` and `alarm`. Nothing else lives in the DO class.
+- **`ContactCore`** is plain TypeScript with injected dependencies so the eval harness runs the identical pipeline in Node (the brief requires evals "through the same message pipeline in Node ... with a fake clock"):
+  - `db`: a 3-method adapter (`all`, `run`, `batch`) over `ctx.storage.sql` in the DO and `node:sqlite` in Node. Shared-SQL rules: `?` placeholders only (max 100), single-quoted strings, no PRAGMA, no BEGIN/COMMIT, booleans as 0/1, millisecond timestamps as INTEGER, embeddings as BLOB of Float32Array bytes, BLOBs bound as `Uint8Array` and normalised on read (the DO returns `ArrayBuffer`).
+  - `clock`: `now()` and `setAlarm(atMs)`. Real: `Date.now` and `ctx.storage.setAlarm`. Fake: settable time; the harness advances it to the pending alarm and calls `core.alarm()` itself.
+  - `wa`: `sendText`, `sendReaction`, `markReadTyping`, `fetchMedia`. Real: Graph API client. Fake: records every send with the fake time.
+  - `llm`: model factory over `createOpenRouter`. Real in both Worker and evals (evals spend real credits). A stub that returns canned line-format replies exists only for the deterministic cadence tests.
+  - `embed`, `transcribe`: Workers AI via the `AI` binding in the Worker, via the Workers AI REST API in Node (same model names).
+  - `browser`: Browser Run REST (same code in both; it is plain `fetch`).
+- Dedupe by wamid is `INSERT OR IGNORE` on the messages table inside the DO; Meta retries and concurrent deliveries are harmless.
+
+### 4.3 Reply cadence with a durable alarm
+
+The brief's wait rules (3s quiet; 8s if the last message looks unfinished; never more than 15s after the first message of the burst) are implemented with the DO alarm, not `setTimeout`: alarms fire at millisecond precision in normal operation, survive object resets, and do not keep the object billed while waiting. The rare documented case of an alarm delayed up to a minute during Cloudflare maintenance is accepted.
+
+- `ingest(msg)`: insert the message; if no turn is open, open one with `burst_started_at = now`; compute `due = min(now + 3000 or 8000, burst_started_at + 15000)`; `setAlarm(due)`; start prefetch (4.4) without awaiting; return.
+- `alarm()`: if the newest pending message is younger than its quiet period and the 15s cap is not hit, re-arm and return. Otherwise run the turn.
+- **Message arriving mid-generation**: during the model call the DO's input gate is open, so `ingest` runs concurrently and inserts the row. Before sending the first bubble the turn loop checks whether the pending message count changed since it built the prompt; if it did and nothing has been sent yet, it aborts the stream and regenerates with the whole thread (at most twice, then it sends what it has). If a bubble was already sent, the new message simply starts the next turn after this one finishes.
+- After the last bubble: extraction, then profile refresh, then alarm bookkeeping (4.5).
+
+### 4.4 Work during the wait, and web pages
+
+On the first message of a burst `ingest` kicks off, without awaiting: media download (WhatsApp media URLs expire after 5 minutes, so download on receipt) and transcription for voice notes; the page snapshot for any URL in the message; the thread embedding and memory retrieval. The promises are held in memory on the DO instance. `alarm()` awaits them if the pending message set is unchanged, otherwise re-runs only embedding and retrieval (cheap) and reuses media and page results. If the object was reset in between, the alarm simply redoes everything (media ids are still valid for 7 days).
+
+**Web pages, deviation from the brief**: the brief says call `/screenshot` and `/markdown` in parallel. On the Free plan the second call is rejected (1 request per 10 seconds). The design uses the single `/snapshot` action with `formats: ["screenshot", "markdown"]`, which returns both from one page load. Mobile viewport 390x844 at scale 2, JPEG quality 80, `waitUntil: "networkidle2"`, 20s goto timeout, `bestAttempt: true`. Markdown is trimmed to about 3,000 tokens; YAML front matter is stripped. The screenshot goes to the model as an image part in the user message; the model is told the page's final URL, title and HTTP status.
+
+The `view_page(url)` tool is attached to the reply call only when the thread contains a URL. It returns text only (title, status, trimmed markdown); whether DeepSeek, Kimi and GLM hosts accept images inside tool results is unverified, and the prefetch path already gives the model the screenshot. When the agent itself sends a URL, the send uses `preview_url: true`. A one-line fact is stored about what was shared.
+
+### 4.5 One alarm, several timers
+
+A Durable Object has one alarm. The core keeps four nullable timestamps in a `state` table: `turn_due`, `insights_due`, `followup_due`, `send_retry_due`. After any change the core calls `scheduleNext()`, which sets the alarm to the minimum non-null value. `alarm()` runs every timer whose time has come, in that order, then calls `scheduleNext()` again. Each timer is idempotent (alarms are at-least-once).
+
+### 4.6 Storage (one SQLite database per contact)
+
+Tables, created with `CREATE TABLE IF NOT EXISTS` in the DO constructor inside `blockConcurrencyWhile`:
+
+- `messages`: `id TEXT PRIMARY KEY` (wamid), `direction` (in/out), `type`, `text` (transcript for voice notes; caption for media), `ts INTEGER` (ms), `quoted_id`, `media_note` (one-line description of an image/sticker/document/location/contact when relevant), `reactions TEXT` (JSON of emoji by sender, updated by reaction webhooks), `turn_id`, `status` (pending/handled for inbound; sent/failed for outbound).
+- `facts`: exactly the brief's columns: `id, text, kind, signal, created_at, event_date, source_message_ids, status (active|superseded|deleted), superseded_by, embedding BLOB`.
+- `insights`: `id, text, confidence, evidence_fact_ids, created_at, status, embedding BLOB`.
+- `profile`: single row, `text` (≤300 tokens), `updated_at`.
+- `contact`: single row: `wa_id, name, timezone, timezone_confirmed (0/1), last_inbound_ts, last_proactive_date`.
+- `state`: the four timers plus `burst_started_at`, `pending_generation` counter.
+- `turns`: per reply turn: `turn_id, started_at, wait_ms, retrieval_ms, ttft_ms, ttfb_ms, total_ms, model, bubbles, usage JSON (input, output, cached, reasoning, cost_table, cost_reported, provider)`. Extraction and insight calls log usage to a `calls` table with the same usage JSON.
+
+Forget: hard `DELETE` of matching facts and of any insight whose evidence includes them (the brief says hard-delete). Supersede: old fact gets `status = superseded`, `superseded_by = new id`; it stays retrievable for "where did I live before?" and is shown to the model with its dates.
+
+### 4.7 The reply call
+
+Prompt order, as the brief specifies: stable system prompt (persona, style rules, the line format, the react/quote rules, the "use memory silently" rules) → core profile → retrieved memories (top 12 of active facts + insights, each with its date; insights labelled as derived) → last 40 messages or ~6,000 tokens (char count ÷ 4), both sides, with timestamps and quoted-message references resolved to short excerpts → the current thread's messages (with media parts) → current date and time in the person's timezone. `maxRetries: 1`, `timeout: { firstChunkMs: 15000, totalMs: 60000 }`. `maxOutputTokens` is 400 for models whose thinking is off. For the two candidates whose thinking cannot be disabled (Claude Sonnet 5.5, GPT-6.1 Sol) and for any `--effort=medium` run it is 2048, because reasoning tokens count against the cap and Anthropic rejects a cap below its thinking budget; the brief's "400" and "same setting for every candidate" cannot both hold for those models. The visible length is held by the prompt rules and the parser (at most 3 bubbles, about 300 characters each) for every model alike, and EVALS.md states the cap used per candidate.
+
+Streaming and bubbles: parse `result.stream` incrementally. First line `react: <wamid> <emoji>` or `react: none`; bubbles separated by a line that is exactly `---`; an optional first line `quote: <wamid>` inside a bubble. A reaction is sent as soon as its line is complete. Each bubble is sent the moment its `---` or the end of stream arrives. Between bubbles: pause `min(2000, 400 + 15 × chars)` ms measured from the previous send; if the next bubble is not ready when the pause ends, send it when it is. Before each extra bubble, re-send read+typing (Meta drops the indicator when a message is sent). Zero bubbles plus a reaction is a valid turn. Reply text longer than 4,096 characters is split at a paragraph boundary (Meta's hard limit; should not happen with 400 tokens).
+
+Read receipt and typing indicator: one call (`status: read` + `typing_indicator`) fired at turn start without awaiting, for the newest inbound wamid.
+
+Send failures: on Meta error 131056 (pair limit) wait 1s, 4s, 16s between retries inside the handler; on 131047 (outside the 24h window) drop and log; on anything else log and mark the outbound row failed.
+
+Vision: when the turn contains an image and the configured reply model does not take images, the whole turn runs on the vision model (`MODEL_VISION`, default `openai/gpt-6.1-terra`).
+
+### 4.8 Long-term memory
+
+Decided by a spike on 2026-11-04 (the owner asked to settle it with evidence). `mem0ai` 3.3.1 was installed into a throwaway Worker with its Vectorize store, Workers AI bge-m3 through the OpenAI-compatible embeddings endpoint, and a Workers AI chat model. Findings: it bundles once 37 optional database drivers are stubbed (2.7 MB raw, 400 KB gzipped, under the Free plan's 3 MB); it constructs inside workerd; but every add and search fails, because its Vectorize adapter creates a bookkeeping index with 1 dimension (Vectorize's minimum is 32), queries it with a 1-value vector, and re-creates metadata indexes that already exist. Making it work means patching the library; every other store it supports is an external hosted database. Per the agreed rule (mem0 only if it boots, fits and answers well under half a second), memory is in-house. Spike artefacts were deleted.
+
+Why in-house beyond the spike: the algorithm below is the published mem0 recipe (extract candidates, compare with the most similar stored facts, decide ADD / UPDATE / DELETE / NONE, embed, retrieve by similarity). A hosted service would add a network hop to the reply path, hide the signal threshold the judgement evals must inspect, and still leave derived insights to us. The extraction and update prompts start from mem0's open-source prompts (Apache-2.0, credited in the README), adapted to the brief's signal scale, kinds and date rules, so the prompt work inherits what is already known to work.
+
+Extraction runs after the last bubble, on the extraction model, with `Output.object`. Input: the turn's messages (both sides), the current profile, and the 10 most similar active facts (by cosine over the embedding of the turn text). Output schema: `ops: [{ op: ADD|UPDATE|DELETE|NONE, text, kind, signal 1..5, event_date?, supersedes_id? }]`, plus `profile?: string` (the regenerated ≤300-token profile, only when ops changed something). One call does both jobs. Only ops with `signal ≥ 3` are persisted. ADD/UPDATE texts are embedded in one batch call. The system prompt carries the brief's high-signal and noise lists verbatim, instructs absolute dates (the current date in the person's timezone is given), and forbids storing the assistant's own suggestions.
+
+Retrieval per turn, three steps: (1) embed the concatenated pending messages (plus the previous two messages for context) and take the top 30 active facts and insights by cosine (brute force in memory; bge-m3 vectors come back L2-normalised (norm 1.000 measured on 2026-11-04, pooling `cls`, 1024 dims), re-normalised on write anyway, so cosine is a dot product; a few thousand rows at most); (2) add any facts matched by an FTS5 full-text index over fact text for the proper nouns and numbers in the thread, since embeddings are weak on exact names; (3) rerank the union with bge-m3's query + contexts mode (a joint relevance score, one extra Workers AI call of about 100 ms, on the reply path) and keep the top 12 by rerank score + 0.05 × recency factor (linear from 1 for today to 0 at 365 days). Steps 2 and 3 are additions beyond the brief, made because retrieval quality is the point; the eval harness takes `--retrieval=cosine|hybrid` (default hybrid) so EVALS.md shows what they buy, and if they buy nothing they are removed.
+
+Control phrases are detected by the model, not by regex: the reply system prompt tells it that "what do you know about me" gets a short plain summary of the profile and top facts, and that "forget X" is answered by calling the `forget(query)` tool, which deletes facts whose text matches the query by similarity above a threshold or by exact substring, plus dependent insights, and returns the count; the model confirms in one line. `forget` is the only tool always attached.
+
+### 4.9 Derived insights
+
+`insights_due = last_inbound_ts + 30 min`, reset by every inbound message. When it fires: facts added or updated since the last insight run, plus for each of them the 5 most similar older active facts, go to the insights model with `Output.object`, which returns up to 3 insights `{ text, confidence 0..1, evidence_fact_ids }`. Each is embedded and stored. The reply prompt labels them `(derived, confidence 0.8)` and the system prompt tells the model to use them tentatively and never as something the person said. When a fact is superseded or deleted, every insight listing it in `evidence_fact_ids` is deleted. Insights with confidence below 0.5 are not stored.
+
+### 4.10 Proactive follow-ups
+
+When extraction stores a `plan` fact with an `event_date` in the future, `followup_due = event_date + 2h` (only the soonest plan is tracked; the next one is picked up when the first fires). When it fires, send a short check-in generated by the reply model (one bubble, no reaction) if all of these hold: the person's last message is less than 24 hours old; no inbound message since `event_date` (the owner can override this reading, see open items); no proactive message has been sent today in the person's timezone; local time is between 09:00 and 22:00. If only the quiet-hours rule fails, move `followup_due` to 09:00 local and re-check then. Otherwise skip and clear. The README documents the 24h limit.
+
+### 4.11 Media and other message types
+
+- **Images**: downloaded on receipt via `GET /{media-id}` then the URL with the bearer token; passed as `{ type: "file", mediaType, data: Uint8Array }` with the caption as text. Over 5 MB or not JPEG/PNG/WebP: the model is told "an image that could not be read" instead.
+- **Voice notes**: `audio/ogg; codecs=opus` bytes, base64, to Whisper turbo via the binding; the transcript becomes the message text and is marked as a voice note internally so the model is told never to mention transcription. On failure the message text becomes a marker and the system prompt tells the model to say the voice note did not come through and ask them to type it.
+- **Stickers, documents, locations, contacts**: a one-line description built from the payload (sticker: "a sticker"; document: filename and type; location: name/address or coordinates; contact: formatted name and phone) becomes the message text, so the model works with what is there.
+- **Unsupported types and edit notifications**: stored for the record, never start a turn.
+- **Reactions to our messages**: stored on the referenced outbound row; never start a turn; shown in the thread as "(reacted 👍)".
+- **Statuses**: logged only, except that the handler logs a warning the first time `pricing.type` flips from `free_customer_service` to `regular`: Meta's free tier is 1,000 delivered service messages per month per number, there will be no payment method on the Messaging account, and past the tier Meta stops delivering. Four or five reviewers over a few days should stay well under it; the README lists it as a known limit.
+
+### 4.12 Timezone
+
+A small table maps the phone's calling code to an IANA zone (about 40 entries; the most populous zone for multi-zone countries, for example `1` → `America/New_York`, `7` → `Europe/Moscow` with `77` → `Asia/Almaty`, `44` → `Europe/London`, `49` → `Europe/Berlin`, `91` → `Asia/Kolkata`). Unknown code → `UTC`. The reply model is told the timezone is a guess until `timezone_confirmed`; when the person states their city or zone, extraction stores it as an identity fact and the core updates the contact row.
+
+### 4.13 Evals
+
+`npm run eval` runs `vitest run evals` with flags after `--` (`--reply=<id> --extract=<id> --derive=<id> --effort=low|medium|high --no-memory`), parsed from `process.argv` by the harness. Secrets come from a git-ignored `.dev.vars` loaded with Node's `process.loadEnvFile`. The harness builds a `ContactCore` over `node:sqlite` (`:memory:`), a fake clock, a fake WhatsApp sender and the real OpenRouter and Workers AI REST clients. A scenario is YAML: a name, a category, a list of steps (`at: <ISO time>`, `say: <text>` or `image:`/`url:`), then `probes: [{ at, ask, gold }]`. The runner feeds each step through `ingest`, advances the fake clock to the pending alarm and calls `alarm()` until no turn is pending, collects the fake sender's output, then runs the probes the same way. Contact isolation scenarios use two cores.
+
+Scoring: deterministic string checks when the scenario gives `expect_contains` / `expect_not_contains`; otherwise the judge (`anthropic/claude-opus-5.5`, structured output `correct | partial | wrong | hallucinated` with a one-line reason). The judgement scenarios inspect the facts table directly: after 50 small-talk messages with 3 real facts, the store holds those 3 and nothing else (judge compares stored texts to gold). Cadence checks use the stub LLM and the fake clock and assert: a 3-message burst produces one turn; "so basically..." gets an 8s wait; a message arriving mid-generation produces one reply covering all messages. Baseline is the same run with `--no-memory` (retrieval and insights disabled; last 40 messages only).
+
+Latency and cost per turn come from the `turns` table of each in-memory database: p50/p95 for time to first token, time to first bubble and total turn time, and cost per 1,000 replies. A reporter writes `EVALS.md`: the results table (category, baseline, this agent), the model comparison table per job, the latency table per candidate and effort, and every scenario transcript. One run per candidate (vary one job, others at default), then the best reply model again at `--effort=medium`.
+
+Scenario count: ~20 as the brief lists (6 short-term, 6 long-term, 4 derived, 2 judgement, 2 forget/isolation) plus the 3 cadence checks.
+
+Scope and cost of the comparison: the full default configuration and the `--no-memory` baseline run every scenario. Each candidate run covers only the categories its job affects, as the brief's reporting rule says (reply: short-term and cadence; extraction: long-term and judgement; derive: derived). Long-term scenarios need the fact to leave the 40-message verbatim window, otherwise the baseline passes too and the scenario proves nothing; they use a `fill: N` step that inserts N canned user/assistant pairs straight into the messages table with no model calls. Judgement scenarios run every one of their 50 messages through the real pipeline, since extraction's restraint is what they test. URL scenarios run serially (one page request per 10 seconds on the Free plan). Owner's decision: keep the spend low, the Chinese-lab models are enough. So the reply comparison runs `deepseek/deepseek-v4.1-flash`, `moonshotai/kimi-k2.6` and `z-ai/glm-5.2` by default; the OpenAI and Anthropic reply candidates stay in `models.ts` and run only when passed explicitly, and EVALS.md says which candidates were not run. Extraction and insights compare all their candidates (few, short calls). Expected spend for the matrix is under $5 of OpenRouter credit; the judge runs Opus 5.5 at `effort: "low"` (it compares a short answer to a gold answer).
+
+### 4.14 Observability
+
+Every reply turn writes the `turns` row and one `console.log` JSON line (contact hash, model, provider, wait, retrieval, ttft, ttfb, total, tokens, cached, cost); `wrangler tail` and Workers Logs show them live. Model calls off the reply path log the same way. No other logging.
+
+### 4.15 Configuration and secrets
+
+Secrets (`wrangler secret put`, mirrored in `.dev.vars` for local dev and evals): `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`, `OPENROUTER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `ALLOWED_PHONES` (comma-separated E.164 digits without `+`; a secret so phone numbers never enter the repo). Vars in `wrangler.jsonc`: `CLOUDFLARE_ACCOUNT_ID`, optional `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. The Worker is deployed from day one with placeholder secrets so the URL exists before the Meta webhook is configured; real values are swapped in when the owner has them.
+
+### 4.16 Repository layout and documents
+
+```
+README.md                what it does, how to text it, Mermaid architecture, repo map, eval table, known limits, next steps
+SETUP.md                 the owner's click-by-click manual setup (from the research note), the secret names, the webhook step
+EVALS.md                 generated by the eval reporter
+init.md                  the brief
+wrangler.jsonc, package.json, tsconfig.json, vitest.config.ts
+src/
+  index.ts               Worker: webhook GET/POST, signature, allowlist, fan-out
+  contact-agent.ts       Durable Object shell
+  core/
+    contact.ts           ContactCore: ingest, alarm, turn loop, scheduleNext
+    cadence.ts           wait computation (pure, unit-tested)
+    reply.ts             prompt assembly, stream parsing, bubble pacing
+    memory.ts            facts, extraction, retrieval, profile, forget
+    insights.ts          derived insights
+    followups.ts         proactive check-ins
+    db.ts                Db adapter (DO + node:sqlite) and schema
+    types.ts
+  models.ts              model table, prices, per-job defaults, reasoning settings
+  llm.ts                 OpenRouter factory, usage and cost logging
+  whatsapp.ts            Graph API client
+  browser.ts             Browser Run /snapshot
+  workers-ai.ts          embed + transcribe (binding and REST variants)
+  timezone.ts            calling code → IANA zone
+evals/
+  scenarios/*.yaml
+  harness.ts             fake clock, fake sender, runner, flags
+  judge.ts
+  report.ts              writes EVALS.md
+  *.test.ts
+docs/superpowers/        specs, plans, research notes
+```
+
+### 4.17 Build order and deployment
+
+Day 1 starts with a probe: a temporary debug route makes the Durable Object burn about 50 ms of CPU. If it is cut off by the Workers Free 10 ms cap (unconfirmed whether that cap applies to Durable Objects), the owner has pre-approved the $5 Workers Paid plan; the build pauses only for the dashboard click (it needs a card), then redeploys and continues. The probe route is removed afterwards. Then, as the brief orders: webhook and basic reply (deployed) → cadence and style → evals harness and the short-term scenarios → long-term memory → derived memory → web pages → proactive follow-ups → model comparison → README. Deploy after every step; `git init` on day one, conventional commits, GitHub repo per the owner's answer. The owner's manual Meta steps run in parallel with the build; the webhook URL and verify token are handed over as soon as the first deploy is up.
+
+## 5. Left to the builder
+
+Exact prompt wording; the line-format parser's edge cases; the SQL; the YAML scenario texts (names, places and dates are free, but the gold answers must be unambiguous); the Mermaid diagram; the bubble-splitting heuristics inside the 300-character guideline; the calling-code table contents; how the reporter formats percentiles; retry details beyond those stated; any helper not named here that keeps a file readable. Thresholds not fixed above (similarity cutoff for `forget`, token estimator) are the builder's, within the brief's limits.
+
+## 6. Open items for the owner
+
+1. Resolved: public `aldaonggar/wapp-agent`.
+2. Follow-up rule "skip it if the person has messaged since": this design reads it as "since the event time". If the owner meant "since the plan was made", the check-in almost never fires; say so and it changes.
+3. Prices: this design uses OpenRouter's live list prices instead of the brief's table; say so if the brief's figures should be kept for the README.
+4. Resolved: the $5 Workers Paid upgrade is pre-approved if the CPU probe fails.
+5. Resolved: eval spend kept under $5 by running only the Chinese-lab reply candidates by default.
+
+## 7. Risks accepted
+
+- Free-plan limits: 10 browser-minutes per day and 1 page request per 10 seconds (a second URL inside 10 seconds is told "could not open the page right now"); 10,000 Workers AI neurons per day (roughly 200 voice-note minutes); the Worker Free CPU limit per invocation is 10 ms and it is unconfirmed whether Durable Objects get the 30 s default on Free. All model work is I/O, and cosine over a few thousand 1024-float vectors is a few milliseconds, but if DO invocations are held to 10 ms CPU the fix is the $5 plan.
+- Meta test number: recipients must be added and verified one by one; inbound from unlisted numbers is dropped by the allowlist anyway. Whether Whisper accepts Opus-in-Ogg from WhatsApp is unverified until the first real voice note (the failure path tells the person to type it).
+- OpenRouter third-party hosts for the open-weight models vary in caching support and structured-output support; `strict: false` plus Zod validation and one retry covers the latter.
+- The AI SDK v7 under workerd has not been smoke-tested; the first deploy does it.
