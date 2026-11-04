@@ -9,3 +9,6 @@ export interface WaClient {
 }
 export type { Usage, Llm, StreamCall, ObjectCall } from "../llm";
 export type { ReasoningSetting, ModelChoice } from "../models";
+export type Param = string | number | null | Uint8Array;
+export type Row = Record<string, string | number | null | Uint8Array>;
+export interface Db { all<T = Row>(sql: string, ...p: Param[]): T[]; run(sql: string, ...p: Param[]): void; batch(sql: string): void }
