@@ -25,13 +25,12 @@ export default {
       }
     }
 
-    // Temporary CPU probe, removed after the CPU-limit check.
+    // Temporary CPU probe (Task 14 removes it). Fixed work, not a time target: clocks are frozen while sync code runs.
     if (url.pathname === "/__cpu") {
-      const ms = Number(url.searchParams.get("ms") ?? 50);
-      const t0 = performance.now();
-      const start = Date.now();
-      while (Date.now() - start < ms);
-      return new Response(String(Math.round(performance.now() - t0)));
+      const n = Number(url.searchParams.get("n") ?? 20_000_000);
+      let h = 0;
+      for (let i = 0; i < n; i++) h = (Math.imul(h ^ i, 0x9e3779b1) + 0x7f4a7c15) | 0;
+      return Response.json({ iterations: n, checksum: h });
     }
 
     return new Response("not found", { status: 404 });
