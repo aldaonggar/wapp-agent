@@ -2,7 +2,7 @@ import { expect, test } from "vitest";
 import { bubblePauseMs, looksUnfinished, turnDue } from "./cadence";
 
 test("looksUnfinished", () => {
-  for (const t of ["so basically...", "hey", "quick q", "so"]) expect(looksUnfinished(t)).toBe(true);
+  for (const t of ["so basically...", "hey", "quick q", "so", "And.", "hey!"]) expect(looksUnfinished(t)).toBe(true);
   for (const t of ["see you at 7", "I think it's fine", "ok thanks", "okay"]) expect(looksUnfinished(t)).toBe(false);
 });
 

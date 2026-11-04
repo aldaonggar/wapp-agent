@@ -41,3 +41,42 @@ test("emits first bubble before the stream ends", async () => {
   const r = await Promise.race([it.next(), new Promise((res) => setTimeout(() => res("timeout"), 200))]);
   expect(r).toEqual({ done: false, value: b("first") });
 });
+
+const texts = (ev: ReplyEvent[]) => ev.map((e) => (e.type === "bubble" ? e.text : ""));
+
+test("maxBubbles = 1 collects everything", async () => {
+  expect(await collect(whole("react: none\na\n---\nb\n---\nc"), 1)).toEqual([b("a\n\nb\n\nc")]);
+});
+
+test("long final bubble splits without counting toward the cap", async () => {
+  const para = "p".repeat(2500);
+  const final = [para, para, para, para].join("\n\n"); // 10,006 chars
+  const ev = await collect(whole(`react: none\none\n---\ntwo\n---\n${final}`), 3);
+  const t = texts(ev);
+  expect(t.slice(0, 2)).toEqual(["one", "two"]);
+  const pieces = t.slice(2);
+  expect(pieces.length).toBeGreaterThan(1);
+  for (const p of pieces) expect(p.length).toBeLessThanOrEqual(4096);
+  expect(pieces.join("\n\n")).toBe(final);
+});
+
+test("splits at a sentence end when there is no paragraph break", async () => {
+  const para = "Hello there friend. ".repeat(250).trim(); // ~5,000 chars
+  const t = texts(await collect(whole(para)));
+  expect(t.length).toBe(2);
+  for (const p of t) expect(p.length).toBeLessThanOrEqual(4096);
+  expect(t[0].endsWith(".")).toBe(true);
+  expect(t.join(" ")).toBe(para);
+});
+
+test("quote only on the first piece of a split bubble", async () => {
+  const para = "q".repeat(3000);
+  const ev = await collect(whole(`react: none\nquote: #2\n${para}\n\n${para}`));
+  expect(ev.length).toBe(2);
+  expect(ev[0]).toMatchObject({ quote: "#2" });
+  expect(ev[1]).not.toHaveProperty("quote");
+});
+
+test("react line after the first non-empty line is content", async () => {
+  expect(await collect(whole("hi\nreact: none"))).toEqual([b("hi\nreact: none")]);
+});

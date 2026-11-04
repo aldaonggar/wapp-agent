@@ -38,8 +38,8 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
       lines.shift();
     }
     const parts = splitLong(lines.join("\n").trim());
+    if (parts.length) emitted++; // cap counts logical bubbles, not split pieces
     for (const [i, text] of parts.entries()) {
-      emitted++;
       yield quote && i === 0 ? { type: "bubble", text, quote } : { type: "bubble", text };
     }
   }
