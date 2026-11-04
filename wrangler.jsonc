@@ -1,0 +1,10 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "wapp-agent",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "ai": { "binding": "AI", "remote": true },
+  "vars": { "CLOUDFLARE_ACCOUNT_ID": "ca2eab2f1e6412d4da10548be926c8fa" }
+}
