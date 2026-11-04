@@ -93,6 +93,20 @@ describe("llm.stream", () => {
     expect(logged).toHaveLength(1);
   });
 
+  it("handles an in-stream error part: text ends, done rejects", async () => {
+    const { f } = fake([() => sse([chunk({ role: "assistant", content: "par" }), { id: "gen-1", error: { code: 500, message: "boom" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }])]);
+    const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });
+    expect(await drain(r.text)).toEqual(["par"]);
+    await expect(r.done).rejects.toBeTruthy();
+  });
+
+  it("leaves costReported undefined when no cost is reported", async () => {
+    const { f } = fake([() => sse([chunk({ role: "assistant", content: "a" }), { id: "g", choices: [{ index: 0, delta: { content: "" }, finish_reason: "stop" }], usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 } }])]);
+    const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });
+    await drain(r.text);
+    expect((await r.done).costReported).toBeUndefined();
+  });
+
   it("rejects done on an upstream error", async () => {
     const { f } = fake([() => new Response("nope", { status: 400 })]);
     const llm = makeLlm("k", { fetch: f });
@@ -114,11 +128,18 @@ describe("llm.object", () => {
     expect(bodies).toHaveLength(2);
     expect(bodies[0].response_format.json_schema.strict).toBe(false);
     expect(r.usage).toMatchObject({ input: 50, output: 5, costReported: 0.0005 });
-    expect(logged).toHaveLength(1);
+    expect(logged).toHaveLength(2);
   });
 
   it("gives up after the retry", async () => {
-    const { f } = fake([json("x"), json("y")]);
+    const { f, bodies } = fake([json("x"), json("y")]);
     await expect(makeLlm("k", { fetch: f }).object(call)).rejects.toBeTruthy();
+    expect(bodies).toHaveLength(2);
+  });
+
+  it("does not retry transport errors", async () => {
+    const { f, bodies } = fake([() => new Response("bad", { status: 400 }), json('{"a":1}')]);
+    await expect(makeLlm("k", { fetch: f }).object(call)).rejects.toBeTruthy();
+    expect(bodies).toHaveLength(1);
   });
 });

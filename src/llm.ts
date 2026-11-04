@@ -1,5 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { generateText, isStepCount, Output, streamText, type ModelMessage, type SystemModelMessage, type ToolSet } from "ai";
+import { generateText, isStepCount, NoObjectGeneratedError, Output, streamText, type ModelMessage, type SystemModelMessage, type ToolSet } from "ai";
 import type { z } from "zod";
 import { CHINA_HOSTS, costUsd, needsHostFilter, type ReasoningSetting } from "./models";
 
@@ -7,6 +7,7 @@ export interface Usage { job: string; model: string; provider?: string; input: n
 export interface StreamCall { job: "reply" | "followup"; modelId: string; system: SystemModelMessage[]; messages: ModelMessage[]; tools?: ToolSet; maxOutputTokens: number; reasoning: ReasoningSetting; sessionId: string; abortSignal?: AbortSignal }
 export interface ObjectCall<T> { job: "extract" | "derive" | "judge"; modelId: string; system: string; messages: ModelMessage[]; schema: z.ZodType<T>; reasoning?: ReasoningSetting; sessionId: string }
 export interface Llm {
+  // `done` rejects on an in-stream error; it is pre-handled, so ignoring it is safe, but `await done` still throws.
   stream(call: StreamCall): { text: AsyncIterable<string>; done: Promise<Usage & { ttftMs: number; finishReason: string }> };
   object<T>(call: ObjectCall<T>): Promise<{ value: T; usage: Usage }>;
 }
@@ -38,7 +39,7 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
     stream(call) {
       const t0 = performance.now();
       const system = call.system.map((m, i) =>
-        i === 0 && call.modelId.startsWith("anthropic/") ? { ...m, providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } } : m);
+        i === 0 && call.modelId.startsWith("anthropic/") ? { ...m, providerOptions: { ...m.providerOptions, openrouter: { ...m.providerOptions?.openrouter, cacheControl: { type: "ephemeral" } } } } : m);
       const result = streamText({
         model: model(call.modelId, call.reasoning),
         instructions: system,
@@ -58,6 +59,7 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
       let resolveDone!: (v: Usage & { ttftMs: number; finishReason: string }) => void, rejectDone!: (e: unknown) => void;
       const done = new Promise<Usage & { ttftMs: number; finishReason: string }>((res, rej) => { resolveDone = res; rejectDone = rej; });
 
+      done.catch(() => {});
       void (async () => {
         let ttftMs = 0, first = true, error: unknown;
         try {
@@ -105,7 +107,11 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
           });
           const provider = (r.providerMetadata?.openrouter as { provider?: string } | undefined)?.provider;
           return { value: r.output as T, usage: usageOf(call.job, call.modelId, r.usage, provider, rawCost(r.usage), t0) };
-        } catch (e) { lastErr = e; }
+        } catch (e) {
+          if (!NoObjectGeneratedError.isInstance(e)) throw e;
+          if (e.usage) usageOf(call.job, call.modelId, e.usage, undefined, rawCost(e.usage), t0); // failed attempt still costs
+          lastErr = e;
+        }
       }
       throw lastErr;
     },
