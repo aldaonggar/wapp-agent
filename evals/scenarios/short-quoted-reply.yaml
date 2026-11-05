@@ -1,4 +1,4 @@
-# A quoted reply ("this one") refers to the quoted message, not the latest one.
+# A quoted reply ("this one") refers to the quoted message, not the latest one. Judged: "pizza or sushi?" must not pass.
 name: short-quoted-reply
 category: short-term
 steps:
@@ -7,5 +7,4 @@ steps:
   - at: +1min
     ask: "how about this one?"
     quote: 1
-    gold: pizza
-    expect_contains: [pizza]
+    gold: "pizza: the option the person quoted (step 1), not sushi; the reply treats pizza as the one being asked about"

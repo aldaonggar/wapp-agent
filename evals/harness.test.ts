@@ -43,6 +43,19 @@ steps:
   expect(() => loadScenarios(dir)).toThrow(/bad\.yaml: step 1/);
 });
 
+test.each([
+  ["a misspelt key", "{ at: +1s, ask: x, gold: y, qoute: 1 }", /step 2: unknown key "qoute" for ask/],
+  ["a scalar expect_contains", "{ at: +1s, ask: x, gold: y, expect_contains: pizza }", /step 2: expect_contains must be a non-empty list of strings/],
+  ["an empty expect_not_contains", "{ at: +1s, ask: x, gold: y, expect_not_contains: [] }", /step 2: expect_not_contains must be a non-empty list of strings/],
+  ["a forward quote", "{ at: +1s, say: x, quote: 2 }", /step 2: quote must be an earlier step number/],
+  ["a non-ISO at", "{ at: 10, say: x }", /step 2: bad at "10"/],
+  ["a zero max_turns", "{ at: +1s, ask: x, gold: y, max_turns: 0 }", /step 2: max_turns must be a positive integer/],
+])("loadScenarios rejects %s", (_name, step, error) => {
+  const dir = mkdtempSync(join(tmpdir(), "scenarios-"));
+  writeFileSync(join(dir, "bad.yaml"), `name: bad\ncategory: short-term\nsteps:\n  - { at: +0s, say: first }\n  - ${step}\n`);
+  expect(() => loadScenarios(dir)).toThrow(error);
+});
+
 test("parseAt reads offsets from the scenario start, day numbers and ISO times", () => {
   const t0 = Date.UTC(2026, 10, 4, 15, 0);
   expect(parseAt("+0s", t0)).toBe(t0);
@@ -51,6 +64,7 @@ test("parseAt reads offsets from the scenario start, day numbers and ISO times",
   expect(parseAt("day 4", t0)).toBe(t0 + 3 * 86_400_000);
   expect(parseAt("2026-11-10T14:00:00Z", t0)).toBe(Date.UTC(2026, 10, 10, 14, 0));
   expect(() => parseAt("+3 fortnights", t0)).toThrow(/bad at/);
+  expect(() => parseAt("10", t0)).toThrow(/bad at/); // Date.parse would take it as a year
 });
 
 test("runScenario on a 2-step scenario returns one probe answered by the stub", async () => {
@@ -83,11 +97,28 @@ test("step at values must be non-decreasing", async () => {
 test("a burst before the ask is drained only up to each step, so it gets one reply", async () => {
   const llm = stubLlm({ reply: echo });
   const r = await run([
-    { at: "+0s", say: "need eggs" }, { at: "+1s", say: "flour" }, { at: "+2s", ask: "and milk", gold: "", expect_contains: ["eggs", "flour", "milk"] },
+    { at: "+0s", say: "need eggs" }, { at: "+1s", say: "flour" }, { at: "+2s", ask: "and milk", gold: "", expect_contains: ["eggs", "flour", "milk"], max_turns: 1 },
   ], llm);
   expect(llm.calls).toHaveLength(1);
   expect(r.turns).toHaveLength(1);
   expect(r.probes[0]).toMatchObject({ answer: "echo need eggs + flour + and milk", label: "correct" });
+});
+
+test("max_turns fails the probe when the contact took more turns", async () => {
+  const r = await run([{ at: "+0s", say: "need eggs" }, { at: "+5s", say: "flour" }, { at: "+6s", ask: "and milk", gold: "", expect_contains: ["ok"], max_turns: 1 }], stubLlm());
+  expect(r.probes[0]).toMatchObject({ label: "wrong", reason: "turns=2 > max_turns=1" });
+});
+
+test("a turn that fails twice shows up in the transcript and leaves ttfb undefined", async () => {
+  const r = await run([{ at: "+0s", ask: "you there?", gold: "ok", expect_contains: ["ok"] }], stubLlm({ reply: () => ({ chunks: [], error: new Error("provider down") }) }));
+  expect(r.transcript).toContain("[2026-11-04 15:00:33] bot → a: (turn error: provider down)");
+  expect(r.probes[0]).toMatchObject({ answer: "", label: "wrong", ttfbMs: undefined });
+  expect(r.probes[0].totalMs).toBeTypeOf("number");
+});
+
+test("a scenario ending with a say still runs that turn", async () => {
+  const r = await run([{ at: "+0s", say: "good morning" }], stubLlm());
+  expect(r.transcript).toEqual(["[2026-11-04 15:00:00] a: good morning", "[2026-11-04 15:00:03] bot → a: ok"]);
 });
 
 test("the ask drain extends past the first window to collect a retried turn", async () => {
@@ -143,9 +174,10 @@ test("a judged probe asks Opus at low effort with the conversation so far", asyn
 
 test("ask at +10 s does not call llm.object (insights are 30 min out)", async () => {
   const llm = stubLlm({ object: () => ({}) });
-  const r = await run([{ at: "+10s", ask: "hi", gold: "ok", expect_contains: ["ok"] }], llm, { ...cfg, memory: true });
+  const r = await run([{ at: "+10s", ask: "hi", gold: "ok", expect_contains: ["ok"] }, { at: "+1min", say: "still here" }], llm, { ...cfg, memory: true });
   expect(r.passed).toBe(true);
-  expect(llm.objectCalls).toHaveLength(0);
+  expect(llm.objectCalls).toHaveLength(0); // bites from Task 10, when the insights alarm calls object()
+  expect(r.transcript).toContain("[2026-11-04 15:01:00] a: still here"); // a drain past insights_due would have jumped to 15:30
 });
 
 // recall() is a placeholder until Task 9 (it never embeds); Task 9 turns this into a plain test().

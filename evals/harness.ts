@@ -203,30 +203,45 @@ export type Step =
   | { at: string; contact?: string; say?: string; image?: string; caption?: string; url?: string; quote?: number }
   | { fill: number }
   | { seed_facts: number }
-  | { at: string; contact?: string; ask: string; gold: string; quote?: number; expect_contains?: string[]; expect_not_contains?: string[] }
+  | { at: string; contact?: string; ask: string; gold: string; quote?: number; expect_contains?: string[]; expect_not_contains?: string[]; max_turns?: number }
   | { expect_facts: { count: number; gold: string[] } }
   | { expect_facts_not_contains: string[] }
   | { expect_insights: { min: number; evidence_count?: number } };
 export interface Scenario { name: string; category: "short-term" | "long-term" | "derived" | "judgement" | "forget" | "isolation"; steps: Step[] }
 export interface ProbeResult { ask: string; gold: string; answer: string; label: "correct" | "partial" | "wrong" | "hallucinated"; reason: string; ttftMs?: number; ttfbMs?: number; totalMs?: number }
-export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; passed: boolean }
+export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; passed: boolean; at?: string }
 
 const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget", "isolation"];
-const KINDS = ["say", "ask", "image", "url", "fill", "seed_facts", "expect_facts", "expect_facts_not_contains", "expect_insights"];
+// Keys each step kind may carry besides its own; `at` and `contact` are accepted on every step.
+const KEYS: Record<string, string[]> = {
+  say: ["quote"], image: ["caption", "quote"], url: ["quote"], ask: ["gold", "quote", "expect_contains", "expect_not_contains", "max_turns"],
+  fill: [], seed_facts: [], expect_facts: [], expect_facts_not_contains: [], expect_insights: [],
+};
 const MESSAGE_KINDS = ["say", "ask", "image", "url"];
+const isInt = (x: unknown, min: number): x is number => Number.isInteger(x) && (x as number) >= min;
+
+function stepProblem(s: unknown, n: number): string {
+  if (typeof s !== "object" || s === null) return "is not a mapping";
+  const r = s as Record<string, unknown>, kinds = Object.keys(KEYS).filter((k) => k in r), kind = kinds[0];
+  if (kinds.length !== 1) return `needs exactly one of ${Object.keys(KEYS).join(", ")}`;
+  const unknown = Object.keys(r).find((k) => k !== kind && k !== "at" && k !== "contact" && !KEYS[kind].includes(k));
+  if (unknown) return `unknown key "${unknown}" for ${kind}`;
+  if (MESSAGE_KINDS.includes(kind) && r.at === undefined) return `${kind} needs at`;
+  if (r.at !== undefined) try { parseAt(String(r.at), 0); } catch (e) { return (e as Error).message; }
+  if (kind === "ask" && typeof r.gold !== "string") return "ask needs gold";
+  for (const k of ["expect_contains", "expect_not_contains"])
+    if (k in r && !(Array.isArray(r[k]) && r[k].length > 0 && r[k].every((x) => typeof x === "string"))) return `${k} must be a non-empty list of strings`;
+  if ("quote" in r && !(isInt(r.quote, 1) && r.quote < n)) return `quote must be an earlier step number (1..${n - 1})`;
+  if ("max_turns" in r && !isInt(r.max_turns, 1)) return "max_turns must be a positive integer";
+  return "";
+}
 
 export function loadScenarios(dir: string, filter?: string): Scenario[] {
   const re = filter ? new RegExp(filter) : null;
   return readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => {
     const sc = parse(readFileSync(join(dir, f), "utf8")) as Scenario | null;
     const problem = !sc || typeof sc.name !== "string" || !CATEGORIES.includes(sc.category) || !Array.isArray(sc.steps) ? "needs name, category and steps"
-      : sc.steps.map((s, i) => {
-        const kinds = typeof s === "object" && s !== null ? KINDS.filter((k) => k in s) : [];
-        if (kinds.length !== 1) return `step ${i + 1}: needs exactly one of ${KINDS.join(", ")}`;
-        if (MESSAGE_KINDS.includes(kinds[0]) && !("at" in s)) return `step ${i + 1}: ${kinds[0]} needs at`;
-        if ("ask" in s && typeof s.gold !== "string") return `step ${i + 1}: ask needs gold`;
-        return "";
-      }).find(Boolean);
+      : sc.steps.map((s, i) => { const p = stepProblem(s, i + 1); return p && `step ${i + 1}: ${p}`; }).find(Boolean);
     if (problem) throw new Error(`${f}: ${problem}`);
     return sc!;
   }).filter((sc) => !re || re.test(sc.name));
@@ -249,7 +264,7 @@ export function parseAt(at: string, t0: number): number {
     if (rest.trim()) throw bad();
     return t0 + ms;
   }
-  const abs = Date.parse(s);
+  const abs = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.test(s) ? Date.parse(s) : NaN;
   if (Number.isNaN(abs)) throw bad();
   return abs;
 }
@@ -269,7 +284,7 @@ const SEED_FACTS: [string, string][] = [
   ["Has two houseplants named Fern and Frank", "other"], ["Uncle Sam runs a bakery", "person"], ["Takes the 8:10 train", "routine"], ["Wants to learn to surf", "other"],
 ];
 
-interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number }
+interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number }
 type MessageStep = { at: string; contact?: string; say?: string; ask?: string; image?: string; caption?: string; url?: string; quote?: number };
 
 /**
@@ -288,20 +303,28 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock);
       const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders });
-      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0 }));
+      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0 }));
     }
     return c;
   };
 
   const transcript: string[] = [];
   const stamp = (t: number) => new Date(t).toISOString().slice(0, 19).replace("T", " ");
-  const flush = () => { // the bots' sends since the last flush, in time order
-    const out = [...contacts.values()].flatMap((c) => c.wa.sent.slice(c.shown).map((s) => ({ c, s })));
-    for (const c of contacts.values()) c.shown = c.wa.sent.length;
-    for (const { c, s } of out.sort((x, y) => x.s.at - y.s.at)) {
-      if (s.kind === "text") transcript.push(`[${stamp(s.at)}] bot → ${c.id}: ${s.body}`);
-      if (s.kind === "reaction") transcript.push(`[${stamp(s.at)}] bot → ${c.id}: (reacted ${s.emoji})`);
+  const flush = () => { // the bots' sends and failed turns since the last flush, in time order
+    const out: { at: number; line: string }[] = [];
+    for (const c of contacts.values()) {
+      for (const s of c.wa.sent.slice(c.shown)) {
+        if (s.kind === "text") out.push({ at: s.at, line: `bot → ${c.id}: ${s.body}` });
+        if (s.kind === "reaction") out.push({ at: s.at, line: `bot → ${c.id}: (reacted ${s.emoji})` });
+      }
+      c.shown = c.wa.sent.length;
+      // A failed turn is stamped at its last bubble, or its start when it sent nothing.
+      for (const t of c.deps.db.all<{ id: number; at: number; error: string | null }>("SELECT id, coalesce((SELECT max(ts) FROM messages WHERE turn_id=turns.id AND direction='out'), started_at) AS at, error FROM turns WHERE id > ? ORDER BY id", c.shownTurn)) {
+        if (t.error) out.push({ at: t.at, line: `bot → ${c.id}: (turn error: ${t.error})` });
+        c.shownTurn = t.id;
+      }
     }
+    for (const o of out.sort((x, y) => x.at - y.at)) transcript.push(`[${stamp(o.at)}] ${o.line}`);
   };
   const note = (line: string) => { flush(); transcript.push(`[${stamp(clock.t)}] ${line}`); };
   const hasPending = (c: Contact) => c.deps.db.all("SELECT 1 FROM messages WHERE direction='in' AND status='pending' LIMIT 1").length > 0;
@@ -339,8 +362,12 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       if ("ask" in step) {
         await settle(c);
         const answer = c.wa.sent.slice(mark).filter((s) => s.kind === "text").map((s) => s.body).join("\n");
-        const turn = c.deps.db.all<Record<string, number | null>>("SELECT ttft_ms, ttfb_ms, total_ms FROM turns ORDER BY id DESC LIMIT 1")[0];
-        probes.push({ ask: step.ask, gold: step.gold, answer, ...(await score(realLlm, step, answer, context)), ttftMs: turn?.ttft_ms ?? undefined, ttfbMs: turn?.ttfb_ms ?? undefined, totalMs: turn?.total_ms ?? undefined });
+        const turn = c.deps.db.all<Record<string, number | null>>("SELECT ttft_ms, ttfb_ms, total_ms FROM turns WHERE started_at >= ? ORDER BY id DESC LIMIT 1", msg.ts)[0];
+        const turns = c.deps.db.all<{ n: number }>("SELECT count(*) AS n FROM turns")[0].n;
+        const verdict = step.max_turns !== undefined && turns > step.max_turns
+          ? { label: "wrong" as const, reason: `turns=${turns} > max_turns=${step.max_turns}` }
+          : await score(realLlm, step, answer, context);
+        probes.push({ ask: step.ask, gold: step.gold, answer, ...verdict, ttftMs: turn?.ttft_ms ?? undefined, ttfbMs: turn?.ttfb_ms ?? undefined, totalMs: turn?.total_ms ?? undefined });
       }
       continue;
     }
@@ -380,6 +407,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       checks.push({ name: "expect_insights", passed: ok.length >= min, detail: `${ok.length} active insights${evidence_count === undefined ? "" : ` citing ${evidence_count} facts`} (want ≥ ${min}): ${rows.map((r) => r.text).join(" | ")}` });
     }
   }
+  for (const c of contacts.values()) await drain(c.core, c.view, clock, clock.t + MAX_WAIT_MS + 1); // a trailing say still gets its turn
   flush();
 
   const turns = [...contacts.values()].flatMap((c) => c.deps.db.all("SELECT * FROM turns ORDER BY id").map((r) => ({ contact: c.id, ...r })));

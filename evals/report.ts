@@ -91,7 +91,7 @@ if (!runs.length) out.push("", `${NOT_RUN}.`);
 for (const r of [agent, baseline, ...runs.filter((x) => x !== agent && x !== baseline)].filter((x): x is Run => !!x)) {
   out.push("", `### ${r.tag}`, "", `Run at ${r.at}; ${score(r.scenarios)} passed; cost $${r.scenarios.reduce((c, s) => c + s.costUsd, 0).toFixed(4)}.`);
   for (const s of r.scenarios) {
-    out.push("", `<details><summary>${s.name} (${s.category}): ${s.passed ? "pass" : "FAIL"}</summary>`, "", "```text", ...s.transcript, "```", "");
+    out.push("", `<details><summary>${s.name} (${s.category}): ${s.passed ? "pass" : "FAIL"}${s.at ? `, ${s.at}` : ""}</summary>`, "", "```text", ...s.transcript, "```", "");
     for (const p of s.probes) out.push(`- **${p.label}**: ${p.ask} → gold "${p.gold}"; ${p.reason}${p.ttfbMs == null ? "" : ` (first bubble ${p.ttfbMs} ms)`}`);
     for (const c of s.checks) out.push(`- **${c.passed ? "pass" : "fail"}** ${c.name}: ${c.detail}`);
     out.push("", "</details>");

@@ -1,4 +1,4 @@
-# Three messages one second apart are one burst: one reply that covers all three.
+# Three messages one second apart are one burst: one turn (max_turns) whose reply covers all three.
 name: short-burst-of-three
 category: short-term
 steps:
@@ -8,3 +8,4 @@ steps:
     ask: "and milk. can you send me that list back so I don't forget"
     gold: eggs, flour and milk
     expect_contains: [eggs, flour, milk]
+    max_turns: 1
