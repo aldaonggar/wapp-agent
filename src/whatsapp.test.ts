@@ -15,7 +15,7 @@ async function hmacHex(secret: string, body: string): Promise<string> {
 }
 
 const ctx = {} as ExecutionContext;
-const env = { WHATSAPP_VERIFY_TOKEN: "t", WHATSAPP_APP_SECRET: "secret" } as Env;
+const env = { WHATSAPP_VERIFY_TOKEN: "t", WHATSAPP_TOKEN: "tok", WHATSAPP_PHONE_NUMBER_ID: "1", WHATSAPP_APP_SECRET: "secret" } as Env;
 const body = '{"object":"whatsapp_business_account"}';
 
 test("verifySignature accepts the HMAC of the raw body", async () => {
