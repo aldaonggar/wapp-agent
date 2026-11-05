@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { makeSnapshot } from "./browser";
+import { makeSearch, makeSnapshot } from "./browser";
 import { ContactCore } from "./core/contact";
 import { fromDO, migrate } from "./core/db";
 import type { Db, Deps, Inbound } from "./core/types";
@@ -26,6 +26,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
     transcribe: transcribeViaBinding(env.AI),
     tts: ttsViaBinding(env.AI),
     snapshot: makeSnapshot({ accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN, log }),
+    search: makeSearch({ log }),
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },
     contactKey: ctx.id.toString(),

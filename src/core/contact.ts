@@ -167,7 +167,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false;
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false;
     const outIds: string[] = [];
 
     try {
@@ -219,14 +219,6 @@ export class ContactCore {
           nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db),
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
-        const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
-        const tools = { set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
-        this.abort = new AbortController();
-        const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
-          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
-          sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
-        });
 
         const deliver = async (text: string, quote?: string) => {
           if (bubbles > 0) {
@@ -244,6 +236,36 @@ export class ContactCore {
           db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
           outIds.push(rowId);
         };
+
+        const { search } = this.deps;
+        const searchTool = search && tool({
+          description: "Look something up on the web: current or outside information you do not have. Sends `say` to them first, then returns the top results' main pages.",
+          inputSchema: z.object({
+            say: z.string().min(1).describe("one short sentence in your own voice telling them you are checking (\"sec, let me look that up\")"),
+            query: z.string().min(1).describe("what to search for"),
+          }),
+          execute: async ({ say, query }) => {
+            if (searched) return { error: "one search per turn" };
+            searched = true;
+            await deliver(say); // before the search starts: they see it at the usual first-bubble time
+            wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
+            const t = performance.now(), results = (await search(query)).slice(0, 3).map((r) => ({ ...r, text: r.text.slice(0, 3000) }));
+            this.deps.log({ event: "search", results: results.length, ms: ms(performance.now() - t) }); // never the query
+            return results.length ? { results } : { results: [], note: "nothing found" };
+          },
+        });
+        const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
+        const tools = {
+          set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}),
+          ...(hasUrl || searchTool ? { view_page: this.viewPageTool } : {}), ...(searchTool ? { search_web: searchTool } : {}),
+        };
+        this.abort = new AbortController();
+        const { text, done } = llm.stream({
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
+          activeTools: () => Object.keys(tools).filter((k) => k !== "view_page" || hasUrl || searched), // view_page opens up once a search ran
+          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
+          sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
+        });
 
         let restart = false;
         try {
@@ -285,7 +307,7 @@ export class ContactCore {
           const wamid = await this.sendVoice(to, joined, quote);
           if (wamid) {
             sends++;
-            bubbles = held.length;
+            bubbles += held.length; // a search's say line may have gone out as text before
             ttfb ??= performance.now() - t0;
             db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, voice, status) VALUES (?, 'out', 'audio', ?, ?, ?, 1, 'sent')", wamid, joined, clock.now(), quote ?? null);
             outIds.push(wamid);

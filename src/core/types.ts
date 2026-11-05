@@ -28,6 +28,7 @@ export interface Deps {
   transcribe(bytes: Uint8Array, mime: string): Promise<string>;
   tts?(text: string): Promise<{ bytes: Uint8Array; mime: string }>; // optional: without it every reply is text
   snapshot(url: string): Promise<Snapshot | null>;
+  search?(query: string): Promise<{ title: string; url: string; text: string }[]>; // optional: without it there is no search_web tool
   models: ModelChoice; features: Features;
   contactKey: string; // opaque per-contact id for logs and OpenRouter session_id/user; never the phone number
   log(event: Record<string, unknown>): void;

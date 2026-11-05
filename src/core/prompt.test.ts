@@ -51,7 +51,7 @@ test("buildPrompt adds the first-contact introduction line only while the histor
   const base = { profile: "", memories: [], nowLocal: "2026-11-04 14:05", tz: "UTC", tzConfirmed: false, snapshots: [], pending: [{ id: "a", direction: "in" as const, text: "Hi, I just pressed Start.", ts: T, kind: "text", alias: "#1" }] };
   const first = buildPrompt({ ...base, history: [] }).system[1].content;
   expect(first).toContain("first contact: nothing has been said before. Before anything else, introduce yourself in one short bubble");
-  expect(first).toContain("set reminders at a time they name, read photos, listen to voice notes, read links they send, and forget anything on request");
+  expect(first).toContain("set reminders at a time they name, read photos, listen to voice notes, read links they send, look things up on the web when you need current information, and forget anything on request");
   expect(first).toContain("Two short bubbles at most.");
   expect(buildPrompt({ ...base, history: [row(0)] }).system[1].content).not.toContain("first contact:");
 });

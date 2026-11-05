@@ -11,12 +11,12 @@ const FROM = "15550000001";
 type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
-function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"] } = {}) {
+function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"]; search?: Deps["search"] } = {}) {
   const clock = new FakeClock();
   const view = clock.forContact(FROM);
   const wa = new FakeWa(clock);
   const llm = stubLlm({ reply: o.reply, object: o.object });
-  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot });
+  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot, search: o.search });
   const core = new ContactCore(deps);
   const { db } = deps;
   let n = 0;
@@ -77,7 +77,8 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
-  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder", "view_page", "search_web"]); // memory off: no forget tool
+  expect(t.llm.calls[0].activeTools!()).toEqual(["set_reminder", "cancel_reminder", "search_web"]); // view_page waits for a link or a search
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget tool"); // memory off: no control sentences (the first-contact line may say "forget")
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
@@ -683,10 +684,10 @@ test("view_page tool is attached only when the thread has a URL", async () => {
   const t = setup({ snapshot });
   await t.say("no link here");
   await t.run();
-  expect(t.llm.calls[0].tools?.view_page).toBeUndefined();
+  expect(t.llm.calls[0].activeTools!()).not.toContain("view_page");
   await t.say("https://a.com/x");
   await t.run();
-  expect(t.llm.calls[1].tools?.view_page).toBeDefined();
+  expect(t.llm.calls[1].activeTools!()).toContain("view_page");
   const out = await t.llm.calls[1].tools!.view_page.execute!({ url: "https://a.com/x" }, { toolCallId: "t", messages: [] } as never);
   expect(out).toEqual({ title: "A page", status: 200, finalUrl: "https://a.com/x", markdown: "# Hello page" });
 });
@@ -716,8 +717,78 @@ test("view_page is attached when the URL is in one of the last 5 handled rows, n
     t.clock.t += 60_000;
     await t.say("and now?");
     await t.run();
-    expect(!!t.llm.calls.at(-1)!.tools?.view_page).toBe(attached);
+    expect(t.llm.calls.at(-1)!.activeTools!().includes("view_page")).toBe(attached);
   }
+});
+
+// search_web: the say line goes out first through the usual bubble path, then the results come back to the model.
+const searchCall = (c: StreamCall, input = { say: "sec, let me look that up", query: "louvre hours" }) => c.tools!.search_web.execute!(input, { toolCallId: "s", messages: [] } as never);
+
+test("search_web sends `say` first, then searches and returns at most 3 results capped at 3,000 characters; logged without the query", async () => {
+  const order: string[] = [];
+  const hits = [1, 2, 3, 4].map((i) => ({ title: `T${i}`, url: `https://${i}.example/`, text: "x".repeat(5000) }));
+  const t = setup({
+    search: async (q) => { order.push(`search:${q}`); return hits; },
+    reply: async (c) => {
+      const out = (await searchCall(c)) as { results: { text: string }[] };
+      order.push("result");
+      expect(out.results.map((r) => r.text.length)).toEqual([3000, 3000, 3000]);
+      return "react: none\nopen 9 to 6 today";
+    },
+  });
+  const log = vi.fn();
+  t.deps.log = log;
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = async (...a) => { order.push(`send:${a[1]}`); return send(...a); };
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(order).toEqual(["send:sec, let me look that up", "search:louvre hours", "result", "send:open 9 to 6 today"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text", "typing", "typing", "text"]); // typing again after the say line, and before the next bubble
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["sec, let me look that up", "sent"], ["open 9 to 6 today", "sent"]]);
+  expect(t.turns()[0].bubbles).toBe(2);
+  expect(log).toHaveBeenCalledWith({ event: "search", results: 3, ms: expect.any(Number) });
+  expect(JSON.stringify(log.mock.calls)).not.toContain("louvre");
+});
+
+test("search_web runs once per turn: a second call returns an error without a second say line or search", async () => {
+  const search = vi.fn(async () => [{ title: "T", url: "https://t.example/", text: "hours" }]);
+  const t = setup({ search, reply: async (c) => `react: none\n${JSON.stringify([await searchCall(c), await searchCall(c, { say: "one more sec", query: "again" })].map((r) => Object.keys(r as object)))}\n${JSON.stringify(await searchCall(c, { say: "x", query: "y" }))}` });
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", '[["results"],["error"]]\n{"error":"one search per turn"}']);
+});
+
+test("search_web with nothing found returns an empty list and a note (the harness default never touches the network)", async () => {
+  const t = setup({ reply: async (c) => `react: none\n${JSON.stringify(await searchCall(c))}` });
+  await t.say("what's the weather in almaty");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", '{"results":[],"note":"nothing found"}']);
+});
+
+test("view_page is offered from the step after a search, so the model can open a result", async () => {
+  let before: string[] = [], after: string[] = [];
+  const t = setup({ reply: async (c) => { before = c.activeTools!(); await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
+  await t.say("no link here");
+  await t.run();
+  expect(before).not.toContain("view_page");
+  expect(after).toContain("view_page");
+});
+
+test("without a search dependency there is no search_web tool and view_page keeps its link-only rule", async () => {
+  const t = setup();
+  t.deps.search = undefined;
+  await t.say("no link here");
+  await t.run();
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]);
+});
+
+test("a stream that dies after the say line gets no fallback: a bubble already went out", async () => {
+  const t = setup({ reply: async (c) => { await searchCall(c); return { chunks: ["react: none\n"], error: new Error("stream cut") }; } });
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up"]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
 });
 
 // Follow-ups: the plan is stored by remember() from a real turn; times below are New York (EST) local.

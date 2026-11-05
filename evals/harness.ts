@@ -139,7 +139,7 @@ export async function cosineRerank(query: string, docs: string[]): Promise<numbe
 
 export function makeEvalDeps(o: {
   clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>;
-  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; tts?: Deps["tts"]; snapshot?: Deps["snapshot"]; contactKey?: string; log?: Deps["log"];
+  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; tts?: Deps["tts"]; snapshot?: Deps["snapshot"]; search?: Deps["search"]; contactKey?: string; log?: Deps["log"];
 }): Deps {
   const db = fromNode(new DatabaseSync(":memory:"));
   migrate(db);
@@ -165,6 +165,7 @@ export function makeEvalDeps(o: {
     transcribe: o.transcribe ?? (async () => "(voice)"),
     tts: o.tts ?? (async () => ({ bytes: new Uint8Array([0x4f, 0x67, 0x67, 0x53]), mime: "audio/ogg" })), // "OggS"
     snapshot: o.snapshot ?? (async () => null),
+    search: o.search ?? (async () => []), // never the network, even on real-model runs; a test passes its own results
     models: { ...pickModels({}), ...o.models },
     features: { memory: false, retrieval: "hybrid", ...o.features },
     contactKey: o.contactKey ?? "test",
