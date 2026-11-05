@@ -5,7 +5,7 @@ export type ReplyEvent =
 const LIMIT = 4096;
 
 // Exactly one emoji: a flag, or a pictograph with variation selectors / skin tones, ZWJ-joined to more.
-const EMOJI = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*(?:‍\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*)*)$/u;
+const EMOJI = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*(?:\u200D\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*)*)$/u;
 
 // Lenient: "react: #n <emoji>", "react: #n<emoji>", "react: <emoji>"; "none" or a token that is not one emoji is no reaction.
 function header(l: string): ReplyEvent | null {
