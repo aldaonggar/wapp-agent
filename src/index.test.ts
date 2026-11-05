@@ -49,6 +49,13 @@ test("routes one POST with two senders to two objects", async () => {
   expect(f.ingested.map((x) => [x.name, x.m.id])).toEqual([[A, "wamid.A1"], [B, "wamid.B1"]]);
 });
 
+test("matches ALLOWED_PHONES entries written with plus, spaces or dashes", async () => {
+  const f = fakeEnv(`+1 555-000-0001, ${B}`);
+  const res = await post(f.env, hook(text(A, "wamid.A1")));
+  expect(res.status).toBe(200);
+  expect(f.ingested.map((x) => x.name)).toEqual([A]);
+});
+
 test("drops a sender not in ALLOWED_PHONES", async () => {
   const f = fakeEnv("15550000009");
   const res = await post(f.env, hook(text(A, "wamid.A1")));

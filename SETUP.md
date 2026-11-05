@@ -47,7 +47,7 @@ App dashboard → left menu **App settings → Basic** → **App secret** → **
 5. Check it works (replace the two placeholders):
 
 ```bash
-curl "https://graph.facebook.com/v26.0/<WHATSAPP_PHONE_NUMBER_ID>" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
+curl "https://graph.facebook.com/v27.0/<WHATSAPP_PHONE_NUMBER_ID>" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
 ```
 
 A JSON object with `display_phone_number` means the token and the asset assignments are right. An error with code `200` means step 3 is incomplete.
@@ -86,7 +86,7 @@ Claude tells you when the Worker is live. Then:
 4. Subscribe the app to the Messaging account (idempotent; run it once). Replace the two placeholders:
 
 ```bash
-curl -X POST "https://graph.facebook.com/v26.0/<MESSAGING_ACCOUNT_ID>/subscribed_apps" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
+curl -X POST "https://graph.facebook.com/v27.0/<MESSAGING_ACCOUNT_ID>/subscribed_apps" -H "Authorization: Bearer <WHATSAPP_TOKEN>"
 ```
 
 Expected: `{"success":true}`.

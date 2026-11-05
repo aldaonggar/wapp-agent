@@ -24,7 +24,7 @@ export async function verifySignature(
   return diff === 0;
 }
 
-export const GRAPH = "https://graph.facebook.com/v26.0";
+export const GRAPH = "https://graph.facebook.com/v27.0";
 
 export class WaError extends Error {
   constructor(

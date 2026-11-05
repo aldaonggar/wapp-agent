@@ -33,7 +33,7 @@ export default {
             console.warn("WhatsApp pricing type is now regular: the free service-message tier is used up and Meta may stop delivering");
           }
         }
-        const allowed = new Set((env.ALLOWED_PHONES ?? "").split(",").map((p) => p.trim()).filter(Boolean));
+        const allowed = new Set((env.ALLOWED_PHONES ?? "").split(",").map((p) => p.replace(/\D/g, "")).filter(Boolean)); // digits only: "+31 6 ..." and "31..." both match Meta's wa_id
         for (const m of inbound) {
           if (!allowed.has(m.from)) {
             console.log(JSON.stringify({ event: "dropped_sender", from: "…" + m.from.slice(-4) }));
