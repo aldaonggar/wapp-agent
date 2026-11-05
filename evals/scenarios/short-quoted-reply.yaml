@@ -1,0 +1,11 @@
+# A quoted reply ("this one") refers to the quoted message, not the latest one.
+name: short-quoted-reply
+category: short-term
+steps:
+  - { at: +0s, say: "dinner options tonight. A: pizza" }
+  - { at: +2s, say: "B: sushi" }
+  - at: +1min
+    ask: "how about this one?"
+    quote: 1
+    gold: pizza
+    expect_contains: [pizza]

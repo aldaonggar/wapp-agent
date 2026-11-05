@@ -1,0 +1,10 @@
+# "that place" resolves to a place named a few messages earlier.
+name: short-that-place
+category: short-term
+steps:
+  - { at: +0s, say: "found a great little cafe on Abay street yesterday, the one with the green door" }
+  - { at: +1min, say: "their flat white is unreal" }
+  - at: +3min
+    ask: "my sister wants to go, remind me where that place is so I can text her"
+    gold: the cafe on Abay street (green door)
+    expect_contains: [Abay]

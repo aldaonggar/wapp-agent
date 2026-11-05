@@ -1,0 +1,8 @@
+# A photo and a question one second later are one turn; the reply model sees the image.
+name: short-photo-then-question
+category: short-term
+steps:
+  - { at: +0s, image: photo.jpg, caption: look }
+  - at: +1s
+    ask: "what colour is it?"
+    gold: red

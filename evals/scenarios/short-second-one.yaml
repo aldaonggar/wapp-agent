@@ -1,0 +1,8 @@
+# "the second one" points into the bot's own previous reply.
+name: short-second-one
+category: short-term
+steps:
+  - { at: +0s, say: "give me 3 name ideas for my new grey kitten" }
+  - at: +2min
+    ask: "ooh the second one. would that suit a girl?"
+    gold: talks about the second of the three names the assistant suggested in its previous reply (by name)

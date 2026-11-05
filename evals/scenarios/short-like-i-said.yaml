@@ -1,0 +1,13 @@
+# The colour was stated 10 messages (5 turns) before it is asked for.
+name: short-like-i-said
+category: short-term
+steps:
+  - { at: +0s, say: "repainting the bedroom this weekend, going with teal" }
+  - { at: +1min, say: "the landlord said it's fine as long as I paint it back before I move out" }
+  - { at: +3min, say: "also need new curtains" }
+  - { at: +5min, say: "something light, linen maybe" }
+  - { at: +7min, say: "and the hardware store closes at 5 on saturday which is annoying" }
+  - at: +10min
+    ask: "ok so like I said, which colour am I going with? need to tell the shop"
+    gold: teal
+    expect_contains: [teal]

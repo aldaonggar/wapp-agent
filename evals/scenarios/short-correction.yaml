@@ -1,0 +1,9 @@
+# A later correction wins over the first statement.
+name: short-correction
+category: short-term
+steps:
+  - { at: +0s, say: "meeting Sam for coffee tomorrow at 6" }
+  - { at: +2min, say: "actually make it 7, he's stuck at work" }
+  - at: +10min
+    ask: "wait when am I meeting Sam again?"
+    gold: "7 (it was moved from 6 to 7)"

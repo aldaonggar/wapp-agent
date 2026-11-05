@@ -1,0 +1,10 @@
+# Three messages one second apart are one burst: one reply that covers all three.
+name: short-burst-of-three
+category: short-term
+steps:
+  - { at: +0s, say: "making pancakes tonight, need to grab eggs" }
+  - { at: +1s, say: "flour" }
+  - at: +2s
+    ask: "and milk. can you send me that list back so I don't forget"
+    gold: eggs, flour and milk
+    expect_contains: [eggs, flour, milk]
