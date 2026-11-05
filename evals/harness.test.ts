@@ -256,6 +256,12 @@ test("the repo's scenarios all validate", () => {
   expect(loadScenarios("evals/scenarios").map((s) => s.name)).toContain("reminder-exact-time");
 });
 
+test("a non-mapping step is reported as such even when a later expect_sent looks back past it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "scenarios-"));
+  writeFileSync(join(dir, "bad.yaml"), "name: bad\ncategory: short-term\nsteps:\n  - { at: +0s, ask: x, gold: y }\n  - just a string\n  - { at: +2h, expect_sent: [mum] }\n");
+  expect(() => loadScenarios(dir)).toThrow(/step 2: is not a mapping/);
+});
+
 test("evalConfig() builds the tag from the EVAL_* env", () => {
   for (const k of ["REPLY", "EXTRACT", "DERIVE", "EFFORT", "MEMORY", "RETRIEVAL", "FILTER"]) vi.stubEnv(`EVAL_${k}`, ""); // npm run eval sets them
   expect(evalConfig()).toMatchObject({ memory: true, retrieval: "hybrid", tag: "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid" });
