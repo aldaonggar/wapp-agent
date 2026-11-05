@@ -13,8 +13,8 @@ test("parseUpdate: text with reply carries the chat in every id", () => {
   const u = parseUpdate(update({ text: "yes that one", reply_to_message: { message_id: 40, text: "this?" } }))!;
   expect(u.m).toEqual({ id: "tg:123456789:42", from: "tg:123456789", name: "Ann", ts: 1762250000000, kind: "text", text: "yes that one", quotedId: "tg:123456789:40" });
   expect(u.user).toEqual({ id: 123456789, username: "AnnK" });
-  expect(one({ text: "/start" }).text).toBe("Hi");
-  expect(one({ text: "/start ref_42" }).text).toBe("Hi");
+  expect(one({ text: "/start" }).text).toBe("Hi, I just pressed Start.");
+  expect(one({ text: "/start ref_42" }).text).toBe("Hi, I just pressed Start.");
   expect(one({ text: "/starting over" }).text).toBe("/starting over");
 });
 
@@ -33,6 +33,7 @@ test("parseUpdate: voice, audio, video, sticker, document, location, venue, cont
   expect(audio.voice).toBeUndefined();
   expect(one({ video: { file_id: "X", mime_type: "video/mp4" }, caption: "look" })).toMatchObject({ kind: "video", text: "look [a video]", mediaId: "tg:X" });
   expect(one({ video_note: { file_id: "N" } })).toMatchObject({ kind: "video", text: "[a video]", mime: "video/mp4" });
+  expect(one({ animation: { file_id: "G", mime_type: "video/mp4" }, document: { file_id: "G", mime_type: "video/mp4" } })).toMatchObject({ kind: "video", text: "[a GIF]", mediaId: "tg:G", mime: "video/mp4" });
   expect(one({ sticker: { file_id: "S", emoji: "😀", is_animated: false, is_video: false } })).toMatchObject({ kind: "sticker", text: "a sticker 😀", mediaId: "tg:S", mime: "image/webp" });
   expect(one({ sticker: { file_id: "S", is_animated: true, is_video: false } })).toMatchObject({ kind: "sticker", text: "a sticker" });
   expect(one({ sticker: { file_id: "S", is_animated: true, is_video: false } }).mediaId).toBeUndefined();
@@ -82,7 +83,7 @@ test("sendText posts chat id, reply params and preview flag; returns tg:<chat>:<
   expect(s.body(0)).toEqual({ chat_id: 123456789, text: "hello", link_preview_options: { is_disabled: false }, reply_parameters: { message_id: 40, allow_sending_without_reply: true } });
   expect(await tg.sendText("tg:123456789", "plain")).toEqual({ id: "tg:123456789:44" });
   expect(s.body(1)).toEqual({ chat_id: 123456789, text: "plain", link_preview_options: { is_disabled: true } });
-  expect(await tg.sendText("tg:123456789", "x")).toEqual({ id: "" }); // no message_id in the result: the core stores a failed row
+  await expect(tg.sendText("tg:123456789", "x")).rejects.toMatchObject({ code: 0, status: 502 }); // no message_id in the result: the core stores a failed row
 });
 
 test("sendReaction (variation selector stripped) and markReadTyping send the documented bodies", async () => {
@@ -202,6 +203,13 @@ test("POST /telegram: an ingest failure is logged and still answers 200 so Teleg
   (f.env as unknown as { CONTACT: unknown }).CONTACT = { getByName: () => ({ ingest: async () => { throw new Error("boom"); } }) };
   expect((await post(f.env, update({ text: "hi" }), "s3cret")).status).toBe(200);
   expect(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))).toEqual({ event: "ingest_failed", error: "boom" });
+});
+
+test("POST /telegram: a retryable Durable Object error answers 503 so Telegram redelivers", async () => {
+  const f = fakeEnv("");
+  (f.env as unknown as { CONTACT: unknown }).CONTACT = { getByName: () => ({ ingest: async () => { throw Object.assign(new Error("reset"), { retryable: true }); } }) };
+  expect((await post(f.env, update({ text: "hi" }), "s3cret")).status).toBe(503);
+  expect(vi.mocked(console.log).mock.calls.some((c) => String(c[0]).includes("ingest_failed"))).toBe(false);
 });
 
 test("POST /telegram: allowlist by @username (any case) or numeric id; others are dropped with a short log", async () => {

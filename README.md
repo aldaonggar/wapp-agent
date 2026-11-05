@@ -8,14 +8,14 @@ What was asked: [init.md](init.md). What was decided and why: [design](docs/supe
 
 ## What it does and how to text it
 
-Caveat: nothing has been exercised end to end from a phone yet (pending the owner's Meta setup), and no real-model eval has run; everything below is covered by offline tests with stub models only.
+Status (2026-11-05): on WhatsApp the whole chain ran in production (webhook, Durable Object, memory retrieval, model, send), but Meta then permanently restricted the owner's test account pending a business verification the owner cannot do, so WhatsApp delivery is blocked until that lifts. Telegram is the live channel for reviewers. The real-model eval results are being produced on a separate branch; until it merges, the numbers below come from offline tests with stub models.
 
 - Replies like a person: it waits for a burst of messages to finish, then answers in short bubbles.
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
 
-To try it, the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
+On WhatsApp (once Meta lifts the restriction): the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
 
 On Telegram: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk; no number registration. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). The same agent and the same memory serve both apps; to it, a Telegram contact and a WhatsApp contact are two different people.
 
@@ -153,7 +153,7 @@ npm test
 npm run eval
 ```
 
-`.dev.vars` (git-ignored) holds eight names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md).
+`.dev.vars` (git-ignored) holds eleven names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md).
 
 ## Known limits
 
@@ -166,7 +166,7 @@ npm run eval
 - The model comparison has not run (see Evals).
 - Follow-ups never retry.
 - The extractor sees only the current turn.
-- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. The 24-hour follow-up window is applied as on WhatsApp although Telegram has no such rule. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. The system prompt still says "WhatsApp" and allows `*bold*`, which Telegram shows literally.
+- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. The 24-hour follow-up window is applied as on WhatsApp although Telegram has no such rule. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked. The system prompt still says "WhatsApp" and allows `*bold*`, which Telegram shows literally.
 
 ## What I would build next
 

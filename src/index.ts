@@ -59,8 +59,11 @@ export default {
       try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
       const u = parseUpdate(body); // null: groups, bots, edits, other update kinds
       if (u && telegramAllowed(env.ALLOWED_TELEGRAM, u.user)) {
-        // Unlike Meta, Telegram retries a failed update before delivering the next one, so a throw here would stall every chat.
-        try { await env.CONTACT.getByName(u.m.from).ingest(u.m); } catch (e) { console.log(JSON.stringify({ event: "ingest_failed", error: e instanceof Error ? e.message : String(e) })); }
+        // A non-2xx makes Telegram redeliver; only transient Durable Object errors deserve that (ingest is idempotent), the rest is logged so one bad update cannot block a chat.
+        try { await env.CONTACT.getByName(u.m.from).ingest(u.m); } catch (e) {
+          if ((e as { retryable?: boolean }).retryable) return new Response("retry", { status: 503 });
+          console.log(JSON.stringify({ event: "ingest_failed", error: e instanceof Error ? e.message : String(e) }));
+        }
       } else if (u) console.log(JSON.stringify({ event: "dropped_sender", from: u.user.username ?? "…" + String(u.user.id).slice(-4) }));
       return new Response("ok");
     }

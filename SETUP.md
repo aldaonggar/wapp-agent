@@ -1,6 +1,6 @@
 # Manual setup (owner)
 
-Everything here happens in web dashboards and cannot be scripted. Do the sections in order; sections 1 to 7 each end with a value you paste into `.dev.vars` (git-ignored, already created with the key names), and the optional section 8 uses its own file. When all eight values are filled in, tell Claude and it uploads them to the Worker.
+Everything here happens in web dashboards and cannot be scripted. Do the sections in order; sections 1 to 7 and 9 each end with a value you paste into `.dev.vars` (git-ignored, already created with the key names), and the optional section 8 uses its own file. When the values are filled in, tell Claude and it uploads them to the Worker.
 
 | Value | From |
 |---|---|
@@ -124,7 +124,7 @@ Only for the eval dashboard; the Worker never needs it, and `npm run eval -- --b
 
 ## 9. Telegram bot (5 minutes)
 
-A second way to reach the same agent; it needs nothing from Meta. Three values and one webhook call.
+A second way to reach the same agent; it needs nothing from Meta. Three values and one webhook call. Do it after Claude has deployed the Telegram code: an earlier deploy has no `/telegram` route and answers 404 to every update, and `getWebhookInfo` shows a `last_error_message` only after the first delivery attempt, so re-check it after pressing Start if nothing arrives.
 
 1. In Telegram open **@BotFather** → `/newbot` → a display name (for example `wapp agent`) → a username ending in `bot` (for example `wapp_agent_bot`). BotFather answers with the token (`123456789:AA...`). Put it in `.dev.vars` as `TELEGRAM_BOT_TOKEN`.
 2. Generate the webhook secret and put it in `.dev.vars` as `TELEGRAM_WEBHOOK_SECRET`:
@@ -162,7 +162,7 @@ curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 
 `url` must be the Worker's and there must be no `last_error_message`. `allowed_updates` must include `message_reaction`, or reactions never arrive.
 
-6. Open `https://t.me/<bot username>`, press **Start**. The bot answers within a few seconds. To add a reviewer: send them that link; if `ALLOWED_TELEGRAM` is set, add their username or id to it first and re-run `npx wrangler secret put ALLOWED_TELEGRAM`.
+6. Open `https://t.me/<bot username>`, press **Start**. The bot answers within a few seconds. To add a reviewer: send them that link; if `ALLOWED_TELEGRAM` is set, add their username or id to it first and re-run `npx wrangler secret put ALLOWED_TELEGRAM`. To open the bot to anyone again, delete the secret (`npx wrangler secret delete ALLOWED_TELEGRAM`); wrangler refuses an empty value.
 
 A bot has one webhook at a time: pointing it at a staging Worker takes it away from production until step 5 is run again. A new secret also means running step 5 again.
 

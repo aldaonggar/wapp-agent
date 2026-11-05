@@ -36,7 +36,7 @@ export function parseUpdate(body: unknown): { m: Inbound; user: { id: number; us
   if (src.text !== undefined) {
     const text = str(src.text) ?? "";
     m.kind = "text";
-    m.text = /^\/start(\s|$)/.test(text) ? "Hi" : text; // t.me/<bot>?start=x arrives as "/start x"
+    m.text = /^\/start(\s|$)/.test(text) ? "Hi, I just pressed Start." : text; // t.me/<bot>?start=x arrives as "/start x"; a bare "Hi" would read as an unfinished burst
   } else if (src.photo !== undefined) {
     const sizes = arr(src.photo), best = sizes.reduce((a, b) => ((num(b.width) ?? 0) * (num(b.height) ?? 0) > (num(a.width) ?? 0) * (num(a.height) ?? 0) ? b : a), sizes[0] ?? {});
     m.kind = "image";
@@ -49,10 +49,10 @@ export function parseUpdate(body: unknown): { m: Inbound; user: { id: number; us
   } else if (src.audio !== undefined) {
     m.kind = "audio";
     media(obj(src.audio), str(obj(src.audio).mime_type));
-  } else if (src.video !== undefined || src.video_note !== undefined) {
-    const v = obj(src.video ?? src.video_note);
+  } else if (src.video !== undefined || src.video_note !== undefined || src.animation !== undefined) {
+    const v = obj(src.video ?? src.video_note ?? src.animation); // a GIF arrives as animation + a shadow document
     m.kind = "video";
-    m.text = ((caption ?? "") + " [a video]").trim();
+    m.text = ((caption ?? "") + (src.animation !== undefined ? " [a GIF]" : " [a video]")).trim();
     media(v, str(v.mime_type) ?? "video/mp4");
   } else if (src.sticker !== undefined) {
     const s = obj(src.sticker);
@@ -108,7 +108,8 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
         ...(opts?.quote ? { reply_parameters: { message_id: messageOf(opts.quote), allow_sending_without_reply: true } } : {}),
       }));
       const mid = num(r.message_id);
-      return { id: mid === undefined ? "" : `tg:${chat_id}:${mid}` }; // "" makes the core store a failed row, as with WhatsApp
+      if (mid === undefined) throw new WaError(0, 502, "sendMessage: no message_id"); // the core then stores a failed row
+      return { id: `tg:${chat_id}:${mid}` };
     },
     async sendReaction(to, messageId, emoji) {
       // Telegram's reaction set lists ❤ without the variation selector that models usually emit.
