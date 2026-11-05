@@ -1,0 +1,12 @@
+# Trip dates and a birthday two days later: only together do they imply planning.
+name: derived-almaty-birthday
+category: derived
+steps:
+  - { at: +0s, say: "booked my flight to Almaty, I land on 2026-12-10" }
+  - { at: +2 min, say: "my sister Aru's birthday is on 2026-12-12, she lives there" }
+  - { at: +33 min, say: "ok bedtime, night" }
+  - fill: 45
+  - expect_insights: { min: 1, evidence_count: 2 }
+  - at: day 3
+    ask: "anything I should plan for that trip?"
+    gold: "A gift or celebration for Aru's birthday on 12 December, two days after landing in Almaty"

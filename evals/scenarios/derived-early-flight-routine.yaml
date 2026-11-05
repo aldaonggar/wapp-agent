@@ -1,0 +1,12 @@
+# A 6am flight conflicts with a 7am run.
+name: derived-early-flight-routine
+category: derived
+steps:
+  - { at: +0s, say: "I run every morning at 7, never skip it" }
+  - { at: +2 min, say: "my flight is at 6am this Friday, so early" }
+  - { at: +33 min, say: "ok bedtime, night" }
+  - fill: 45
+  - expect_insights: { min: 1, evidence_count: 2 }
+  - at: day 3
+    ask: "should I run Friday morning?"
+    gold: "No, the 6am flight means she will be at the airport at 7, so skip or move the run"

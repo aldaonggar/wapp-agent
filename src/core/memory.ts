@@ -81,15 +81,15 @@ Output: {"ops": [{"op": "ADD", "text": "Name is John", "kind": "identity", "sign
 
 Existing facts: [3] Sister Aru lives in Almaty (person, 2026-11-04)
 Conversation: user: big news, Aru moved to Astana last weekend!
-Output: {"ops": [{"op": "UPDATE", "text": "Sister Aru lives in Astana", "kind": "person", "signal": 5, "target_id": 3}], "profile": "Name: Dana\nLives in London (Europe/London)\nSister: Aru, lives in Astana"}
+Output: {"ops": [{"op": "UPDATE", "text": "Sister Aru lives in Astana", "kind": "person", "signal": 5, "target_id": 3}], "profile": "Name: Dana\\nLives in London (Europe/London)\\nSister: Aru, lives in Astana"}
 
 Now: Tuesday 2026-11-10 10:00
 Conversation: user: got an interview at Monzo thursday next week at 2pm!!
-Output: {"ops": [{"op": "ADD", "text": "Job interview at Monzo on 2026-11-19 14:00", "kind": "plan", "signal": 4, "event_date": "2026-11-19 14:00"}], "profile": "Name: Dana\nWork: job hunting, interview at Monzo on 2026-11-19 14:00"}
+Output: {"ops": [{"op": "ADD", "text": "Job interview at Monzo on 2026-11-19 14:00", "kind": "plan", "signal": 4, "event_date": "2026-11-19 14:00"}], "profile": "Name: Dana\\nWork: job hunting, interview at Monzo on 2026-11-19 14:00"}
 
 Existing facts: [7] Likes cheese pizza (preference, 2026-10-02)
 Conversation: user: honestly I can't stand cheese pizza anymore
-Output: {"ops": [{"op": "UPDATE", "text": "Dislikes cheese pizza", "kind": "preference", "signal": 4, "target_id": 7}], "profile": "Name: Dana\nFood: dislikes cheese pizza"}
+Output: {"ops": [{"op": "UPDATE", "text": "Dislikes cheese pizza", "kind": "preference", "signal": 4, "target_id": 7}], "profile": "Name: Dana\\nFood: dislikes cheese pizza"}
 
 Existing facts: [2] Is vegetarian (identity, 2026-10-01)
 Conversation: user: as a vegetarian I love this place
@@ -97,10 +97,10 @@ Output: {"ops": []}
 
 Existing facts: [5] Has a dog named Biscuit (person, 2026-10-20)
 Conversation: user: please forget about my dog
-Output: {"ops": [{"op": "DELETE", "text": "Has a dog named Biscuit", "kind": "person", "signal": 5, "target_id": 5}], "profile": "Name: Sam\nWork: nurse in Leeds"}
+Output: {"ops": [{"op": "DELETE", "text": "Has a dog named Biscuit", "kind": "person", "signal": 5, "target_id": 5}], "profile": "Name: Sam\\nWork: nurse in Leeds"}
 
 Conversation: user: just moved to Lisbon for good!
-Output: {"ops": [{"op": "ADD", "text": "Lives in Lisbon", "kind": "identity", "signal": 5}], "profile": "Name: Dana\nLives in Lisbon (Europe/Lisbon)", "timezone": "Europe/Lisbon"}
+Output: {"ops": [{"op": "ADD", "text": "Lives in Lisbon", "kind": "identity", "signal": 5}], "profile": "Name: Dana\\nLives in Lisbon (Europe/Lisbon)", "timezone": "Europe/Lisbon"}
 
 The other fields:
 - profile: only when your ops change something (an ADD or UPDATE with signal 3 or more, or a DELETE); otherwise null. Then return the whole new profile: at most 300 tokens, plain lines without markdown, the most important stable facts: name, where they live and time zone, key people, work, standing preferences. Start from the current profile, keep what still holds, and drop what was superseded or forgotten.
@@ -203,7 +203,7 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
   out.deleted = deleted.length;
 
   const profile = value.profile?.trim() ?? "";
-  if (profile.length >= 10 && out.added + out.updated + out.deleted > 0) setProfile(db, profile, now); // not a placeholder, and something changed
+  if (profile.length >= 5 && out.added + out.updated + out.deleted > 0) setProfile(db, profile, now); // not a placeholder, and something changed
   const note = value.media_note?.trim();
   if (note && turn.images[0]) db.run("UPDATE messages SET media_note=? WHERE id=?", note, turn.images[0].messageId);
   if (value.timezone) {

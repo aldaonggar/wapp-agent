@@ -18,6 +18,7 @@ test("migrate adds turns.recalled to a database created before it existed", () =
   migrate(db); migrate(db);
   db.run("INSERT INTO turns(started_at, recalled) VALUES (1, '[]')");
   expect(db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
+  expect(db.all("SELECT 1 FROM pragma_table_info('turns') WHERE name='recalled'")).toHaveLength(1);
 });
 
 test("blob round trip keeps float32 values", () => {

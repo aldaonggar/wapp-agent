@@ -17,8 +17,8 @@ INSERT OR IGNORE INTO state(id) VALUES (1);
 
 export function migrate(db: Db): void {
   db.batch(SCHEMA);
-  // Columns added after the first deploy; the ALTER fails once the column exists.
-  try { db.run("ALTER TABLE turns ADD COLUMN recalled TEXT"); } catch { /* already there */ }
+  // Columns added after the first deploy.
+  if (!db.all("SELECT 1 FROM pragma_table_info('turns') WHERE name='recalled'").length) db.run("ALTER TABLE turns ADD COLUMN recalled TEXT");
 }
 
 const plain = (r: Record<string, unknown>): Row => {

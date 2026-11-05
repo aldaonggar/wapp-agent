@@ -1,0 +1,12 @@
+# Diet plus a city trip: restaurant planning needs both.
+name: derived-lisbon-vegetarian
+category: derived
+steps:
+  - { at: +0s, say: "I'm vegetarian, been for years" }
+  - { at: +2 min, say: "I'm moving to Lisbon next month for a new job" }
+  - { at: +33 min, say: "ok bedtime, night" }
+  - fill: 45
+  - expect_insights: { min: 1, evidence_count: 2 }
+  - at: day 3
+    ask: "any tips for eating out when I get to my new city?"
+    gold: "Vegetarian-friendly restaurants in Lisbon, since she is vegetarian and moving there"

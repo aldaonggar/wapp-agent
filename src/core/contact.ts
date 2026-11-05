@@ -5,6 +5,7 @@ import { maxOutputTokensFor, reasoningFor, replyModelFor } from "../models";
 import { WaError } from "../whatsapp";
 import { MAX_WAIT_MS, QUIET_MS, UNFINISHED_MS, bubblePauseMs, looksUnfinished, turnDue } from "./cadence";
 import { formatLocal } from "./db";
+import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { parseReply } from "./stream";
@@ -90,7 +91,9 @@ export class ContactCore {
       if (s.turn_due !== null && now >= s.turn_due) {
         try { await this.turnTimer(s, now); } catch (e) { this.error("turn_failed", e); }
       }
-      // Task 10: insightsDue && features.memory → deriveInsights, in its own try/catch.
+      if (insightsDue && this.deps.features.memory) {
+        try { await deriveInsights(this.deps, hash(db.all<{ wa_id: string }>("SELECT wa_id FROM contact")[0]?.wa_id ?? "")); } catch (e) { this.error("insights_failed", e); }
+      }
       // Task 12: followupDue → send, defer or skip the follow-up, in its own try/catch.
     } catch (e) {
       this.error("alarm_failed", e);

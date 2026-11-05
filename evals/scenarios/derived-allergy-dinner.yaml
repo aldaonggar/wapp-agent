@@ -1,0 +1,12 @@
+# An allergy plus a Thai dinner: the peanut risk shows only together.
+name: derived-allergy-dinner
+category: derived
+steps:
+  - { at: +0s, say: "I'm allergic to peanuts, seriously allergic" }
+  - { at: +2 min, say: "we're having dinner at a Thai place on Saturday" }
+  - { at: +33 min, say: "ok bedtime, night" }
+  - fill: 45
+  - expect_insights: { min: 1, evidence_count: 2 }
+  - at: day 3
+    ask: "anything to watch out for Saturday?"
+    gold: "Peanuts are common in Thai dishes: tell the restaurant about the peanut allergy"

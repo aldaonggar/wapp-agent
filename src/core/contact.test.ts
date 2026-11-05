@@ -388,3 +388,26 @@ test("the turn's images go to remember and the media_note lands on the image row
   expect(parts.filter((p) => p.type === "file")).toEqual([{ type: "file", mediaType: "image/jpeg", data: jpeg }]);
   expect(t.db.all("SELECT id, media_note FROM messages WHERE direction='in' ORDER BY ts")).toEqual([{ id: "wamid.in.1", media_note: "a red road bike" }, { id: "wamid.in.2", media_note: null }]);
 });
+
+test("insights alarm fires 30 min after the last message and not before", async () => {
+  const t = setup({ features: { memory: true }, object: (c) => (c.job === "derive" ? { insights: [] } : { ops: [{ op: "ADD", text: "Flight on 2026-12-10", kind: "plan", signal: 4 }] }) });
+  await t.say("flight on the 10th of December");
+  const lastInbound = t.clock.t;
+  await t.run(lastInbound + 29 * 60_000);
+  expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000);
+  expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract"]);
+  await t.run(lastInbound + 31 * 60_000);
+  expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract", "derive"]);
+  expect(t.view.alarmAt).toBeNull();
+  expect(t.state().insights_due).toBeNull();
+});
+
+test("a failing derive call is logged and does not stop the alarm", async () => {
+  const t = setup({ features: { memory: true }, object: (c) => { if (c.job === "derive") throw new Error("derive down"); return { ops: [{ op: "ADD", text: "Flight on 2026-12-10", kind: "plan", signal: 4 }] }; } });
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("flight on the 10th");
+  await t.run(t.clock.t + 31 * 60_000);
+  expect(log).toHaveBeenCalledWith({ event: "insights_failed", error: "derive down" });
+  expect(t.view.alarmAt).toBeNull();
+});
