@@ -12,7 +12,7 @@
       "derive": "deepseek/deepseek-v4-pro"
     }
   },
-  "at": "2026-11-05T20:09:37.675Z",
+  "at": "2026-11-05T20:41:37.218Z",
   "scenarios": [
     {
       "name": "derived-allergy-dinner",
@@ -21,34 +21,32 @@
         {
           "ask": "anything to watch out for Saturday?",
           "gold": "Peanuts are common in Thai dishes: tell the restaurant about the peanut allergy",
-          "answer": "[2026-11-06 10:00] you've got the Thai place Saturday — peanut sauce is everywhere in Thai food, so worth mentioning your allergy when you order\n\nsomething like pad thai or satay is the usual risk. curries are often safer but still ask",
+          "answer": "well, thai food is the big one. peanut is basically everywhere in that cuisine, so worth asking the staff what's safe when you order",
           "label": "correct",
-          "reason": "The reply flags that peanuts are common in Thai food and says to tell the restaurant about the allergy; the dish examples are general knowledge, not invented facts about the user.",
-          "ttftMs": 853,
-          "ttfbMs": 2481,
-          "totalMs": 2481
+          "reason": "The reply names the peanut risk in Thai food and says to tell the staff about it, which matches the gold.",
+          "ttftMs": 411,
+          "ttfbMs": 1205,
+          "totalMs": 1206
         }
       ],
       "checks": [
         {
           "name": "expect_insights",
-          "passed": false,
-          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+          "passed": true,
+          "detail": "1 active insights citing ≥ 2 facts (want ≥ 1): They need to be very careful about peanut-containing dishes at the Thai restaurant, as peanut is a common ingredient in Thai cuisine."
         }
       ],
       "transcript": [
         "[2026-11-04 15:00:00] a: I'm allergic to peanuts, seriously allergic",
-        "[2026-11-04 15:00:03] bot → a: got it, i'll remember that. no peanuts, ever. how's your day going?",
+        "[2026-11-04 15:00:03] bot → a: Thanks for telling me — I'll keep that in mind. How serious are we talking, do you carry an epipen?",
         "[2026-11-04 15:02:00] a: we're having dinner at a Thai place on Saturday",
-        "[2026-11-04 15:02:03] bot → a: [2026-11-04 10:02] thai food can be tricky with peanuts — lots of dishes use them in the sauce or as garnish. definitely worth telling the restaurant in advance when you book.",
-        "[2026-11-04 15:32:00] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-04 15:02:03] bot → a: Thai food's tricky for that — lots of peanut sauces and satay. Worth calling the place ahead and telling them it's a serious allergy. Want me to help think through what to order?",
         "[2026-11-04 15:33:00] a: ok bedtime, night",
-        "[2026-11-04 15:33:03] bot → a: (reacted 😴)",
-        "[2026-11-04 15:33:03] bot → a: night, sleep well",
+        "[2026-11-04 15:33:03] bot → a: (reacted 🌙)",
+        "[2026-11-04 15:33:03] bot → a: night! sleep well",
         "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
-        "[2026-11-04 17:03:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
         "[2026-11-06 15:00:00] a: anything to watch out for Saturday?",
-        "[2026-11-06 15:00:03] bot → a: [2026-11-06 10:00] you've got the Thai place Saturday — peanut sauce is everywhere in Thai food, so worth mentioning your allergy when you order\n\nsomething like pad thai or satay is the usual risk. curries are often safer but still ask"
+        "[2026-11-06 15:00:03] bot → a: well, thai food is the big one. peanut is basically everywhere in that cuisine, so worth asking the staff what's safe when you order"
       ],
       "turns": [
         {
@@ -56,16 +54,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 296,
-          "ttft_ms": 1027,
-          "ttfb_ms": 1566,
-          "total_ms": 1566,
+          "retrieval_ms": 234,
+          "ttft_ms": 489,
+          "ttfb_ms": 1050,
+          "total_ms": 1050,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1075,\"output\":24,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000032726999999999993,\"costReported\":0.00007482,\"ms\":1276.6837090000001,\"ttftMs\":1027.3300840000002,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1078,\"output\":31,\"cached\":0,\"reasoning\":0,\"costTable\":0.00006400999999999999,\"costReported\":0.00022497,\"ms\":822.394208,\"ttftMs\":489.47691699999996,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -73,16 +71,16 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 433,
-          "ttft_ms": 1360,
-          "ttfb_ms": 2534,
-          "total_ms": 2534,
+          "retrieval_ms": 503,
+          "ttft_ms": 433,
+          "ttfb_ms": 1428,
+          "total_ms": 1428,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1163,\"output\":45,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007483500000000001,\"costReported\":0.0004029,\"ms\":2100.797625,\"ttftMs\":1359.5725419999999,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1173,\"output\":44,\"cached\":0,\"reasoning\":0,\"costTable\":0.000074785,\"costReported\":0.00025147,\"ms\":923.9391250000003,\"ttftMs\":433.1966660000003,\"finishReason\":\"stop\"}",
           "recalled": "[\"Has a serious peanut allergy\"]"
         },
         {
@@ -90,44 +88,45 @@
           "id": 3,
           "started_at": 1793806383000,
           "wait_ms": 3000,
-          "retrieval_ms": 892,
-          "ttft_ms": 2015,
-          "ttfb_ms": 2916,
-          "total_ms": 2916,
+          "retrieval_ms": 304,
+          "ttft_ms": 455,
+          "ttfb_ms": 894,
+          "total_ms": 895,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1283,\"output\":12,\"cached\":0,\"reasoning\":0,\"costTable\":0.000063735,\"costReported\":0.0003993,\"ms\":2024.061667,\"ttftMs\":2015.2890420000003,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Dinner at a Thai restaurant on 2026-11-07\",\"Has a serious peanut allergy\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1325,\"output\":12,\"cached\":0,\"reasoning\":0,\"costTable\":0.000065625,\"costReported\":0.00025955,\"ms\":589.3079159999998,\"ttftMs\":454.9718750000002,\"finishReason\":\"stop\"}",
+          "recalled": "[\"They need to be very careful about peanut-containing dishes at the Thai restaurant, as peanut is a common ingredient in Thai cuisine.\",\"Has a serious peanut allergy\",\"Has dinner at a Thai restaurant on 2026-11-07\"]"
         },
         {
           "contact": "a",
           "id": 4,
           "started_at": 1793977203000,
           "wait_ms": 3000,
-          "retrieval_ms": 408,
-          "ttft_ms": 853,
-          "ttfb_ms": 2481,
-          "total_ms": 2481,
+          "retrieval_ms": 446,
+          "ttft_ms": 411,
+          "ttfb_ms": 1205,
+          "total_ms": 1206,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1833,\"output\":59,\"cached\":0,\"reasoning\":0,\"costTable\":0.000111985,\"costReported\":0.0006207,\"ms\":2067.9583329999987,\"ttftMs\":853.1301249999997,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Has a serious peanut allergy\",\"Dinner at a Thai restaurant on 2026-11-07\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1873,\"output\":34,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010128499999999999,\"costReported\":0.00037797,\"ms\":755.4478749999998,\"ttftMs\":411.27487499999916,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Has a serious peanut allergy\",\"Has dinner at a Thai restaurant on 2026-11-07\",\"They need to be very careful about peanut-containing dishes at the Thai restaurant, as peanut is a common ingredient in Thai cuisine.\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.000283282,
-        "extract": 0.0016477000000000002
+        "reply": 0.000305705,
+        "extract": 0.0016362000000000002,
+        "derive": 0.000688
       },
-      "judgeCostUsd": 0.006972,
-      "costUsd": 0.0019309820000000001,
-      "passed": false,
-      "at": "2026-11-05T20:08:48.198Z"
+      "judgeCostUsd": 0.004908,
+      "costUsd": 0.002629905,
+      "passed": true,
+      "at": "2026-11-05T20:40:53.028Z"
     },
     {
       "name": "derived-almaty-birthday",
@@ -136,36 +135,33 @@
         {
           "ask": "anything I should plan for that trip?",
           "gold": "A gift or celebration for Aru's birthday on 12 December, two days after landing in Almaty",
-          "answer": "your flight lands on the 10th and Aru's birthday is on the 12th — so you've got a two day buffer, which is lucky if you want to shop for her there",
+          "answer": "two days in Almaty before Aru's birthday — that's the main thing on the calendar. you thinking of doing something for her, or just showing up?",
           "label": "correct",
-          "reason": "The reply points to Aru's birthday on the 12th, two days after landing, and suggests shopping for her, which conveys the gift plan.",
-          "ttftMs": 823,
-          "ttfbMs": 2309,
-          "totalMs": 2309
+          "reason": "The reply flags Aru's birthday two days after landing and suggests doing something for her, which matches the gold.",
+          "ttftMs": 605,
+          "ttfbMs": 1483,
+          "totalMs": 1483
         }
       ],
       "checks": [
         {
           "name": "expect_insights",
-          "passed": false,
-          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+          "passed": true,
+          "detail": "1 active insights citing ≥ 2 facts (want ≥ 1): The flight to Almaty lands just two days before Sister Aru's birthday, likely so they can celebrate together."
         }
       ],
       "transcript": [
         "[2026-11-04 15:00:00] a: booked my flight to Almaty, I land on 2026-12-10",
         "[2026-11-04 15:00:03] bot → a: (reacted 🎉)",
-        "[2026-11-04 15:00:03] bot → a: That's exciting! December in Almaty is going to be something else.",
-        "[2026-11-04 15:00:04] bot → a: How long are you staying?",
+        "[2026-11-04 15:00:03] bot → a: go you! and a whole month of build-up now. is this the first time there?",
         "[2026-11-04 15:02:00] a: my sister Aru's birthday is on 2026-12-12, she lives there",
-        "[2026-11-04 15:02:03] bot → a: [2026-11-04 10:02] Oh nice, perfect timing — arriving two days before her birthday.\n[2026-11-04 10:02] Do you get to see her often?",
-        "[2026-11-04 15:32:00] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-04 15:02:03] bot → a: oh so the trip's got a proper occasion behind it 🎉 landing the 10th gives you a couple days to settle before her birthday. any plans yet or still wide open?",
         "[2026-11-04 15:33:00] a: ok bedtime, night",
-        "[2026-11-04 15:33:03] bot → a: (reacted 🌙)",
-        "[2026-11-04 15:33:03] bot → a: sleep well!",
+        "[2026-11-04 15:33:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:33:03] bot → a: night, sleep well 🌙",
         "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
-        "[2026-11-04 17:03:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
         "[2026-11-06 15:00:00] a: anything I should plan for that trip?",
-        "[2026-11-06 15:00:03] bot → a: your flight lands on the 10th and Aru's birthday is on the 12th — so you've got a two day buffer, which is lucky if you want to shop for her there"
+        "[2026-11-06 15:00:03] bot → a: two days in Almaty before Aru's birthday — that's the main thing on the calendar. you thinking of doing something for her, or just showing up?"
       ],
       "turns": [
         {
@@ -173,16 +169,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 212,
-          "ttft_ms": 1004,
-          "ttfb_ms": 1895,
-          "total_ms": 1932,
+          "retrieval_ms": 242,
+          "ttft_ms": 592,
+          "ttfb_ms": 1011,
+          "total_ms": 1011,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
-          "bubbles": 2,
+          "provider": "Wafer",
+          "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1085,\"output\":32,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000037177,\"costReported\":0.00008742,\"ms\":1719.581209,\"ttftMs\":1003.8177920000016,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1088,\"output\":27,\"cached\":512,\"reasoning\":0,\"costTable\":0.00004863599999999999,\"costReported\":0.000133134,\"ms\":768.5931250000012,\"ttftMs\":591.633917000001,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -190,61 +186,62 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 412,
-          "ttft_ms": 1021,
-          "ttfb_ms": 1845,
-          "total_ms": 1845,
+          "retrieval_ms": 538,
+          "ttft_ms": 370,
+          "ttfb_ms": 1455,
+          "total_ms": 1455,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1223,\"output\":46,\"cached\":0,\"reasoning\":0,\"costTable\":0.000078035,\"costReported\":0.0004221,\"ms\":1431.6033339999994,\"ttftMs\":1020.8527499999982,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Flight to Almaty landing on 2026-12-10\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1211,\"output\":43,\"cached\":512,\"reasoning\":0,\"costTable\":0.000062171,\"costReported\":0.000166904,\"ms\":918.9770830000016,\"ttftMs\":369.67412500000137,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Flight to Almaty lands on 2026-12-10\"]"
         },
         {
           "contact": "a",
           "id": 3,
           "started_at": 1793806383000,
           "wait_ms": 3000,
-          "retrieval_ms": 663,
-          "ttft_ms": 1020,
-          "ttfb_ms": 1860,
-          "total_ms": 1860,
+          "retrieval_ms": 488,
+          "ttft_ms": 400,
+          "ttfb_ms": 1193,
+          "total_ms": 1194,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1368,\"output\":11,\"cached\":0,\"reasoning\":0,\"costTable\":0.00006706,\"costReported\":0.0004236,\"ms\":1195.709082999998,\"ttftMs\":1019.809624999998,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Sister Aru's birthday is on 2026-12-12\",\"Sister Aru lives in Almaty\",\"Flight to Almaty landing on 2026-12-10\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1384,\"output\":15,\"cached\":640,\"reasoning\":0,\"costTable\":0.0000525,\"costReported\":0.00015879,\"ms\":705.0356250000004,\"ttftMs\":399.67154200000004,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Sister Aru's birthday is on 2026-12-12\",\"The flight to Almaty lands just two days before Sister Aru's birthday, likely so they can celebrate together.\",\"Flight to Almaty lands on 2026-12-10\",\"Sister Aru lives in Almaty\"]"
         },
         {
           "contact": "a",
           "id": 4,
           "started_at": 1793977203000,
           "wait_ms": 3000,
-          "retrieval_ms": 400,
-          "ttft_ms": 823,
-          "ttfb_ms": 2309,
-          "total_ms": 2309,
+          "retrieval_ms": 592,
+          "ttft_ms": 605,
+          "ttfb_ms": 1483,
+          "total_ms": 1483,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1877,\"output\":50,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010946500000000001,\"costReported\":0.0006231,\"ms\":1905.1929170000003,\"ttftMs\":822.5607919999966,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Flight to Almaty landing on 2026-12-10\",\"Sister Aru's birthday is on 2026-12-12\",\"Sister Aru lives in Almaty\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1915,\"output\":39,\"cached\":640,\"reasoning\":0,\"costTable\":0.000088395,\"costReported\":0.00027528,\"ms\":886.4243749999987,\"ttftMs\":604.5822499999995,\"finishReason\":\"stop\"}",
+          "recalled": "[\"The flight to Almaty lands just two days before Sister Aru's birthday, likely so they can celebrate together.\",\"Flight to Almaty lands on 2026-12-10\",\"Sister Aru's birthday is on 2026-12-12\",\"Sister Aru lives in Almaty\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.000291737,
-        "extract": 0.0016938
+        "reply": 0.00025170199999999997,
+        "extract": 0.0016826000000000002,
+        "derive": 0.000744
       },
-      "judgeCostUsd": 0.006852,
-      "costUsd": 0.001985537,
-      "passed": false,
-      "at": "2026-11-05T20:09:04.843Z"
+      "judgeCostUsd": 0.00504,
+      "costUsd": 0.002678302,
+      "passed": true,
+      "at": "2026-11-05T20:41:06.765Z"
     },
     {
       "name": "derived-early-flight-routine",
@@ -253,35 +250,33 @@
         {
           "ask": "what's my Friday morning looking like?",
           "gold": "The 6am flight means she will be at the airport or in the air at 7, so the usual 7am run will not happen",
-          "answer": "Flight at 06:00 on Friday — so you'll want to be out the door well before that. Anything else on your plate that morning?",
+          "answer": "Let's see — Friday is the 6th, and that's your 6:00 AM flight. So you'll be up way before your usual 7:00 run.\n\nEarly start, basically. What time do you need to leave for the airport?",
           "label": "partial",
-          "reason": "The reply mentions the 6am flight but never says the usual 7am run won't happen.",
-          "ttftMs": 1076,
-          "ttfbMs": 2395,
-          "totalMs": 2395
+          "reason": "The reply mentions the 6am flight and the very early start, but never says the 7am run won't happen because she'll be at the airport or in the air.",
+          "ttftMs": 1587,
+          "ttfbMs": 2212,
+          "totalMs": 2212
         }
       ],
       "checks": [
         {
           "name": "expect_insights",
-          "passed": false,
-          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+          "passed": true,
+          "detail": "1 active insights citing ≥ 2 facts (want ≥ 1): If they stick to their morning run routine on November 6, they will need to leave for their 6:00 AM flight before or instead of their 7:00 AM run."
         }
       ],
       "transcript": [
         "[2026-11-04 15:00:00] a: I run every morning at 7, never skip it",
-        "[2026-11-04 15:00:03] bot → a: Nice, that's a serious habit. 7am every day, no matter the weather?",
+        "[2026-11-04 15:00:03] bot → a: that's impressive discipline. what time do you usually head out — is it light by then where you are?",
         "[2026-11-04 15:02:00] a: my flight is at 6am on Friday the 6th of November, so early",
-        "[2026-11-04 15:02:03] bot → a: (reacted 😮)",
-        "[2026-11-04 15:02:03] bot → a: Ouch, 6am flight means you're up way before your usual 7am run. Are you going to squeeze the run in before you head to the airport, or skip it that day?",
-        "[2026-11-04 15:32:00] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-04 15:02:03] bot → a: (reacted ✈️)",
+        "[2026-11-04 15:02:03] bot → a: oof, 6am flight means a brutal wake-up. are you still planning to squeeze the run in before you head to the airport?",
         "[2026-11-04 15:33:00] a: ok bedtime, night",
         "[2026-11-04 15:33:03] bot → a: (reacted ❤️)",
-        "[2026-11-04 15:33:03] bot → a: Sleep well! Early night makes sense with that 6am flight coming up.",
+        "[2026-11-04 15:33:03] bot → a: night! good luck with the early start",
         "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
-        "[2026-11-04 17:03:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
         "[2026-11-05 15:00:00] a: what's my Friday morning looking like?",
-        "[2026-11-05 15:00:03] bot → a: Flight at 06:00 on Friday — so you'll want to be out the door well before that. Anything else on your plate that morning?"
+        "[2026-11-05 15:00:03] bot → a: Let's see — Friday is the 6th, and that's your 6:00 AM flight. So you'll be up way before your usual 7:00 run.\n\nEarly start, basically. What time do you need to leave for the airport?"
       ],
       "turns": [
         {
@@ -289,16 +284,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 228,
-          "ttft_ms": 703,
-          "ttfb_ms": 1488,
-          "total_ms": 1489,
+          "retrieval_ms": 262,
+          "ttft_ms": 475,
+          "ttfb_ms": 1088,
+          "total_ms": 1088,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1078,\"output\":24,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000032862,\"costReported\":0.00007572,\"ms\":1258.325208000002,\"ttftMs\":703.3897079999952,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":1081,\"output\":27,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000034497,\"costReported\":0.000040668,\"ms\":825.5582500000019,\"ttftMs\":475.4661669999987,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -306,16 +301,16 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 508,
-          "ttft_ms": 723,
-          "ttfb_ms": 2350,
-          "total_ms": 2350,
+          "retrieval_ms": 1429,
+          "ttft_ms": 866,
+          "ttfb_ms": 2466,
+          "total_ms": 2466,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1178,\"output\":49,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007751,\"costReported\":0.0004122,\"ms\":1842.2153340000004,\"ttftMs\":722.9627089999994,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1180,\"output\":37,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007159999999999999,\"costReported\":0.00017745,\"ms\":1037.6813750000038,\"ttftMs\":866.0410000000011,\"finishReason\":\"stop\"}",
           "recalled": "[\"Runs every morning at 7\"]"
         },
         {
@@ -323,44 +318,45 @@
           "id": 3,
           "started_at": 1793806383000,
           "wait_ms": 3000,
-          "retrieval_ms": 379,
-          "ttft_ms": 1108,
-          "ttfb_ms": 1753,
-          "total_ms": 1753,
+          "retrieval_ms": 324,
+          "ttft_ms": 2444,
+          "ttfb_ms": 3247,
+          "total_ms": 3247,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1303,\"output\":25,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007113499999999999,\"costReported\":0.0004209,\"ms\":1373.7877910000025,\"ttftMs\":1108.0862909999996,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Flight departing at 06:00 on 2026-11-06\",\"Runs every morning at 7\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1343,\"output\":17,\"cached\":0,\"reasoning\":0,\"costTable\":0.000068935,\"costReported\":0.00018564,\"ms\":2923.236124999996,\"ttftMs\":2443.7496249999967,\"finishReason\":\"stop\"}",
+          "recalled": "[\"If they stick to their morning run routine on November 6, they will need to leave for their 6:00 AM flight before or instead of their 7:00 AM run.\",\"Flight departs on 2026-11-06 06:00\",\"Runs every morning at 7\"]"
         },
         {
           "contact": "a",
           "id": 4,
           "started_at": 1793890803000,
           "wait_ms": 3000,
-          "retrieval_ms": 444,
-          "ttft_ms": 1076,
-          "ttfb_ms": 2395,
-          "total_ms": 2395,
+          "retrieval_ms": 357,
+          "ttft_ms": 1587,
+          "ttfb_ms": 2212,
+          "total_ms": 2212,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1840,\"output\":35,\"cached\":0,\"reasoning\":0,\"costTable\":0.0001003,\"costReported\":0.000594,\"ms\":1949.4553749999977,\"ttftMs\":1076.0016669999968,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Runs every morning at 7\",\"Flight departing at 06:00 on 2026-11-06\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1888,\"output\":58,\"cached\":896,\"reasoning\":0,\"costTable\":0.000089768,\"costReported\":0.000168452,\"ms\":1851.7558329999956,\"ttftMs\":1586.8326670000024,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Runs every morning at 7\",\"If they stick to their morning run routine on November 6, they will need to leave for their 6:00 AM flight before or instead of their 7:00 AM run.\",\"Flight departs on 2026-11-06 06:00\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.00028180699999999997,
-        "extract": 0.0016391
+        "reply": 0.0002648,
+        "extract": 0.0016265000000000001,
+        "derive": 0.0007327999999999999
       },
-      "judgeCostUsd": 0.006408,
-      "costUsd": 0.0019209070000000001,
+      "judgeCostUsd": 0.005256,
+      "costUsd": 0.0026241,
       "passed": false,
-      "at": "2026-11-05T20:09:20.789Z"
+      "at": "2026-11-05T20:41:23.955Z"
     },
     {
       "name": "derived-lisbon-vegetarian",
@@ -369,36 +365,34 @@
         {
           "ask": "any tips for eating out when I get to my new city?",
           "gold": "Vegetarian-friendly restaurants in Lisbon, since she is vegetarian and moving there",
-          "answer": "[2026-11-06 10:00] honestly lisbon is great for a vegetarian, you'll eat well\n\n[2026-11-06 10:00] look for the smaller tascas over the tourist spots near the river, they're cheaper and the food's better\n\n[2026-11-06 10:00] and learn the phrase \"sou vegetariano\" — goes a long way",
+          "answer": "you're the vegetarian one, right? lisbon's actually great for that — lots of veggie spots and every restaurant seems to have something these days\nthe one thing to watch is the traditional places: bacalhau and seafood everywhere, so if you want the classic experience, go for the petiscos instead. grilled veg, cheeses, that kind of thing 🥗",
           "label": "correct",
-          "reason": "The reply ties vegetarian dining to Lisbon and gives relevant tips, which matches the gold. The 'sou vegetariano' phrase is generic advice rather than an invented fact.",
-          "ttftMs": 1053,
-          "ttfbMs": 2808,
-          "totalMs": 2808
+          "reason": "The reply links her vegetarianism to Lisbon and gives vegetarian-friendly eating-out tips there, which matches the gold.",
+          "ttftMs": 667,
+          "ttfbMs": 1685,
+          "totalMs": 2269
         }
       ],
       "checks": [
         {
           "name": "expect_insights",
-          "passed": false,
-          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+          "passed": true,
+          "detail": "2 active insights citing ≥ 2 facts (want ≥ 1): The move to Lisbon in December coincides with starting a new job there, suggesting the relocation is job-related. | As a vegetarian moving to Lisbon, they will need to find suitable food options in a city famous for seafood."
         }
       ],
       "transcript": [
         "[2026-11-04 15:00:00] a: I'm vegetarian, been for years",
-        "[2026-11-04 15:00:03] bot → a: (reacted 👍)",
-        "[2026-11-04 15:00:03] bot → a: Noted — I'll keep it in mind when food comes up. What's your name?",
+        "[2026-11-04 15:00:03] bot → a: Got it. Anything in particular, or just letting me know so I don't suggest the wrong place for dinner?",
         "[2026-11-04 15:02:00] a: I'm moving to Lisbon next month for a new job",
         "[2026-11-04 15:02:03] bot → a: (reacted ❤️)",
-        "[2026-11-04 15:02:03] bot → a: That's exciting — congrats on the new job! Big change though, how are you feeling about it?",
-        "[2026-11-04 15:32:00] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-04 15:02:03] bot → a: Lisbon, nice. Big change though — how are you feeling about it?",
         "[2026-11-04 15:33:00] a: ok bedtime, night",
         "[2026-11-04 15:33:03] bot → a: (reacted 😴)",
-        "[2026-11-04 15:33:03] bot → a: [2026-11-04 10:33] night! sleep well",
+        "[2026-11-04 15:33:03] bot → a: Night, sleep well!",
         "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
-        "[2026-11-04 17:03:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
         "[2026-11-06 15:00:00] a: any tips for eating out when I get to my new city?",
-        "[2026-11-06 15:00:03] bot → a: [2026-11-06 10:00] honestly lisbon is great for a vegetarian, you'll eat well\n\n[2026-11-06 10:00] look for the smaller tascas over the tourist spots near the river, they're cheaper and the food's better\n\n[2026-11-06 10:00] and learn the phrase \"sou vegetariano\" — goes a long way"
+        "[2026-11-06 15:00:03] bot → a: you're the vegetarian one, right? lisbon's actually great for that — lots of veggie spots and every restaurant seems to have something these days",
+        "[2026-11-06 15:00:05] bot → a: the one thing to watch is the traditional places: bacalhau and seafood everywhere, so if you want the classic experience, go for the petiscos instead. grilled veg, cheeses, that kind of thing 🥗"
       ],
       "turns": [
         {
@@ -406,16 +400,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 177,
-          "ttft_ms": 742,
-          "ttfb_ms": 1405,
-          "total_ms": 1405,
+          "retrieval_ms": 299,
+          "ttft_ms": 532,
+          "ttfb_ms": 1017,
+          "total_ms": 1017,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1074,\"output\":26,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000033682,\"costReported\":0.00007692,\"ms\":1227.4855420000022,\"ttftMs\":742.1339579999985,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1073,\"output\":29,\"cached\":0,\"reasoning\":0,\"costTable\":0.000062785,\"costReported\":0.00015834,\"ms\":717.864916999999,\"ttftMs\":532.4297920000026,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -423,16 +417,16 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 523,
-          "ttft_ms": 670,
-          "ttfb_ms": 1694,
-          "total_ms": 1694,
+          "retrieval_ms": 371,
+          "ttft_ms": 483,
+          "ttfb_ms": 1044,
+          "total_ms": 1044,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1164,\"output\":32,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000040732,\"costReported\":0.00011112,\"ms\":1171.4217080000017,\"ttftMs\":670.367333000002,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1163,\"output\":25,\"cached\":896,\"reasoning\":0,\"costTable\":0.000040643000000000004,\"costReported\":0.000052752,\"ms\":672.8486670000057,\"ttftMs\":483.3295830000061,\"finishReason\":\"stop\"}",
           "recalled": "[\"Is vegetarian\"]"
         },
         {
@@ -440,44 +434,45 @@
           "id": 3,
           "started_at": 1793806383000,
           "wait_ms": 3000,
-          "retrieval_ms": 417,
-          "ttft_ms": 1162,
-          "ttfb_ms": 1992,
-          "total_ms": 1992,
+          "retrieval_ms": 333,
+          "ttft_ms": 554,
+          "ttfb_ms": 981,
+          "total_ms": 981,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1280,\"output\":24,\"cached\":0,\"reasoning\":0,\"costTable\":0.0000696,\"costReported\":0.0004128,\"ms\":1574.5832919999957,\"ttftMs\":1161.511166999997,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Starting a new job after moving to Lisbon\",\"Moving to Lisbon in December 2026\",\"Is vegetarian\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1337,\"output\":13,\"cached\":896,\"reasoning\":0,\"costTable\":0.000042473,\"costReported\":0.000067572,\"ms\":647.7457500000019,\"ttftMs\":553.7615409999999,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Starting a new job in Lisbon\",\"Moving to Lisbon in December 2026\",\"The move to Lisbon in December coincides with starting a new job there, suggesting the relocation is job-related.\",\"As a vegetarian moving to Lisbon, they will need to find suitable food options in a city famous for seafood.\",\"Is vegetarian\"]"
         },
         {
           "contact": "a",
           "id": 4,
           "started_at": 1793977203000,
           "wait_ms": 3000,
-          "retrieval_ms": 453,
-          "ttft_ms": 1053,
-          "ttfb_ms": 2808,
-          "total_ms": 2808,
+          "retrieval_ms": 564,
+          "ttft_ms": 667,
+          "ttfb_ms": 1685,
+          "total_ms": 2269,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
-          "bubbles": 1,
+          "provider": "CoreWeave",
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1845,\"output\":91,\"cached\":0,\"reasoning\":0,\"costTable\":0.00012852499999999997,\"costReported\":0.0006627,\"ms\":2350.341459000003,\"ttftMs\":1053.3587499999994,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Starting a new job after moving to Lisbon\",\"Moving to Lisbon in December 2026\",\"Is vegetarian\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"CoreWeave\",\"input\":1911,\"output\":83,\"cached\":896,\"reasoning\":0,\"costTable\":0.000103303,\"costReported\":0.000187692,\"ms\":1701.1060419999994,\"ttftMs\":667.3609579999975,\"finishReason\":\"stop\"}",
+          "recalled": "[\"As a vegetarian moving to Lisbon, they will need to find suitable food options in a city famous for seafood.\",\"Starting a new job in Lisbon\",\"The move to Lisbon in December coincides with starting a new job there, suggesting the relocation is job-related.\",\"Moving to Lisbon in December 2026\",\"Is vegetarian\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.0002725389999999999,
-        "extract": 0.0016608
+        "reply": 0.000249204,
+        "extract": 0.0016468000000000001,
+        "derive": 0.0008624
       },
-      "judgeCostUsd": 0.007384,
-      "costUsd": 0.001933339,
-      "passed": false,
-      "at": "2026-11-05T20:09:37.670Z"
+      "judgeCostUsd": 0.005388,
+      "costUsd": 0.0027584040000000003,
+      "passed": true,
+      "at": "2026-11-05T20:41:37.214Z"
     }
   ]
 }

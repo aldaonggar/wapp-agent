@@ -103,9 +103,59 @@ Docs and config
 
 ## Evals
 
-A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. Run on 2026-11-05 with the defaults below: **the agent passes 19/21 scenarios, the same agent with memory off 9/21** (short-term 6/7 vs 5/7, long-term 6/6 vs 2/6, derived 3/4 vs 0/4, judgement 2/2 vs 0/2, forget 1/1 vs 1/1, isolation 1/1 vs 1/1). The two failures: the reply model calls the fixture photo blank under the production system prompt (`short-photo-then-question`, see Known limits), and in `derived-almaty-birthday` the reply asks for a landing date it has in memory. Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. Full tables, per-candidate numbers and every transcript: [EVALS.md](EVALS.md). A full 21-scenario run takes 7 to 15 minutes; the recorded base run cost $0.13 at table prices ($0.07 agent calls, $0.05 judge), and across the day the key was charged about 1.6x table prices.
+A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. Run on 2026-11-05 with the defaults in [src/models.ts](src/models.ts): **the agent passes 21/21 scenarios, the same agent with memory off 9/21.** Read 21 as 20 to 21: `derived-almaty-birthday` failed its probe in three earlier runs of the day (the reply asked for a landing date it had in memory) and passed in the final one. Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. The tables below are written by `npm run eval:report` from the same result files as [EVALS.md](EVALS.md), which adds p95 latencies, the cached-token share and every transcript. A full 21-scenario run takes 7 to 15 minutes and about $0.13 at table prices ($0.07 agent calls, $0.05 judge); the key is charged about 1.6x table prices.
 
-The 21 scenarios by category: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1.
+The 21 scenarios by category: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1. Baseline (memory off) against the agent:
+
+<!-- evals:results -->
+| Category | Baseline (no memory) | This agent |
+|---|---|---|
+| short-term | 5/7 (71%) | 7/7 (100%) |
+| long-term | 2/6 (33%) | 6/6 (100%) |
+| derived | 0/4 (0%) | 4/4 (100%) |
+| judgement | 0/2 (0%) | 2/2 (100%) |
+| forget | 1/1 (100%) | 1/1 (100%) |
+| isolation | 1/1 (100%) | 1/1 (100%) |
+| all | 9/21 (43%) | 21/21 (100%) |
+<!-- /evals:results -->
+
+Model comparison per job: each candidate ran once with the other jobs at the defaults, on the categories its job affects; one scenario of difference is within run-to-run variance. Verdicts: default; runner-up (answered and passed, not chosen); failed (passed nothing); blocked (its calls never got through).
+
+### Reply (short-term)
+
+<!-- evals:reply -->
+| Model | Passed (short-term) | ttft p50 ms | first bubble p50 ms | total p50 ms | reply cost / 1,000 turns | Verdict |
+|---|---|---|---|---|---|---|
+| `deepseek/deepseek-v4.1-flash` | 7/7 (100%) | 908 | 1715 | 1715 | $0.11 | default |
+| `moonshotai/kimi-k2.6` | 7/7 (100%) | 541 | 1383 | 1373 | $0.44 | runner-up |
+| `z-ai/glm-5.2` | 7/7 (100%) | 565 | 1235 | 1236 | $0.26 | runner-up |
+<!-- /evals:reply -->
+
+Why `deepseek-v4.1-flash`: the three candidates tie on pass rate (kimi and GLM ran in round 2, once the key's provider list allowed them), and the tie goes to the cheapest per 1,000 turns, which is flash; kimi and GLM answer faster (first token about 0.55 s against 0.9 s), which is the trade the owner would make by switching. Photo turns go to the vision default (`gpt-6.1-terra`) because flash calls images blank under the production prompt; that terra call is included in flash's and GLM's cost. `gpt-6.1-terra`, `gpt-6.1-sol` and `claude-sonnet-5.5` were not run as reply models (the design keeps them out of the default comparison).
+
+### Extract (long-term, judgement)
+
+<!-- evals:extract -->
+| Model | Passed (long-term, judgement) | ttft p50 ms | first bubble p50 ms | total p50 ms | extract cost / 1,000 turns | Verdict |
+|---|---|---|---|---|---|---|
+| `deepseek/deepseek-v4.1-flash` | 8/8 (100%) | 905 | 1913 | 1877 | $0.10 | runner-up |
+| `openai/gpt-6-luna` | 8/8 (100%) | 949 | 1897 | 1855 | $0.06 | runner-up |
+| `anthropic/claude-haiku-5.5` | 8/8 (100%) | 530 | 1338 | 1336 | $0.11 | default |
+<!-- /evals:extract -->
+
+Why `claude-haiku-5.5`: a three-way tie on pass rate, broken by reliability rather than cost: flash's extraction call timed out (60 s, that turn's facts lost) seven times across the day's runs, haiku's and luna's never, and haiku passed every one of its 24 scenario runs today where luna missed one of 16. A strict cheapest-on-tie rule would pick `gpt-6-luna`; it is the equal-score alternative at about half the cost. Haiku's cost in the table is measured with the Anthropic cache marker on the extraction prompt (added in round 2), which cut it from $0.39 to the figure shown.
+
+### Derive insights (derived)
+
+<!-- evals:derive -->
+| Model | Passed (derived) | ttft p50 ms | first bubble p50 ms | total p50 ms | derive cost / 1,000 turns | Verdict |
+|---|---|---|---|---|---|---|
+| `deepseek/deepseek-v4-pro` | 4/4 (100%) | 500 | 1113 | 1113 | $0.21 | default |
+| `openai/gpt-6.1-sol` | 4/4 (100%) | 451 | 1128 | 1128 | $0.44 | runner-up |
+| `anthropic/claude-sonnet-5.5` | 3/4 (75%) | 914 | 1798 | 1798 | $0.87 | runner-up |
+<!-- /evals:derive -->
+
+Why `deepseek-v4-pro`: it ties `gpt-6.1-sol` at the top of the table and is the cheaper of the two per 1,000 turns (sonnet's one miss is the reply, not the insight). v4-pro scored 0/4 in round 1 only because the first key's provider list had no host for it; `gpt-6.1-sol` was the default in between.
 
 ```bash
 npm run eval                                   # all scenarios, default models
@@ -121,18 +171,18 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 176 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 37 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 177 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 37 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
-Measured on 2026-11-05 ([EVALS.md](EVALS.md); each candidate ran once or twice, so a one-scenario gap is within run-to-run variance). Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. The owner's OpenRouter account permits only the providers `google-vertex`, `openai` and `anthropic` ([SETUP.md section 5](SETUP.md)), so `deepseek/deepseek-v4-pro`, `moonshotai/kimi-k2.6` and `z-ai/glm-5.2` cannot be served at all (every call fails with "No allowed providers are available for the selected model"); they stay listed as candidates for when that list is widened.
+Measured on 2026-11-05 (tables in [Evals](#evals); [EVALS.md](EVALS.md) for p95 latencies, cached-token share and transcripts; each candidate ran once or twice, so a one-scenario gap is within run-to-run variance). Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. Round 1 ran on a key whose account-level provider list blocked three of the candidates; round 2, on a dedicated key, measured them.
 
 | Job | Default | Input / output per 1M tokens | Measured |
 |---|---|---|---|
-| Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | 6/7 short-term. The only reply candidate the account can serve, so unproven against kimi and GLM. Medium effort (measured under the 2026-11-04 defaults): 5/7, the photo plus the quoted reply, and slower (first token p50 1.65 s against 0.95 s) |
-| Vision (photos) | the reply model when it accepts images (the default does); `openai/gpt-6.1-terra` only when the reply model is text-only | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. The photo scenario fails 0/4 with the reply model, which calls a plain red JPEG blank under the production prompt; in direct diagnostic calls outside the recorded matrix, `gpt-6.1-terra` answered "red" 2/2 with the same prompt (see Known limits) |
-| Extract | `anthropic/claude-haiku-5.5` (was `deepseek/deepseek-v4.1-flash`) | $0.10 / $0.50 | 8/8 on long-term + judgement in both of its runs (the first under the 2026-11-04 defaults, kept in git history at `b27818b`), no extraction call timed out. `deepseek-v4.1-flash` 7/8 then 8/8, but its extraction call timed out (60 s, fact lost) seven times across the day, three of them in that 8/8 run on turns that happened to carry no fact; `openai/gpt-6-luna` 7/8 then 8/8 at the same list price as haiku. A three-way tie on the final table, broken by reliability. Haiku's calls cost $0.39 per 1,000 turns against $0.06 to $0.10, because `llm.object()` sets no Anthropic cache control (a one-line fix) |
-| Derive insights | `openai/gpt-6.1-sol` (was `deepseek/deepseek-v4-pro`) | $2 / $10 | 3/4 on derived. `anthropic/claude-sonnet-5.5` 3/4 at the same list price (incumbent kept); `deepseek-v4-pro` 0/4, no permitted host, so no insight had ever been derived under the old default |
+| Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | Ties kimi-k2.6 and GLM-5.2 on short-term and is the cheapest per 1,000 turns; both of them are faster to first token. Medium effort (measured under the 2026-11-04 defaults): 5/7, slower (first token p50 1.65 s against 0.95 s), no gain |
+| Vision (photos) | the reply model when it accepts images (kimi does); `openai/gpt-6.1-terra` otherwise, which includes the default: `deepseek-v4.1-flash` is marked `vision: false` | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. Flash calls a plain red JPEG blank under the production prompt (0/4 in round 1); routed to `gpt-6.1-terra` the photo scenario passes (1/1, "red"), about $0.001 per photo turn |
+| Extract | `anthropic/claude-haiku-5.5` (was `deepseek/deepseek-v4.1-flash`) | $0.10 / $0.50 | Ties flash and gpt-6-luna on pass rate; chosen on reliability: flash's extraction call timed out (60 s, fact lost) seven times across the day's runs (three inside its best run, on turns that carried no fact), haiku's and luna's never. Round 2 added the Anthropic cache marker to `llm.object()`; the table shows the cost and cached share measured with it |
+| Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | Ties gpt-6.1-sol at the top of the derive table and is the cheaper per 1,000 turns, with the lowest latency; claude-sonnet-5.5 one scenario behind. 0/4 in round 1 only because the first key's provider list had no host for it (gpt-6.1-sol was the default in between) |
 | Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 | about $0.05 of table cost per full run |
 
 Calls to DeepSeek, Moonshot and Z.ai models exclude China- and Singapore-hosted providers (`CHINA_HOSTS` in `src/models.ts`). The host that served each call is logged.
@@ -158,8 +208,8 @@ npm run eval
 - Meta's free tier is 1,000 delivered service messages per month per number. No payment method is on file. The status webhook's `pricing.type` flip is logged.
 - No voice replies.
 - Timezone is guessed from the phone's country code until the person says where they are.
-- Photos: under the production system prompt the reply model (`deepseek-v4.1-flash` on Google Vertex) says a plain red test image is blank (0/4 in the recorded evals; in direct diagnostic calls outside the matrix it answered "Red" 4/4 with a one-line system prompt, and `gpt-6.1-terra` answered "red" 2/2 under the full prompt). Until that is fixed, expect photo questions to be answered badly.
-- The reply comparison is unproven: kimi-k2.6 and GLM-5.2 cannot be served under the account's OpenRouter allowed-providers list, so the reply default is the only candidate measured (see Model picks).
+- Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank (0/4 in round 1; "Red" 4/4 with a one-line system prompt in direct calls), and which prompt line tips it is not known.
+- OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model ... your account's allowed-providers setting permits only: ...", and for insights that shows up only as `insights_failed` in the logs. Round 1 of the evals ran under such a key ([SETUP.md section 5](SETUP.md)).
 - The reply model copies the history's `[2026-11-04 10:02]` time prefix into its own bubbles: about half of all bot bubbles in the evals start with one (39 of 83 in the base run), despite the prompt's "never write tags or times". Production shares the prompt, so expect it on the phone until `parseReply` strips it. The judge ignores wording, so it costs no scenario. The model also once asked for a date it had in memory.
 - An extraction call that times out (60 s) loses that turn's facts for good; seen seven times today with `deepseek-v4.1-flash` as extractor (four are in the committed results), never with haiku or luna.
 - Follow-ups never retry.
@@ -169,9 +219,8 @@ npm run eval
 
 - Follow-ups outside the 24-hour window, using approved message templates.
 - Voice replies.
-- Widen the OpenRouter allowed-providers list (or drop the three unservable models), then run the reply comparison: `npm run eval -- --reply=moonshotai/kimi-k2.6 --filter=short`, the same for `z-ai/glm-5.2`, and `--derive=deepseek/deepseek-v4-pro --filter=derived`.
-- Route photo turns to the vision model (`vision: false` for the reply model in `src/models.ts`) or fix the prompt, then rerun `npm run eval -- --filter=short-photo`.
-- Strip a leaked time prefix in `parseReply`; retry an extraction that timed out; set Anthropic cache control on `llm.object()` calls.
+- Strip a leaked time prefix in `parseReply`; retry an extraction that timed out.
+- A second run of each model candidate ($0.10 each) to firm up the one-scenario margins in the Evals tables.
 
 ## Credits
 
