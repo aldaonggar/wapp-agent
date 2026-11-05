@@ -14,7 +14,7 @@ function fakeEnv(allowed: string, verifyToken = "t") {
   const names: string[] = [];
   const ingested: { name: string; m: Inbound }[] = [];
   const env = {
-    WHATSAPP_APP_SECRET: "secret", WHATSAPP_VERIFY_TOKEN: verifyToken, ALLOWED_PHONES: allowed,
+    WHATSAPP_TOKEN: "tok", WHATSAPP_PHONE_NUMBER_ID: "1", WHATSAPP_APP_SECRET: "secret", WHATSAPP_VERIFY_TOKEN: verifyToken, ALLOWED_PHONES: allowed,
     CONTACT: {
       getByName: (name: string) => {
         names.push(name);
@@ -77,4 +77,23 @@ test("GET /webhook with an empty WHATSAPP_VERIFY_TOKEN is 403 even for an empty 
   const f = fakeEnv(A, "");
   const res = await worker.fetch(new Request("https://x/webhook?hub.mode=subscribe&hub.challenge=1&hub.verify_token="), f.env, ctx);
   expect(res.status).toBe(403);
+});
+
+test("/health names the configured transports and fails with none", async () => {
+  const get = (env: object) => worker.fetch(new Request("https://x/health"), env as unknown as Env, ctx);
+  const wa = { WHATSAPP_TOKEN: "t", WHATSAPP_PHONE_NUMBER_ID: "1", WHATSAPP_APP_SECRET: "s", WHATSAPP_VERIFY_TOKEN: "v" };
+  const tg = { TELEGRAM_BOT_TOKEN: "b", TELEGRAM_WEBHOOK_SECRET: "w" };
+  expect(await (await get({ ...wa, ...tg })).text()).toBe("ok whatsapp,telegram");
+  expect(await (await get(wa)).text()).toBe("ok whatsapp");
+  expect(await (await get(tg)).text()).toBe("ok telegram");
+  const none = await get({ WHATSAPP_TOKEN: "t", TELEGRAM_BOT_TOKEN: "b" }); // partial sets count as off
+  expect(none.status).toBe(503);
+});
+
+test("POST /webhook is 404 while WhatsApp is not fully configured", async () => {
+  const f = fakeEnv(A);
+  (f.env as unknown as Record<string, unknown>).WHATSAPP_PHONE_NUMBER_ID = "";
+  const res = await post(f.env, hook(text(A, "wamid.A1")));
+  expect(res.status).toBe(404);
+  expect(f.ingested).toEqual([]);
 });

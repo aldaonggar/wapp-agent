@@ -3,6 +3,12 @@ import { parseWebhook, verifySignature } from "./whatsapp";
 
 let warnedRegular = false; // once per isolate
 
+// A transport is on when every secret it needs is set; the app runs with either one, and /health says which (503 with none).
+export const transports = (env: Env) => ({
+  whatsapp: !!(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID && env.WHATSAPP_APP_SECRET && env.WHATSAPP_VERIFY_TOKEN),
+  telegram: !!(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_WEBHOOK_SECRET),
+});
+
 // Empty ALLOWED_TELEGRAM admits anyone who finds the bot (the owner's choice); entries are @usernames or numeric user ids.
 function telegramAllowed(list: string | undefined, user: { id: number; username?: string }): boolean {
   const allowed = new Set((list ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean));
@@ -13,7 +19,11 @@ export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
-    if (url.pathname === "/health") return new Response("ok");
+    const on = transports(env);
+    if (url.pathname === "/health") {
+      const active = Object.entries(on).filter(([, v]) => v).map(([k]) => k);
+      return active.length ? new Response(`ok ${active.join(",")}`) : new Response("no transport configured: set the WhatsApp or the Telegram secrets (SETUP.md)", { status: 503 });
+    }
 
     if (url.pathname === "/webhook") {
       if (request.method === "GET") {
@@ -27,6 +37,7 @@ export default {
         return new Response("forbidden", { status: 403 });
       }
       if (request.method === "POST") {
+        if (!on.whatsapp) return new Response("whatsapp not configured", { status: 404 });
         const raw = await request.text();
         const ok = await verifySignature(raw, request.headers.get("x-hub-signature-256"), env.WHATSAPP_APP_SECRET);
         if (!ok) return new Response("invalid signature", { status: 401 });
@@ -52,8 +63,8 @@ export default {
       }
     }
 
-    // Dark (404) until TELEGRAM_WEBHOOK_SECRET is set; Telegram sends the secret given to setWebhook in this header on every update.
-    if (url.pathname === "/telegram" && request.method === "POST" && env.TELEGRAM_WEBHOOK_SECRET) {
+    // Dark (404) until the bot token and the webhook secret are set; Telegram sends the secret given to setWebhook in this header on every update.
+    if (url.pathname === "/telegram" && request.method === "POST" && on.telegram) {
       if (request.headers.get("x-telegram-bot-api-secret-token") !== env.TELEGRAM_WEBHOOK_SECRET) return new Response("forbidden", { status: 403 });
       let body: unknown;
       try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }

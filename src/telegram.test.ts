@@ -167,7 +167,7 @@ function fakeEnv(allowed: string | undefined, secret = "s3cret") {
   const names: string[] = [];
   const ingested: Inbound[] = [];
   const env = {
-    TELEGRAM_WEBHOOK_SECRET: secret, ALLOWED_TELEGRAM: allowed,
+    TELEGRAM_BOT_TOKEN: "bot-token", TELEGRAM_WEBHOOK_SECRET: secret, ALLOWED_TELEGRAM: allowed,
     CONTACT: { getByName: (name: string) => { names.push(name); return { ingest: async (m: Inbound) => { ingested.push(m); } }; } },
   } as unknown as Env;
   return { env, names, ingested };
@@ -232,4 +232,11 @@ test("POST /telegram: a group update or an edit is ignored with 200", async () =
   expect((await post(f.env, { update_id: 5, edited_message: { message_id: 1, from: USER, chat: CHAT, date: 1, text: "x" } }, "s3cret")).status).toBe(200);
   expect(f.ingested).toEqual([]);
   expect(f.names).toEqual([]);
+});
+
+test("POST /telegram is 404 without the bot token even when the secret is set", async () => {
+  const f = fakeEnv("");
+  (f.env as unknown as Record<string, unknown>).TELEGRAM_BOT_TOKEN = "";
+  expect((await post(f.env, update({ text: "hi" }), "s3cret")).status).toBe(404);
+  expect(f.ingested).toEqual([]);
 });
