@@ -8,6 +8,8 @@ What was asked: [init.md](init.md). What was decided and why: [design](docs/supe
 
 ## What it does and how to text it
 
+Caveat: nothing has been exercised end to end from a phone yet (pending the owner's Meta setup), and no real-model eval has run; everything below is covered by offline tests with stub models only.
+
 - Replies like a person: it waits for a burst of messages to finish, then answers in short bubbles.
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
@@ -45,7 +47,7 @@ flowchart LR
 - `src/worker.ts` re-exports `src/index.ts` (verify signature, check allowlist, fan out to one Durable Object per contact) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
 - OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper. Browser Rendering: `/snapshot` for links.
-- Alarm loop: wait for the burst to end, run the turn, remember (extract facts), derive insights after 30 minutes of quiet, then check follow-ups.
+- Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups.
 
 ## Repo map
 
@@ -110,7 +112,7 @@ npm run eval -- --filter=forget                # scenarios whose name matches a 
 npm run eval:report                            # results -> EVALS.md
 ```
 
-Tests that run today (offline): `npm test` is 160 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts` is 32 tests in 2 files; `npx tsc --noEmit` is clean.
+Tests that run today (offline): `npm test` is 171 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts` is 34 tests in 2 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -119,7 +121,7 @@ These are the cheapest in each row by OpenRouter list price (2026-11-04). The co
 | Job | Default | Input / output per 1M tokens |
 |---|---|---|
 | Reply | `deepseek/deepseek-v4.1-flash` | $0.045 / $0.50 |
-| Vision (photos) | `openai/gpt-6.1-terra` | $1 / $5 |
+| Vision (photos) | the reply model when it accepts images (the default does); `openai/gpt-6.1-terra` only when the reply model is text-only | $1 / $5 for `openai/gpt-6.1-terra` |
 | Extract | `deepseek/deepseek-v4.1-flash` | $0.045 / $0.50 |
 | Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 |
 | Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 |
@@ -130,6 +132,7 @@ Calls to DeepSeek, Moonshot and Z.ai models exclude China- and Singapore-hosted 
 
 ```bash
 npm install
+npm run types      # generates worker-configuration.d.ts (git-ignored); needed before npx tsc --noEmit
 npm run dev        # wrangler dev, reads .dev.vars
 npm run deploy
 npm test

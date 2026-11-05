@@ -409,7 +409,7 @@ Short-term scenarios (7): `short-burst-of-three` (3 messages at +0/+1/+2 s; `exp
 - [x] **Step 1: Write the failing tests** (`evals/harness.test.ts`, stub LLM): `loadScenarios` parses a YAML string with every step kind including `quote` and `seed_facts`; `runScenario` on a 2-step scenario returns one probe with `answer === "ok"` and `expect_contains: ["ok"]` → `passed === true`; `fill: 3` inserts 6 rows with `status: "handled"` and advances the clock; `ask at +10 s does not call llm.object` (memory on, stub `object` hook counts calls → 0 because insights are 30 min out); `a counting embed passed to runScenario is called for a say step` (memory on); `evalConfig()` builds the tag.
 - [x] **Step 2: Run tests to verify they fail** → FAIL.
 - [x] **Step 3: Implement** harness extensions, `run.ts`, `judge.ts`, `report.ts`, `scenarios.test.ts`, the seven YAML files, a 20 KB JPEG fixture of one flat colour.
-- [x] **Step 4: Run** `npx vitest run evals/harness.test.ts` → PASS. With the keys: `npm run eval -- --filter=short` and `npm run eval:report`; EVALS.md shows the seven short-term results with non-zero `ttfbMs`.
+- [ ] **Step 4: Run** `npx vitest run evals/harness.test.ts` → PASS. With the keys: `npm run eval -- --filter=short` and `npm run eval:report`; EVALS.md shows the seven short-term results with non-zero `ttfbMs`. (pending: key)
 - [x] **Step 5: Commit** `git commit -am "feat: eval harness, judge, reporter and short-term scenarios"`
 
 ---
@@ -427,7 +427,7 @@ Short-term scenarios (7): `short-burst-of-three` (3 messages at +0/+1/+2 s; `exp
 - [x] **Step 1: Write the failing tests**: `toBase64(new Uint8Array([104,105]))==="aGk="` and a 70,000-byte buffer round-trips through `atob`; `embedViaRest` posts the documented body and returns normalised vectors (fake fetch `{result:{data:[[3,4]]}}` → `[0.6,0.8]`); `embedViaRest([])` returns `[]` without fetching; `rerankViaRest` maps `response:[{id:1,score:0.9},{id:0,score:0.2}]` to `[0.2,0.9]`; `contact.test.ts`: `voice note with failing transcribe leaves the marker and the stub prompt contains it`; `image on a text-only reply model switches to the vision model` (`models.reply = "z-ai/glm-5.2"`, stub records `modelId === "openai/gpt-6.1-terra"`); `oversized image gets the could-not-read text and no file part`.
 - [x] **Step 2: Run tests to verify they fail** → FAIL.
 - [x] **Step 3: Implement.** Wire real `embed`, `rerank`, `transcribe` in `makeDeps`; in `evals/harness.ts` `runScenario` uses `embedViaRest`/`rerankViaRest` when both env vars are set.
-- [x] **Step 4: Run tests, typecheck, deploy.** Send a photo and a voice note from the phone; `wrangler tail` shows the transcript in the turn log, never in the reply. Record whether Whisper accepted `audio/ogg; codecs=opus`.
+- [ ] **Step 4: Run tests, typecheck, deploy.** Send a photo and a voice note from the phone; `wrangler tail` shows the transcript in the turn log, never in the reply. Record whether Whisper accepted `audio/ogg; codecs=opus`. (pending: phone)
 - [x] **Step 5: Commit** `git commit -am "feat: images, voice notes and other message types"`
 
 ---
@@ -473,7 +473,7 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
   - `media_note is written to the image row`; `timezone "Europe/Lisbon" updates the contact row, "Mars/Olympus" is ignored`.
 - [x] **Step 2: Run tests to verify they fail** → FAIL.
 - [x] **Step 3: Implement** `memory.ts`; wire into `contact.ts` and `prompt.ts`; write the 10 YAML scenarios.
-- [x] **Step 4: Run unit tests, typecheck** → PASS. With the keys: `npm run eval -- --filter=long`, `--filter=judgement`, `--filter=forget`, `--filter=isolation`; then the baseline `npm run eval -- --no-memory`; `npm run eval:report`. Iterate on the extraction prompt until the judgement scenarios pass; record what changed in the commit body.
+- [ ] **Step 4: Run unit tests, typecheck** → PASS. With the keys: `npm run eval -- --filter=long`, `--filter=judgement`, `--filter=forget`, `--filter=isolation`; then the baseline `npm run eval -- --no-memory`; `npm run eval:report`. Iterate on the extraction prompt until the judgement scenarios pass; record what changed in the commit body. (pending: key)
 - [x] **Step 5: Deploy, commit, push** `git commit -am "feat: long-term memory with extraction, hybrid retrieval, profile and forget" && git push`
 
 ---
@@ -491,7 +491,7 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
 - [x] **Step 1: Write the failing tests**: `deriveInsights stores insights with confidence >= 0.5 and evidence ids` (stub returns 0.9 and 0.3 → one stored); `insight is removed when its evidence fact is superseded`; `recall labels insights as derived with confidence` (`MemoryHit.kind === "insight"`, prompt line contains `(derived, confidence 0.9)`); contact test: `insights alarm fires 30 min after the last message and not before` (`view.alarmAt === lastInbound + 30 min`; drain to +31 min → stub `object` called once; `view.alarmAt === null` afterwards).
 - [x] **Step 2: Run tests to verify they fail** → FAIL.
 - [x] **Step 3: Implement.** Scenarios, each `say A` → `say B` → next step `at: +31 min` → `fill: 45` → `expect_insights: { min: 1, evidence_count: 2 }` → `ask` (judged): `derived-almaty-birthday` (flight to Almaty on a date + sister's birthday two days later → "anything I should plan for that trip?"), `derived-lisbon-vegetarian`, `derived-early-flight-routine` ("I run every morning at 7" + "flight at 6am Friday" → "should I run Friday?"), `derived-allergy-dinner` ("allergic to peanuts" + "dinner at a Thai place Saturday" → "anything to watch out for Saturday?").
-- [x] **Step 4: Run tests; with the keys `npm run eval -- --filter=derived`.** Deploy.
+- [ ] **Step 4: Run tests; with the keys `npm run eval -- --filter=derived`.** Deploy. (pending: key)
 - [x] **Step 5: Commit** `git commit -am "feat: derived insights after 30 minutes of quiet"`
 
 ---
@@ -508,7 +508,7 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
 - [x] **Step 1: Write the failing tests**: `makeSnapshot posts the documented body and decodes the result` (fake fetch; `formats`, viewport; returns `{ success:true, result:{ screenshot: base64 of 3 bytes, markdown: "---\ntitle: X\n---\n# Hi" }, meta:{status:200,title:"X",finalUrl:"https://x/"} }` → `jpeg.length===3`, `markdown==="# Hi"`); `falls back to the request url when meta has no finalUrl`; `returns null on 429`; `extractUrls` finds two and ignores `ftp://`; contact tests: `URL at t, text at t+1 s: snapshot called once and the model gets the page text and a file part`; `view_page tool is attached only when the thread has a URL`; `an outbound bubble with a URL is sent with previewUrl`.
 - [x] **Step 2: Run tests to verify they fail** → FAIL.
 - [x] **Step 3: Implement.** Wire `snapshot` in `makeDeps` and in `runScenario` (real REST when `CLOUDFLARE_API_TOKEN` is set).
-- [x] **Step 4: Run tests, deploy, send a link from the phone; the reply talks about what the page shows.**
+- [ ] **Step 4: Run tests, deploy, send a link from the phone; the reply talks about what the page shows.** (pending: phone)
 - [x] **Step 5: Commit** `git commit -am "feat: web page snapshots and view_page tool"`
 
 ---
@@ -569,6 +569,6 @@ npm run eval:report
 - Modify: `src/index.ts`, `src/contact-agent.ts`, `src/env.d.ts` (remove `/__cpu` and `burn`), `SETUP.md` (point at the README's known limits), the plan (tick boxes)
 
 - [x] **Step 1: README.md** sections, in this order: what it does and how to text it (the test number, that reviewers must be added first, what to try: a burst of three, a photo, a voice note, a link, "what do you know about me", "forget …", come back tomorrow); architecture diagram (Mermaid: phone → Meta → Worker → ContactAgent DO → OpenRouter / Workers AI / Browser Rendering, with the alarm loop); repo map (one line per file from the File map); the eval results table copied from EVALS.md with a link; model picks with numbers and hosts; known limits (24 h window, test-number recipient list, Free-plan browser and AI quotas, 1,000 free messages/month, no voice replies, follow-ups skipped outside the window, timezone guessed from the phone until the person states it); what I'd build next (follow-ups outside the 24 h window via templates, voice replies); credits (mem0 prompts, Apache-2.0).
-- [x] **Step 2: Remove the CPU probe route and `burn`; `npm test && npx tsc --noEmit`; `npx wrangler deploy`; text the number once more.**
+- [ ] **Step 2: Remove the CPU probe route and `burn`; `npm test && npx tsc --noEmit`; `npx wrangler deploy`; text the number once more.** (pending: phone; everything before "text the number" ran)
 - [x] **Step 3: Commit and push** `git commit -am "docs: readme, remove probe route" && git push`
 - [x] **Step 4: Hand over**: the repo URL, the Worker URL, the SETUP.md steps still open on the owner's side (reviewer numbers), and the EVALS.md headline numbers.
