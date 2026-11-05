@@ -62,7 +62,7 @@ export function costUsd(id: string, u: { input: number; output: number; cached: 
 
 export type Effort = "low" | "medium" | "high";
 /** Per-job thinking, chosen 2026-11-05 evening after the no-thinking reply model proved careless about tools and its own history. REPLY_EFFORT overrides reply. */
-export const EFFORT: { reply: Effort; extract: Effort; derive: Effort; judge: Effort } = { reply: "medium", extract: "low", derive: "medium", judge: "medium" };
+export const EFFORT: { reply: Effort; extract: Effort; derive: Effort; judge: Effort } = { reply: "medium", extract: "medium", derive: "medium", judge: "medium" };
 
 export function maxOutputTokensFor(id: string, effort?: Effort): number {
   return spec(id).mandatoryThinking || effort !== undefined ? 2048 : 400; // thinking shares the output budget on most routes
