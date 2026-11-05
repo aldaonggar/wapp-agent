@@ -90,6 +90,10 @@ test("buildPrompt lists pending reminders in local time with their ids; the syst
   const dyn = buildPrompt({ ...base, reminders: [{ id: 3, text: "call the dentist", due_ts: Date.UTC(2026, 10, 5, 4, 0) }] }).system[1].content;
   expect(dyn).toContain("reminders (pending, local time):\n- 2026-11-05 09:00 call the dentist (id 3)");
   expect(buildPrompt({ ...base, reminders: [] }).system[1].content).not.toContain("reminders");
+  const many = buildPrompt({ ...base, reminders: Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `r${i + 1}`, due_ts: Date.UTC(2026, 10, 5, 4, i) })) }).system[1].content;
+  expect(many).toContain("r10 (id 10)\n- and 2 more");
+  expect(many).not.toContain("(id 11)");
   expect(SYSTEM_PROMPT).toContain("call set_reminder");
   expect(SYSTEM_PROMPT).toContain("cancel_reminder");
+  expect(SYSTEM_PROMPT).toContain("fix it and call again without mentioning it");
 });
