@@ -5,7 +5,7 @@ import { evalConfig, loadScenarios, runScenario, type Scenario, type ScenarioRes
 
 const env = process.env;
 const crashed = (sc: Scenario, detail: string): ScenarioResult =>
-  ({ name: sc.name, category: sc.category, probes: [], checks: [{ name: "crashed", passed: false, detail }], transcript: [], turns: [], costUsd: 0, costByJob: {}, passed: false });
+  ({ name: sc.name, category: sc.category, probes: [], checks: [{ name: "crashed", passed: false, detail }], transcript: [], turns: [], costUsd: 0, costByJob: {}, judgeCostUsd: 0, passed: false });
 
 describe.skipIf(!env.OPENROUTER_API_KEY || !env.CLOUDFLARE_API_TOKEN || !env.CLOUDFLARE_ACCOUNT_ID)("scenarios", () => {
   const cfg = evalConfig();

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Llm } from "../src/core/types";
+import type { Llm, Usage } from "../src/core/types";
 import { pickModels } from "../src/models";
 import type { ProbeResult } from "./harness";
 
@@ -22,14 +22,16 @@ junk: how many stored facts express none of the gold facts.`;
 
 const opts = { modelId: pickModels({}).judge, reasoning: { effort: "low" as const }, sessionId: "eval-judge" };
 
-export async function judge(llm: Llm, p: { question: string; gold: string; answer: string }): Promise<{ label: ProbeResult["label"]; reason: string }> {
+// Both return the call's usage: judge calls bypass the contacts' ledger, so the runner sums them itself.
+export async function judge(llm: Llm, p: { question: string; gold: string; answer: string }): Promise<{ label: ProbeResult["label"]; reason: string; usage: Usage }> {
   const content = `${p.question}\n\nGold: ${p.gold}\n\nReply: ${p.answer || "(no reply)"}`;
-  return (await llm.object({ ...opts, job: "judge", system: JUDGE, messages: [{ role: "user", content }], schema: Verdict })).value;
+  const { value, usage } = await llm.object({ ...opts, job: "judge", system: JUDGE, messages: [{ role: "user", content }], schema: Verdict });
+  return { ...value, usage };
 }
 
-export async function judgeFacts(llm: Llm, p: { gold: string[]; stored: string[] }): Promise<{ matched: number; junk: number }> {
+export async function judgeFacts(llm: Llm, p: { gold: string[]; stored: string[] }): Promise<{ matched: number; junk: number; usage: Usage }> {
   const list = (xs: string[]) => xs.map((x) => `- ${x}`).join("\n");
   const content = `Gold facts:\n${list(p.gold)}\n\nStored facts:\n${list(p.stored)}`;
-  const { value } = await llm.object({ ...opts, job: "judge", system: FACTS, messages: [{ role: "user", content }], schema: FactsVerdict });
-  return { matched: Math.min(value.matched, p.gold.length), junk: Math.min(value.junk, p.stored.length) }; // a count can't exceed its list
+  const { value, usage } = await llm.object({ ...opts, job: "judge", system: FACTS, messages: [{ role: "user", content }], schema: FactsVerdict });
+  return { matched: Math.min(value.matched, p.gold.length), junk: Math.min(value.junk, p.stored.length), usage }; // a count can't exceed its list
 }

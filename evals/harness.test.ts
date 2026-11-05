@@ -213,6 +213,22 @@ test("seed_facts embeds through the passed embed and the checks read the tables"
   expect(r.passed).toBe(false);
 });
 
+test("expect_facts_not_contains also reads the profile", async () => {
+  const llm = stubLlm({ object: () => ({ ops: [{ op: "ADD", text: "Has a sister", kind: "person", signal: 5 }], profile: "Sister: lives in Almaty" }) });
+  const r = await run([{ at: "+0s", say: "my sister lives in Almaty" }, { expect_facts_not_contains: ["Almaty"] }], llm, { ...cfg, memory: true });
+  expect(r.checks).toMatchObject([{ name: "expect_facts_not_contains", passed: false, detail: expect.stringContaining('"Almaty"') }]);
+});
+
+test("judge calls are summed into judgeCostUsd, apart from costUsd", async () => {
+  const stub = stubLlm({ object: (c) => (JSON.stringify(c.messages).includes("Gold facts") ? { matched: 1, junk: 0 } : { label: "correct", reason: "ok" }) });
+  const llm: Llm = { ...stub, object: async (c) => { const r = await stub.object(c); return { ...r, usage: { ...r.usage, costTable: 0.125 } }; } };
+  const r = await run([{ seed_facts: 1 }, { expect_facts: { count: 1, gold: ["Likes espresso"] } }, { at: "+0s", ask: "do I like coffee?", gold: "yes" }], llm);
+  expect(r.passed).toBe(true);
+  expect(r.judgeCostUsd).toBe(0.25);
+  expect(r.costUsd).toBe(0);
+  expect(r.probes[0]).not.toHaveProperty("usage");
+});
+
 test("costUsd sums the calls ledger", async () => {
   const stub = stubLlm();
   const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25 })) }; } };

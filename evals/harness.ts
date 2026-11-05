@@ -215,7 +215,8 @@ export type Step =
   | { expect_insights: { min: number; evidence_count?: number } };
 export interface Scenario { name: string; category: "short-term" | "long-term" | "derived" | "judgement" | "forget" | "isolation"; steps: Step[] }
 export interface ProbeResult { ask: string; gold: string; answer: string; label: "correct" | "partial" | "wrong" | "hallucinated"; reason: string; ttftMs?: number; ttfbMs?: number; totalMs?: number }
-export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; passed: boolean; at?: string }
+export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; judgeCostUsd: number; passed: boolean; at?: string }
+type Verdict = Pick<ProbeResult, "label" | "reason"> & { usage?: Usage };
 
 const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget", "isolation"];
 // Keys each step kind may carry besides its own; `at` and `contact` are accepted on every step.
@@ -344,7 +345,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
   };
 
   const probes: ProbeResult[] = [], checks: ScenarioResult["checks"] = [];
-  let lastAt = -Infinity, last = "a";
+  let lastAt = -Infinity, last = "a", judgeCostUsd = 0;
   for (const [i, step] of sc.steps.entries()) {
     const n = i + 1, m = step as MessageStep;
     if (m.at !== undefined) {
@@ -375,10 +376,11 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
         // The answer must come from recall, not from the always-present profile: some hit shown to the reply names each term.
         const recalled = (JSON.parse(turn?.recalled ?? "[]") as string[]).map((t) => t.toLowerCase());
         const missing = (step.expect_recalled ?? []).filter((x) => !recalled.some((t) => t.includes(x.toLowerCase())));
-        const verdict = step.max_turns !== undefined && turns > step.max_turns
+        const { usage, ...verdict }: Verdict = step.max_turns !== undefined && turns > step.max_turns
           ? { label: "wrong" as const, reason: `turns=${turns} > max_turns=${step.max_turns}` }
           : missing.length ? { label: "wrong" as const, reason: missing.map((x) => `not recalled: "${x}"`).join("; ") }
           : await score(realLlm, step, answer, context);
+        judgeCostUsd += usage?.costTable ?? 0;
         probes.push({ ask: step.ask, gold: step.gold, answer, ...verdict, ttftMs: turn?.ttft_ms ?? undefined, ttfbMs: turn?.ttfb_ms ?? undefined, totalMs: turn?.total_ms ?? undefined });
       }
       continue;
@@ -406,10 +408,11 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     } else if ("expect_facts" in step) {
       const { count, gold } = step.expect_facts;
       const stored = db.all<{ text: string }>("SELECT text FROM facts WHERE status='active' ORDER BY id").map((r) => r.text);
-      const { matched, junk } = stored.length ? await judgeFacts(realLlm, { gold, stored }) : { matched: 0, junk: 0 };
+      const { matched, junk, usage } = stored.length ? await judgeFacts(realLlm, { gold, stored }) : { matched: 0, junk: 0, usage: undefined };
+      judgeCostUsd += usage?.costTable ?? 0;
       checks.push({ name: "expect_facts", passed: stored.length === count && matched === gold.length && junk === 0, detail: `${stored.length} active facts (want ${count}), ${matched}/${gold.length} gold matched, ${junk} junk: ${stored.join(" | ")}` });
     } else if ("expect_facts_not_contains" in step) {
-      const texts = db.all<{ text: string }>("SELECT text FROM facts UNION ALL SELECT text FROM facts_fts UNION ALL SELECT text FROM insights").map((r) => r.text.toLowerCase());
+      const texts = db.all<{ text: string }>("SELECT text FROM facts UNION ALL SELECT text FROM facts_fts UNION ALL SELECT text FROM insights UNION ALL SELECT coalesce(text, '') FROM profile").map((r) => r.text.toLowerCase());
       const found = step.expect_facts_not_contains.filter((x) => texts.some((t) => t.includes(x.toLowerCase())));
       checks.push({ name: "expect_facts_not_contains", passed: found.length === 0, detail: found.length ? `stored text contains ${found.map((x) => `"${x}"`).join(", ")}` : `${texts.length} stored texts, none contain ${step.expect_facts_not_contains.join(", ")}` });
     } else if ("expect_insights" in step) {
@@ -427,14 +430,14 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
   for (const c of contacts.values())
     for (const r of c.deps.db.all<{ job: string; usage: string }>("SELECT job, usage FROM calls")) costByJob[r.job] = (costByJob[r.job] ?? 0) + (JSON.parse(r.usage) as Usage).costTable;
   return {
-    name: sc.name, category: sc.category, probes, checks, transcript, turns, costByJob,
+    name: sc.name, category: sc.category, probes, checks, transcript, turns, costByJob, judgeCostUsd,
     costUsd: Object.values(costByJob).reduce((a, b) => a + b, 0),
     passed: probes.every((p) => p.label === "correct") && checks.every((c) => c.passed),
   };
 }
 
 /** String checks when the step has them (no judge call), else the judge with the conversation leading up to the ask. */
-async function score(llm: Llm, s: { ask: string; gold: string; expect_contains?: string[]; expect_not_contains?: string[] }, answer: string, context: string[]): Promise<Pick<ProbeResult, "label" | "reason">> {
+async function score(llm: Llm, s: { ask: string; gold: string; expect_contains?: string[]; expect_not_contains?: string[] }, answer: string, context: string[]): Promise<Verdict> {
   if (!s.expect_contains && !s.expect_not_contains) return judge(llm, { question: `${context.join("\n")}\n\nQuestion: ${s.ask}`, gold: s.gold, answer });
   const a = answer.toLowerCase();
   const fails = [
