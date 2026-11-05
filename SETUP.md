@@ -75,6 +75,7 @@ curl "https://api.cloudflare.com/client/v4/user/tokens/verify" -H "Authorization
 2. https://openrouter.ai/settings/credits → **Add credits**. $10 covers the eval runs (under $5 with the default candidates) and demo traffic.
 3. https://openrouter.ai/settings/keys → **Create Key** → name `wapp-agent`, set a credit limit (for example $25) → copy (starts with `sk-or-v1-`) into `.dev.vars` as `OPENROUTER_API_KEY`.
 4. https://openrouter.ai/settings/privacy: leave "allow providers that may train on your data" **off** for both paid and free models. Leave ZDR enforcement **off** (it would route the Chinese-lab models to their own hosts in China and Singapore, which is the opposite of what we want; the code excludes those hosts itself).
+5. Same page, **Allowed providers**: on 2026-11-05 the account allowed only `google-vertex`, `openai` and `anthropic`. That serves `deepseek/deepseek-v4.1-flash` (Google Vertex) and every OpenAI and Anthropic model, but nothing serves `deepseek/deepseek-v4-pro`, `moonshotai/kimi-k2.6` or `z-ai/glm-5.2` (their hosts are DeepInfra, Parasail, Together, Baseten, Azure and others): a call to them fails with "No allowed providers are available for the selected model". Either add the hosts you accept from that list, or keep the restriction and treat those three models as unavailable (the README model table says which defaults were chosen under it).
 
 ## 6. Webhook (after Claude's first deploy; 3 minutes)
 

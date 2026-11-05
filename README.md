@@ -8,7 +8,7 @@ What was asked: [init.md](init.md). What was decided and why: [design](docs/supe
 
 ## What it does and how to text it
 
-Caveat: nothing has been exercised end to end from a phone yet (pending the owner's Meta setup), and no real-model eval has run; everything below is covered by offline tests with stub models only.
+Caveat: nothing has been exercised end to end from a phone yet (pending the owner's Meta setup). The real-model evals ran on 2026-11-05 (see [Evals](#evals)); everything else below is covered by offline tests with stub models.
 
 - Replies like a person: it waits for a burst of messages to finish, then answers in short bubbles.
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
@@ -97,13 +97,13 @@ Docs and config
 
 - [init.md](init.md): the original brief.
 - [SETUP.md](SETUP.md): owner's manual setup.
-- [EVALS.md](EVALS.md): generated eval report (currently "not run").
+- [EVALS.md](EVALS.md): generated eval report (real-model runs of 2026-11-05, every transcript included).
 - [docs/superpowers/specs/](docs/superpowers/specs): design. [plans/](docs/superpowers/plans): task plan. [research/](docs/superpowers/research): API notes.
 - [package.json](package.json), [tsconfig.json](tsconfig.json), [vitest.config.ts](vitest.config.ts), [wrangler.jsonc](wrangler.jsonc): config.
 
 ## Evals
 
-Built: a harness that replays scripted conversations with a fake clock, an LLM judge, 21 scenarios and a reporter. Not done: **no real-model run has happened.** It needs `OPENROUTER_API_KEY`, which is not available yet. [EVALS.md](EVALS.md) is generated in its "not run" state, so it has no numbers to quote.
+A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. Run on 2026-11-05 with the defaults below: **the agent passes 19/21 scenarios, the same agent with memory off 9/21** (short-term 6/7 vs 5/7, long-term 6/6 vs 2/6, derived 3/4 vs 0/4, judgement 2/2 vs 0/2, forget 1/1 vs 1/1, isolation 1/1 vs 1/1). The two failures: the reply model calls the fixture photo blank under the production system prompt (`short-photo-then-question`, see Known limits), and in `derived-almaty-birthday` the reply asks for a landing date it has in memory. Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. Full tables, per-candidate numbers and every transcript: [EVALS.md](EVALS.md). A full 21-scenario run takes 7 to 15 minutes and costs $0.15 to $0.30 of OpenRouter credit, most of it the judge.
 
 The 21 scenarios by category: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1.
 
@@ -121,19 +121,19 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 175 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 35 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 176 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 37 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
-These are the cheapest in each row by OpenRouter list price (2026-11-04). The comparison that would confirm them has not run, so treat them as unproven defaults. Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`.
+Measured on 2026-11-05 ([EVALS.md](EVALS.md); each candidate ran once or twice, so a one-scenario gap is within run-to-run variance). Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. The owner's OpenRouter account permits only the providers `google-vertex`, `openai` and `anthropic` ([SETUP.md section 5](SETUP.md)), so `deepseek/deepseek-v4-pro`, `moonshotai/kimi-k2.6` and `z-ai/glm-5.2` cannot be served at all (every call fails with "No allowed providers are available for the selected model"); they stay listed as candidates for when that list is widened.
 
-| Job | Default | Input / output per 1M tokens |
-|---|---|---|
-| Reply | `deepseek/deepseek-v4.1-flash` | $0.045 / $0.50 |
-| Vision (photos) | the reply model when it accepts images (the default does); `openai/gpt-6.1-terra` only when the reply model is text-only | $1 / $5 for `openai/gpt-6.1-terra` |
-| Extract | `deepseek/deepseek-v4.1-flash` | $0.045 / $0.50 |
-| Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 |
-| Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 |
+| Job | Default | Input / output per 1M tokens | Measured |
+|---|---|---|---|
+| Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | 6/7 short-term. The only reply candidate the account can serve, so unproven against kimi and GLM. Medium effort changed nothing (5/7, same two failures) |
+| Vision (photos) | the reply model when it accepts images (the default does); `openai/gpt-6.1-terra` only when the reply model is text-only | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. The photo scenario fails 0/4 with the reply model, which calls a plain red JPEG blank under the production prompt; `gpt-6.1-terra` answered "red" 2/2 in direct calls with the same prompt (see Known limits) |
+| Extract | `anthropic/claude-haiku-5.5` (was `deepseek/deepseek-v4.1-flash`) | $0.10 / $0.50 | 8/8 on long-term + judgement in both of its runs, no extraction call timed out. `deepseek-v4.1-flash` 7/8 then 8/8, but its extraction call timed out (60 s, fact lost) six times across the matrix, three of them in that 8/8 run on turns that happened to carry no fact; `openai/gpt-6-luna` 7/8 then 8/8 at the same list price as haiku. A three-way tie on the final table, broken by reliability. Haiku's calls cost $0.39 per 1,000 turns against $0.06 to $0.10, because `llm.object()` sets no Anthropic cache control (a one-line fix) |
+| Derive insights | `openai/gpt-6.1-sol` (was `deepseek/deepseek-v4-pro`) | $2 / $10 | 3/4 on derived. `anthropic/claude-sonnet-5.5` 3/4 at the same list price (incumbent kept); `deepseek-v4-pro` 0/4, no permitted host, so no insight had ever been derived under the old default |
+| Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 | about $0.05 of table cost per full run |
 
 Calls to DeepSeek, Moonshot and Z.ai models exclude China- and Singapore-hosted providers (`CHINA_HOSTS` in `src/models.ts`). The host that served each call is logged.
 
@@ -158,7 +158,10 @@ npm run eval
 - Meta's free tier is 1,000 delivered service messages per month per number. No payment method is on file. The status webhook's `pricing.type` flip is logged.
 - No voice replies.
 - Timezone is guessed from the phone's country code until the person says where they are.
-- The model comparison has not run (see Evals).
+- Photos: under the production system prompt the reply model (`deepseek-v4.1-flash` on Google Vertex) says a plain red test image is blank (0/4 in the evals; "Red" 4/4 with a one-line system prompt; `gpt-6.1-terra` 2/2 under the full prompt). Until that is fixed, expect photo questions to be answered badly.
+- The reply comparison is unproven: kimi-k2.6 and GLM-5.2 cannot be served under the account's OpenRouter allowed-providers list, so the reply default is the only candidate measured (see Model picks).
+- The reply model sometimes copies the history's `[2026-11-04 10:02]` time prefix into its own bubble (about one bubble in ten in the evals), and once asked for a date it had in memory.
+- An extraction call that times out (60 s) loses that turn's facts for good; seen twice with `deepseek-v4.1-flash` as extractor, not yet with haiku.
 - Follow-ups never retry.
 - The extractor sees only the current turn.
 
@@ -166,7 +169,9 @@ npm run eval
 
 - Follow-ups outside the 24-hour window, using approved message templates.
 - Voice replies.
-- Run the model comparison once the OpenRouter key exists, then set the defaults from the results.
+- Widen the OpenRouter allowed-providers list (or drop the three unservable models), then run the reply comparison: `npm run eval -- --reply=moonshotai/kimi-k2.6 --filter=short`, the same for `z-ai/glm-5.2`, and `--derive=deepseek/deepseek-v4-pro --filter=derived`.
+- Route photo turns to the vision model (`vision: false` for the reply model in `src/models.ts`) or fix the prompt, then rerun `npm run eval -- --filter=short-photo`.
+- Strip a leaked time prefix in `parseReply`; retry an extraction that timed out; set Anthropic cache control on `llm.object()` calls.
 
 ## Credits
 
