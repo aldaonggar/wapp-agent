@@ -87,7 +87,7 @@ export function makeSearch(cfg: { apiKey: string; fetch?: typeof fetch; timeoutM
           model: SEARCH_MODEL, max_tokens: 120, reasoning: { effort: "none" }, plugins: [{ id: "web", engine: "exa", max_results: RESULTS }], provider: { ignore: CHINA_HOSTS },
           messages: [{ role: "user", content: `List the three most relevant current sources for: ${query}` }],
         }),
-        signal: AbortSignal.timeout(cfg.timeoutMs ?? 8000),
+        signal: AbortSignal.timeout(cfg.timeoutMs ?? 10_000),
       });
       if (!res.ok) {
         log({ event: "search_failed", status: res.status });
