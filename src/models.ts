@@ -64,6 +64,11 @@ export function maxOutputTokensFor(id: string, effort?: "low" | "medium" | "high
   return spec(id).mandatoryThinking || effort === "medium" || effort === "high" ? 2048 : 400;
 }
 
+/** REPLY_EFFORT var -> reply reasoning effort; anything else means the model's cheapest setting. */
+export function replyEffortFrom(v: string | undefined): "low" | "medium" | "high" | undefined {
+  return v === "low" || v === "medium" || v === "high" ? v : undefined;
+}
+
 export function reasoningFor(id: string, effort?: "low" | "medium" | "high"): ReasoningSetting {
   return effort ? { effort } : spec(id).lowest;
 }

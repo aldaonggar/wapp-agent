@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costUsd, maxOutputTokensFor, pickModels, reasoningFor, replyModelFor } from "./models";
+import { costUsd, maxOutputTokensFor, pickModels, reasoningFor, replyEffortFrom, replyModelFor } from "./models";
 
 describe("models", () => {
   it("costUsd splits cached input", () => {
@@ -21,4 +21,13 @@ describe("models", () => {
     expect(replyModelFor(c, true)).toBe("openai/gpt-6.1-terra");
     expect(replyModelFor(c, false)).toBe("z-ai/glm-5.2");
   });
+});
+
+it("REPLY_EFFORT accepts low, medium, high and nothing else", () => {
+  expect(replyEffortFrom("low")).toBe("low");
+  expect(replyEffortFrom("medium")).toBe("medium");
+  expect(replyEffortFrom("high")).toBe("high");
+  expect(replyEffortFrom("none")).toBeUndefined();
+  expect(replyEffortFrom("")).toBeUndefined();
+  expect(replyEffortFrom(undefined)).toBeUndefined();
 });
