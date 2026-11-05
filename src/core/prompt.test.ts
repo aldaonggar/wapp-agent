@@ -47,6 +47,15 @@ test("buildPrompt orders system blocks, stamps history and attaches pending medi
   expect(parts.filter((p) => p.type === "file")).toEqual([{ type: "file", mediaType: "image/jpeg", data: jpeg }]);
 });
 
+test("buildPrompt adds the first-contact introduction line only while the history window is empty", () => {
+  const base = { profile: "", memories: [], nowLocal: "2026-11-04 14:05", tz: "UTC", tzConfirmed: false, snapshots: [], pending: [{ id: "a", direction: "in" as const, text: "Hi, I just pressed Start.", ts: T, kind: "text", alias: "#1" }] };
+  const first = buildPrompt({ ...base, history: [] }).system[1].content;
+  expect(first).toContain("first contact: nothing has been said before. Before anything else, introduce yourself in one short bubble");
+  expect(first).toContain("set reminders at a time they name, read photos, listen to voice notes, read links they send, and forget anything on request");
+  expect(first).toContain("Two short bubbles at most.");
+  expect(buildPrompt({ ...base, history: [row(0)] }).system[1].content).not.toContain("first contact:");
+});
+
 test("buildPrompt renders the agent's own reaction as (you reacted …)", () => {
   const { messages } = buildPrompt({
     profile: "", memories: [], nowLocal: "2026-11-04 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [],
@@ -82,18 +91,22 @@ test("buildPrompt renders every memory status and adds the control sentences onl
   expect(on).toContain("call the forget tool");
   expect(on).toMatch(/confirm in one line/);
   expect(on).toContain("Something they asked you to forget may still appear in the conversation above; never use or mention it again.");
-  expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget|know about them/);
+  expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget tool|know about them/); // the first-contact line may say "forget"
 });
 
 test("buildPrompt lists pending reminders in local time with their ids; the system prompt names the tools", () => {
   const base = { profile: "", memories: [], history: [], pending: [], nowLocal: "2026-11-04 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [] };
   const dyn = buildPrompt({ ...base, reminders: [{ id: 3, text: "call the dentist", due_ts: Date.UTC(2026, 10, 5, 4, 0) }] }).system[1].content;
   expect(dyn).toContain("reminders (pending, local time):\n- 2026-11-05 09:00 call the dentist (id 3)");
-  expect(buildPrompt({ ...base, reminders: [] }).system[1].content).not.toContain("reminders");
+  expect(buildPrompt({ ...base, reminders: [] }).system[1].content).not.toContain("reminders (pending");
   const many = buildPrompt({ ...base, reminders: Array.from({ length: 12 }, (_, i) => ({ id: i + 1, text: `r${i + 1}`, due_ts: Date.UTC(2026, 10, 5, 4, i) })) }).system[1].content;
   expect(many).toContain("r10 (id 10)\n- and 2 more");
   expect(many).not.toContain("(id 11)");
   expect(SYSTEM_PROMPT).toContain("call set_reminder");
   expect(SYSTEM_PROMPT).toContain("cancel_reminder");
   expect(SYSTEM_PROMPT).toContain("fix it and call again without mentioning it");
+  expect(SYSTEM_PROMPT).toContain("such as WhatsApp or Telegram"); // one prompt for both transports; markdown emphasis shows literally on Telegram
+  expect(SYSTEM_PROMPT).not.toMatch(/on WhatsApp|only rarely/);
+  expect(SYSTEM_PROMPT).toContain("never write a timestamp, a bracketed time or a date prefix");
+  expect(SYSTEM_PROMPT).toContain("Never an em dash or en dash");
 });

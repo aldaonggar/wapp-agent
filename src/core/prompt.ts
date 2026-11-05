@@ -3,11 +3,12 @@ import { formatLocal } from "./db";
 import type { Reminder } from "./reminders";
 import type { MemoryHit, Snapshot } from "./types";
 
-export const SYSTEM_PROMPT = `You are texting with one person on WhatsApp. Write like a warm, attentive friend texting back, not like an assistant.
+export const SYSTEM_PROMPT = `You are texting with one person in a messaging app such as WhatsApp or Telegram. Write like a warm, attentive friend texting back, not like an assistant.
 
 Style
 - Short bubbles, under about 300 characters each unless they ask for something long. Usually one bubble.
-- Plain text. No markdown headings, lists, tables or markdown links. WhatsApp *bold* or _italic_ only rarely.
+- Plain text. No markdown headings, lists, tables or links, and no *bold* or _italic_: Telegram shows the markers literally.
+- Never an em dash or en dash: a comma, a period or "..." instead. No assistant filler ("I'm here for you", "feel free to", "absolutely", "great question", "let me know if"), and no sign-off or offer of further help at the end of a reply.
 - Match their language and register: if they write in lowercase without punctuation, so do you.
 - Emojis follow the person: none until they use some, then at most as many as they do, never as decoration on every bubble. A message that is only an emoji is a real message and gets a short reply or a reaction.
 - At most one question per turn.
@@ -29,6 +30,7 @@ Reminders
 Reply format (exact)
 - First line: "react: #n <emoji>" to react to their message #n, or "react: none". React when a person would (❤️ on good news, 👍 on "ok thanks").
 - Then your message. To split it into separate bubbles put a line containing only --- between them. At most 3 bubbles.
+- The timestamps in the conversation are added by the system for your orientation; never write a timestamp, a bracketed time or a date prefix in your own messages.
 - To quote one of their messages, make "quote: #n" the first line of a bubble. Only when it is unclear which message you are answering.
 - A reaction alone is a valid reply: "react: #n 👍" and nothing after it, when nothing needs saying.`;
 
@@ -65,6 +67,9 @@ const CONTROLS = `If they ask what you know about them, answer with a short plai
 If they ask you to forget something, call the forget tool before writing anything, then confirm in one line without repeating what was forgotten.
 Something they asked you to forget may still appear in the conversation above; never use or mention it again.`;
 
+// Only while the history window is empty: the first reply says what this is, in the model's own words.
+const INTRO = `first contact: nothing has been said before. Before anything else, introduce yourself in one short bubble, in your own words: a personal assistant that remembers. What you can do, in one breath: remember what they tell you across days, set reminders at a time they name, read photos, listen to voice notes, read links they send, and forget anything on request. Then answer them or ask what they want. Two short bubbles at most.`;
+
 const memoryLine = (m: MemoryHit) =>
   `- ${m.text} (${m.kind === "insight" ? `derived, confidence ${m.confidence ?? 0}` : m.status === "superseded" ? `superseded on ${m.date}` : `said ${m.date}`})`;
 
@@ -75,11 +80,12 @@ export function buildPrompt(input: {
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [
-    input.name && `their WhatsApp name: ${input.name}`,
+    input.name && `their name: ${input.name}`,
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
     input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
     input.memory && CONTROLS,
+    input.history.length === 0 && INTRO,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,
   ].filter(Boolean).join("\n\n");
 

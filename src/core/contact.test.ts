@@ -1,5 +1,6 @@
 import { expect, test, vi } from "vitest";
 import { FakeClock, FakeWa, drain, hashEmbed, makeEvalDeps, stubLlm } from "../../evals/harness";
+import { routeTransports } from "../telegram";
 import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
 import { ContactCore } from "./contact";
@@ -78,7 +79,7 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
   expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
-  expect(t.llm.calls[0].system[1].content).not.toContain("forget");
+  expect(t.llm.calls[0].system[1].content).not.toContain("forget tool"); // memory off: no control sentences (the first-contact line may say "forget")
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["hi", "sent"], ["second", "sent"]]);
   const turns = t.turns();
@@ -868,14 +869,14 @@ test("a reminder and a follow-up due the same day each fire once at their own ti
   expect(t.view.alarmAt).toBeNull();
 });
 
-test("a reminder due more than 24 h after their last message is skipped and logged without the text, not sent", async () => {
+test("a reminder due more than 24 h after their last message is skipped and logged without the text, not sent; set_reminder warned about the window", async () => {
   const t = setup({ reply: remind("water the plants", "2026-11-06 09:00") });
   t.clock.t = ny("2026-11-04 10:00");
   const log = vi.fn();
   t.deps.log = log;
   await t.say("remind me the day after tomorrow at 9 to water the plants");
   await t.run(ny("2026-11-06 09:00"));
-  expect(texts(t)).toHaveLength(1);
+  expect(texts(t).map((s) => s.body)).toEqual(['{"id":1,"at":"2026-11-06 09:00","note":"on WhatsApp this will only arrive if you message me within the 24 hours before it"}']);
   expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "skipped" }]);
   expect(log).toHaveBeenCalledWith({ event: "reminder_skipped", reason: "window", id: 1 });
   expect(JSON.stringify(log.mock.calls)).not.toContain("plants");
@@ -899,4 +900,34 @@ test("pending reminders are listed in the prompt in local time; cancel_reminder 
   expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "cancelled" }]);
   expect(t.state().reminder_due).toBeNull();
   expect(t.view.alarmAt).toBeNull();
+});
+
+// Telegram has no 24-hour window: the router asks the Telegram client (window24h false), so timers send and set_reminder adds no note.
+const TG = { id: "tg:123456789:1", from: "tg:123456789" };
+const onTelegram = (t: ReturnType<typeof setup>) => { const tg = new FakeWa(t.clock); tg.window24h = () => false; t.deps.wa = routeTransports(t.wa, tg); return tg; };
+const utc = (s: string) => Date.parse(s.replace(" ", "T") + ":00Z");
+
+test("a reminder due after 47 h of silence fires on a Telegram contact, and set_reminder returns no window note there", async () => {
+  const t = setup({ reply: remind("water the plants", "2026-11-06 09:00") });
+  const tg = onTelegram(t);
+  t.clock.t = utc("2026-11-04 10:00"); // a tg: contact starts in UTC
+  await t.say("remind me the day after tomorrow at 9 to water the plants", TG);
+  await t.run(utc("2026-11-06 09:00"));
+  expect(tg.sent.filter((s) => s.kind === "text").map((s) => [s.body, s.at])).toEqual([['{"id":1,"at":"2026-11-06 09:00"}', utc("2026-11-04 10:00") + 3000], ["Reminder: water the plants", utc("2026-11-06 09:00")]]);
+  expect(t.wa.sent).toEqual([]);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a follow-up due after 25 h of silence fires on a Telegram contact and is skipped on a WhatsApp contact", async () => {
+  for (const telegram of [true, false]) {
+    const t = followupT(["2026-11-05 14:00"]); // 10:00 New York = 15:00 UTC; the plan resolves in the contact's zone
+    const out = telegram ? onTelegram(t) : t.wa;
+    await t.say("interview tomorrow at two", telegram ? TG : {});
+    await t.run(t.clock.t + 60_000);
+    await t.run(ny("2026-11-05 16:00") + 1);
+    expect(out.sent.filter((s) => s.kind === "text").map((s) => s.body), `telegram=${telegram}`).toEqual(telegram ? ["ok", "how did it go?"] : ["ok"]);
+    expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
+    expect(t.view.alarmAt).toBeNull();
+  }
 });

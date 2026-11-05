@@ -6,7 +6,7 @@ import type { ProbeResult } from "./harness";
 const Verdict = z.object({ label: z.enum(["correct", "partial", "wrong", "hallucinated"]), reason: z.string() });
 const FactsVerdict = z.object({ matched: z.number().int().min(0), junk: z.number().int().min(0) });
 
-const JUDGE = `You grade one reply from a WhatsApp chat companion against a gold answer.
+const JUDGE = `You grade one reply from a chat companion against a gold answer.
 You get the conversation leading up to the question (it may be empty), the question, the gold answer and the reply.
 The gold is either the fact the reply must convey or the behaviour it must show (for example "says it doesn't know").
 Labels:

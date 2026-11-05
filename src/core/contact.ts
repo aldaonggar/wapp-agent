@@ -22,7 +22,7 @@ interface State { turn_due: number | null; insights_due: number | null; followup
 const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
 const VOICE_FAILED = "[voice note could not be transcribed]";
 const INSIGHTS_AFTER_MS = 30 * 60_000;
-const DAY = 86_400_000; // WhatsApp's free-form window after their last message
+const DAY = 86_400_000; // Meta's free-form window after their last message; applied only when window24h() says so
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
@@ -58,16 +58,20 @@ export class ContactCore {
   });
 
   private setReminderTool = tool({
-    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns. Set relative when they spoke in a duration.",
+    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns, relaying its note when there is one. Set relative when they spoke in a duration.",
     inputSchema: z.object({
       text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"),
       at: z.string().describe("their local time as YYYY-MM-DD HH:mm"),
       relative: z.boolean().optional().describe("true when they gave a duration (\"in 20 minutes\", \"in 2 hours\") rather than a clock time or a day"),
     }),
     execute: async ({ text, at, relative }) => {
-      const r = addReminder(this.deps.db, this.deps.clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null, relative);
+      const { db, clock } = this.deps;
+      const r = addReminder(db, clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null, relative);
       await this.scheduleNext();
-      return r;
+      // reminderTimer's own test, seen from now: past Meta's window from their last message it only arrives if they write again first.
+      const lastIn = db.all<{ last_inbound_ts: number | null }>("SELECT last_inbound_ts FROM contact")[0]?.last_inbound_ts ?? 0;
+      const far = "id" in r && this.window24h() && db.all<{ due_ts: number }>("SELECT due_ts FROM reminders WHERE id = ?", r.id)[0].due_ts > lastIn + DAY;
+      return far ? { ...r, note: "on WhatsApp this will only arrive if you message me within the 24 hours before it" } : r;
     },
   });
 
@@ -365,7 +369,7 @@ export class ContactCore {
     };
     try {
       tz = this.tz();
-      const d = followupDecision(db, now, tz, factId);
+      const d = followupDecision(db, now, tz, factId, this.window24h());
       if (d.kind === "defer") {
         db.run("UPDATE facts SET followup_due = ? WHERE id = ?", d.to, factId);
         db.run("UPDATE state SET followup_due = ?", d.to);
@@ -399,8 +403,9 @@ export class ContactCore {
     const { db, clock } = this.deps;
     try {
       const c = db.all<{ wa_id: string; last_inbound_ts: number | null }>("SELECT wa_id, last_inbound_ts FROM contact")[0];
+      const windowed = this.window24h();
       for (const r of pendingReminders(db).filter((r) => r.due_ts <= now)) {
-        const inWindow = now - (c?.last_inbound_ts ?? 0) <= DAY;
+        const inWindow = !windowed || now - (c?.last_inbound_ts ?? 0) <= DAY;
         db.run("UPDATE reminders SET status=? WHERE id=?", inWindow ? "sent" : "skipped", r.id);
         if (!inWindow) { this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id }); continue; }
         const text = `Reminder: ${r.text}`;
@@ -454,6 +459,9 @@ export class ContactCore {
   private state(): State { return this.deps.db.all<State>("SELECT * FROM state")[0]; }
 
   private tz(): string { return this.deps.db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC"; }
+
+  /** Meta's 24-hour free-form window applies unless the transport says otherwise (Telegram has none). */
+  private window24h(): boolean { return this.deps.wa.window24h?.(this.deps.db.all<{ wa_id: string }>("SELECT wa_id FROM contact")[0]?.wa_id ?? "") !== false; }
 
   private pending(): Msg[] {
     return this.deps.db.all<Msg>("SELECT * FROM messages WHERE direction='in' AND status='pending' ORDER BY ts, rowid");

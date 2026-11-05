@@ -192,6 +192,7 @@ export function makeWaClient(cfg: {
       if (opts?.quote) payload.context = { message_id: opts.quote };
       return send(payload);
     },
+    window24h: () => true,
     async sendReaction(to, messageId, emoji) {
       await post({
         recipient_type: "individual",

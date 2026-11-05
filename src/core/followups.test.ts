@@ -52,24 +52,29 @@ test("followupDecision table", () => {
   const db = fresh();
   const id = plan(db, "2026-11-04 10:00");
   db.run("INSERT INTO contact(id, wa_id, timezone, last_inbound_ts) VALUES (1, 'x', ?, ?)", TZ, at("2026-11-04 10:00"));
-  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id)).toEqual({ kind: "send", factId: id, text: "Interview" });
-  expect(followupDecision(db, at("2026-11-04 23:30"), TZ, id)).toEqual({ kind: "defer", to: at("2026-11-05 09:00") });
-  expect(followupDecision(db, at("2026-11-04 10:00") + 30 * H, TZ, id)).toEqual({ kind: "skip", reason: "window" });
+  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id, true)).toEqual({ kind: "send", factId: id, text: "Interview" });
+  expect(followupDecision(db, at("2026-11-04 23:30"), TZ, id, true)).toEqual({ kind: "defer", to: at("2026-11-05 09:00") });
+  expect(followupDecision(db, at("2026-11-04 10:00") + 30 * H, TZ, id, true)).toEqual({ kind: "skip", reason: "window" });
+  expect(followupDecision(db, at("2026-11-04 10:00") + 30 * H, TZ, id, false)).toEqual({ kind: "send", factId: id, text: "Interview" }); // Telegram: no window
+  db.run("UPDATE contact SET last_inbound_ts = ?", at("2026-11-04 08:00")); // quiet hours, and 09:00 tomorrow is past the window
+  expect(followupDecision(db, at("2026-11-04 23:30"), TZ, id, true)).toEqual({ kind: "skip", reason: "window" });
+  expect(followupDecision(db, at("2026-11-04 23:30"), TZ, id, false)).toEqual({ kind: "defer", to: at("2026-11-05 09:00") });
+  db.run("UPDATE contact SET last_inbound_ts = ?", at("2026-11-04 10:00"));
   db.run("UPDATE contact SET last_proactive_date = '2026-11-04'");
-  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id)).toEqual({ kind: "defer", to: at("2026-11-05 09:00") });
+  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id, true)).toEqual({ kind: "defer", to: at("2026-11-05 09:00") });
   db.run("UPDATE contact SET last_proactive_date = NULL");
   db.run("INSERT INTO messages(id, direction, kind, text, ts) VALUES ('m', 'in', 'text', 'hi', ?)", at("2026-11-04 10:01"));
-  expect(followupDecision(db, at("2026-11-04 10:30"), TZ, id)).toEqual({ kind: "skip", reason: "messaged" });
-  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, null)).toEqual({ kind: "skip", reason: "no-fact" });
+  expect(followupDecision(db, at("2026-11-04 10:30"), TZ, id, true)).toEqual({ kind: "skip", reason: "messaged" });
+  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, null, true)).toEqual({ kind: "skip", reason: "no-fact" });
   db.run("UPDATE facts SET status = 'deleted' WHERE id = ?", id);
-  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id)).toEqual({ kind: "skip", reason: "no-fact" });
+  expect(followupDecision(db, at("2026-11-04 10:00"), TZ, id, true)).toEqual({ kind: "skip", reason: "no-fact" });
 });
 
 test("quiet hours before 09:00 defer to today 09:00", () => {
   const db = fresh();
   const id = plan(db, "2026-11-03 20:00");
   db.run("INSERT INTO contact(id, wa_id, timezone, last_inbound_ts) VALUES (1, 'x', ?, ?)", TZ, at("2026-11-03 19:00"));
-  expect(followupDecision(db, at("2026-11-04 07:00"), TZ, id)).toEqual({ kind: "defer", to: at("2026-11-04 09:00") });
+  expect(followupDecision(db, at("2026-11-04 07:00"), TZ, id, true)).toEqual({ kind: "defer", to: at("2026-11-04 09:00") });
 });
 
 test("localToUtc at the real DST edges", () => {
