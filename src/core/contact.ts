@@ -5,6 +5,7 @@ import { maxOutputTokensFor, reasoningFor, replyModelFor } from "../models";
 import { WaError } from "../whatsapp";
 import { MAX_WAIT_MS, QUIET_MS, UNFINISHED_MS, bubblePauseMs, looksUnfinished, turnDue } from "./cadence";
 import { formatLocal } from "./db";
+import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
@@ -15,7 +16,7 @@ import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
 type Media = { bytes: Uint8Array; mime: string };
 type Recall = { hits: MemoryHit[]; ms: number };
 interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null }
-interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
+interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
 
 const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
 const VOICE_FAILED = "[voice note could not be transcribed]";
@@ -103,7 +104,7 @@ export class ContactCore {
       if (insightsDue && this.deps.features.memory) {
         try { await deriveInsights(this.deps, hash(db.all<{ wa_id: string }>("SELECT wa_id FROM contact")[0]?.wa_id ?? "")); } catch (e) { this.error("insights_failed", e); }
       }
-      // Task 12: followupDue → send, defer or skip the follow-up, in its own try/catch.
+      if (followupDue) await this.followupTimer(now, s.followup_fact_id);
     } catch (e) {
       this.error("alarm_failed", e);
     } finally {
@@ -281,7 +282,56 @@ export class ContactCore {
         this.error("remember_failed", e);
       }
     }
-    // Task 12: scheduleFollowup().
+    scheduleFollowup(db, clock.now(), tz);
+  }
+
+  // Timer 3 (followup_due is already NULL). Never retries a proactive message: send and skip both mark the fact done.
+  private async followupTimer(now: number, factId: number | null): Promise<void> {
+    const { db, clock } = this.deps;
+    const done = () => db.run("UPDATE facts SET followup_done = 1 WHERE id = ?", factId);
+    const tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
+    try {
+      const d = followupDecision(db, now, tz);
+      if (d.kind === "defer") db.run("UPDATE state SET followup_due = ?", d.to);
+      else {
+        done();
+        db.run("UPDATE state SET followup_fact_id = NULL");
+        if (d.kind === "send") await this.sendFollowup(d.text, tz, now);
+      }
+    } catch (e) {
+      this.error("followup_failed", e);
+      done();
+      db.run("UPDATE state SET followup_fact_id = NULL");
+    } finally {
+      scheduleFollowup(db, clock.now(), tz);
+    }
+  }
+
+  private async sendFollowup(factText: string, tz: string, now: number): Promise<void> {
+    const { db, clock, wa, llm, models, features } = this.deps;
+    const contact = db.all<{ wa_id: string; name: string | null; timezone_confirmed: number }>("SELECT * FROM contact")[0];
+    const prompt = buildPrompt({
+      profile: features.memory ? memory.profileText(db) : "", memories: [], history: windowHistory(this.historyRows()), pending: [], snapshots: [], memory: features.memory,
+      nowLocal: formatLocal(now, tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
+    });
+    const last = prompt.system[1];
+    const system = [prompt.system[0], { ...last, content: `${last.content}\n\nWrite one short check-in about this plan, in the person's language and register: "${factText}". No reaction line. One bubble, at most two sentences, one question at most.` }];
+    const { text, done } = llm.stream({
+      job: "followup", modelId: models.reply, maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort), reasoning: reasoningFor(models.reply, features.replyEffort),
+      sessionId: hash(contact.wa_id), system, messages: prompt.messages,
+    });
+    for await (const ev of parseReply(text, 1)) {
+      if (ev.type === "react") continue;
+      let wamid: string | null = null;
+      try {
+        wamid = (await wa.sendText(contact.wa_id, ev.text, { previewUrl: /https?:\/\//.test(ev.text) })).id;
+      } catch (e) {
+        this.error("send_failed", e, { kind: "text" });
+      }
+      db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, ev.text, clock.now(), wamid === null ? "failed" : "sent");
+      if (wamid) db.run("UPDATE contact SET last_proactive_date = ?", formatLocal(now, tz).slice(0, 10));
+    }
+    await done;
   }
 
   // reactions JSON on a message row: { [sender]: emoji }; "me" is the agent; no emoji removes it.

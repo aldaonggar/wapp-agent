@@ -468,3 +468,64 @@ test("view_page is attached when the URL is in one of the last 5 handled rows, n
     expect(!!t.llm.calls.at(-1)!.tools?.view_page).toBe(attached);
   }
 });
+
+// Follow-ups: the plan is stored by remember() from a real turn; times below are New York (EST) local.
+const ny = (s: string) => Date.parse(s.replace(" ", "T") + ":00-05:00");
+const planOps = (...dates: string[]) => (c: ObjectCall<unknown>) =>
+  c.job === "extract" ? { ops: dates.map((d, i) => ({ op: "ADD", text: `Plan ${i + 1}`, kind: "plan", signal: 4, event_date: d })) } : { insights: [] };
+const followupT = (dates: string[], start = "2026-11-04 10:00") => {
+  const t = setup({ features: { memory: true }, object: planOps(...dates), reply: (c) => (c.job === "followup" ? "react: none\nhow did it go?" : "react: none\nok") });
+  t.clock.t = ny(start);
+  return t;
+};
+const outs = (t: ReturnType<typeof setup>) => t.rows("direction = 'out'");
+
+test("follow-up fires after the alarm and sends exactly one bubble, marks the fact followup_done, and the alarm is clear afterwards", async () => {
+  const t = followupT(["2026-11-04 14:00"]);
+  await t.say("interview at two today");
+  await t.run(t.clock.t + 60_000);
+  expect(t.state().followup_due).toBe(ny("2026-11-04 16:00"));
+  await t.run(ny("2026-11-04 16:00") + 1);
+  const call = t.llm.calls.find((c) => c.job === "followup")!;
+  expect(JSON.stringify(call.system)).toContain('\\"Plan 1\\"');
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok", "how did it go?"]);
+  expect(outs(t)).toHaveLength(2);
+  expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
+  expect(t.db.all("SELECT last_proactive_date FROM contact")).toEqual([{ last_proactive_date: "2026-11-04" }]);
+  expect(t.state().followup_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a skipped plan is not re-picked (no alarm storm)", async () => {
+  const t = followupT(["2026-11-04 14:00"]);
+  await t.say("interview at two today");
+  await t.run(t.clock.t + 60_000);
+  t.db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES ('wamid.in.9', 'in', 'text', 'it went fine', ?, 'handled')", ny("2026-11-04 14:30"));
+  t.db.run("UPDATE contact SET last_inbound_ts = ?", ny("2026-11-04 14:30"));
+  await t.run(ny("2026-11-04 16:00") + 1);
+  expect(t.llm.calls.some((c) => c.job === "followup")).toBe(false);
+  expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
+  expect(t.state()).toMatchObject({ followup_due: null, followup_fact_id: null });
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("two plans: after the first fires, followup_due === D2 + 2h", async () => {
+  const t = followupT(["2026-11-04 14:00", "2026-11-05 12:00"]);
+  await t.say("two things coming up");
+  await t.run(t.clock.t + 60_000);
+  await t.run(ny("2026-11-04 16:00") + 1);
+  expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
+  expect(t.state().followup_due).toBe(ny("2026-11-05 14:00"));
+});
+
+test("a follow-up due at night is deferred to 09:00 and then sent", async () => {
+  const t = followupT(["2026-11-04 21:30"], "2026-11-04 20:00");
+  await t.say("dinner later");
+  await t.run(t.clock.t + 60_000);
+  await t.run(ny("2026-11-04 23:30") + 1);
+  expect(t.llm.calls.some((c) => c.job === "followup")).toBe(false);
+  expect(t.state().followup_due).toBe(ny("2026-11-05 09:00"));
+  await t.run(ny("2026-11-05 09:00") + 1);
+  expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
+  expect(t.state().followup_due).toBeNull();
+});
