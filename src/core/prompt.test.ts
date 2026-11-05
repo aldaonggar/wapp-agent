@@ -118,3 +118,17 @@ test("the system prompt offers search and a voice note on request, and says how 
   expect(SYSTEM_PROMPT).toContain("- Voice notes: when they send you one, or whenever they ask for one, your reply goes out as a voice note (you can say so when asked). A plain text message still gets a text reply.");
   expect(SYSTEM_PROMPT).toContain('- If they ask you to say it out loud, speak, or send a voice note, put "voice: yes" as a header line right after the react line and write the reply the way you would say it; it goes out as one voice note.');
 });
+
+test("history marks voice notes in both directions so the model knows who spoke", () => {
+  const base = { profile: "", memories: [], pending: [], nowLocal: "2026-11-05 23:35", tz: "Europe/Amsterdam", tzConfirmed: true, snapshots: [] };
+  const history = [
+    { id: "a", direction: "in" as const, text: "what time is it", ts: Date.UTC(2026, 10, 5, 22, 7), kind: "audio" },
+    { id: "b", direction: "out" as const, text: "about seven past eleven", ts: Date.UTC(2026, 10, 5, 22, 7, 10), kind: "audio" },
+    { id: "c", direction: "out" as const, text: "anything else?", ts: Date.UTC(2026, 10, 5, 22, 7, 20), kind: "text" },
+  ];
+  const text = buildPrompt({ ...base, history }).messages.map((m) => (typeof m.content === "string" ? m.content : (m.content as { text?: string }[]).map((p) => p.text ?? "").join("\n"))).join("\n");
+  expect(text).toContain("what time is it (voice note)");
+  expect(text).toContain("about seven past eleven (sent as a voice note)");
+  expect(text).toMatch(/anything else\?(\n|$)/);
+  expect(text).not.toContain("anything else? (sent");
+});

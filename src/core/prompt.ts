@@ -73,6 +73,7 @@ function line(r: HistoryRow, tz: string): string {
   if (r.quotedText !== undefined) s += `(replying to ${r.quotedAlias ? r.quotedAlias + ": " : ""}"${r.quotedText}") `;
   s += r.text ?? "";
   if (r.kind === "image" && r.mediaNote) s += ` (photo: ${r.mediaNote})`;
+  if (r.kind === "audio") s += r.direction === "out" ? " (sent as a voice note)" : " (voice note)"; // so the model knows it spoke, and that they did
   if (r.reactions) s += ` (reacted ${r.reactions})`;
   if (r.myReaction) s += ` (you reacted ${r.myReaction})`;
   return s;
