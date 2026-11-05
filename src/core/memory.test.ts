@@ -275,3 +275,11 @@ test('timezone "Europe/Lisbon" updates the contact row, "Mars/Olympus" is ignore
   await remember(t.deps, t.turn("off to Olympus Mons"));
   expect(contact()).toEqual({ timezone: "Europe/Lisbon", timezone_confirmed: 1 });
 });
+
+test("a profile shorter than 5 characters is dropped, 5 or more is kept", async () => {
+  for (const [profile, kept] of [["....", ""], ["Name: Al", "Name: Al"]] as const) {
+    const t = setup(() => ({ ops: [op({ text: "Name is Al", kind: "identity" })], profile }));
+    await remember(t.deps, t.turn("I'm Al"));
+    expect(profileText(t.db)).toBe(kept);
+  }
+});

@@ -2,7 +2,7 @@ import { expect, test, vi } from "vitest";
 import { FakeClock, FakeWa, hashEmbed, makeEvalDeps, stubLlm } from "../../evals/harness";
 import { blobToVec, vecToBlob } from "./db";
 import { INSIGHT_PROMPT, deriveInsights } from "./insights";
-import { cascadeInsights, recall } from "./memory";
+import { cascadeInsights, recall, remember } from "./memory";
 import { buildPrompt } from "./prompt";
 import type { ObjectCall } from "./types";
 
@@ -44,10 +44,15 @@ test("deriveInsights stores insights with confidence >= 0.5 and evidence ids", a
 });
 
 test("deriveInsights without new facts makes no call; foreign evidence ids are dropped", async () => {
-  const t = setup(() => ({ insights: [{ text: "Bogus", confidence: 0.9, evidence_fact_ids: [1, 99] }] }));
+  let a = 0;
+  const t = setup(() => ({ insights: [
+    { text: "Bogus", confidence: 0.9, evidence_fact_ids: [1, 99] },
+    { text: "Twice the same", confidence: 0.8, evidence_fact_ids: [a, a] },
+    { text: "Only one", confidence: 0.8, evidence_fact_ids: [a] },
+  ] }));
   expect(await deriveInsights(t.deps)).toBe(0);
   expect(t.llm.objectCalls).toHaveLength(0);
-  await t.addFact("Flight on 2026-12-10");
+  a = await t.addFact("Flight on 2026-12-10");
   t.db.run("UPDATE state SET last_insights_run=?", t.clock.t - 1);
   expect(await deriveInsights(t.deps)).toBe(0);
   expect(t.rows()).toEqual([]);
@@ -72,4 +77,15 @@ test("recall labels insights as derived with confidence", async () => {
   expect(hit).toMatchObject({ kind: "insight", confidence: 0.9 });
   const base = { profile: "", history: [], pending: [], nowLocal: "2026-11-04 09:00", tz: "UTC", tzConfirmed: true, snapshots: [] };
   expect(buildPrompt({ ...base, memories: hits, memory: true }).system[1].content).toContain("Trip clashes with the sister's birthday (derived, confidence 0.9)");
+});
+
+test("superseding an evidence fact through remember removes the insight that cited it", async () => {
+  let a = 0;
+  const t = setup(() => ({ ops: [{ op: "UPDATE", target_id: a, text: "Flight to Almaty on 2026-12-11", kind: "plan", signal: 5 }] }));
+  a = await t.addFact("Flight to Almaty on 2026-12-10");
+  const b = await t.addFact("Sister Aru birthday on 2026-12-12");
+  t.db.run("INSERT INTO insights(text, confidence, evidence_fact_ids, created_at) VALUES ('Trip meets birthday', 0.9, ?, 0)", JSON.stringify([a, b]));
+  const turn = { messages: [{ role: "user" as const, text: "Flight to Almaty on 2026-12-10", id: "w1" }], images: [], nowLocal: "2026-11-04 09:00", tz: "UTC", sessionId: "s" };
+  expect(await remember(t.deps, turn)).toMatchObject({ updated: 1 });
+  expect(t.rows()).toEqual([]);
 });

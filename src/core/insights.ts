@@ -36,7 +36,7 @@ export async function deriveInsights(deps: Deps, sessionId = "insights"): Promis
   const { value } = await llm.object({ job: "derive", modelId: models.derive, system: INSIGHT_PROMPT, messages: [{ role: "user", content: input }], schema: InsightSchema, sessionId });
 
   const active = new Set(db.all<{ id: number }>("SELECT id FROM facts WHERE status='active'").map((r) => r.id));
-  const keep = value.insights.filter((i) => i.text.trim() && i.confidence >= MIN_CONFIDENCE && i.evidence_fact_ids.length >= 2 && i.evidence_fact_ids.every((id) => active.has(id)));
+  const keep = value.insights.filter((i) => i.text.trim() && i.confidence >= MIN_CONFIDENCE && new Set(i.evidence_fact_ids).size >= 2 && i.evidence_fact_ids.every((id) => active.has(id)));
   if (keep.length) {
     const vecs = await deps.embed(keep.map((i) => i.text.trim()));
     keep.forEach((i, n) => db.run("INSERT INTO insights(text, confidence, evidence_fact_ids, created_at, embedding) VALUES (?, ?, ?, ?, ?)", i.text.trim(), i.confidence, JSON.stringify(i.evidence_fact_ids), now, vecToBlob(vecs[n])));
