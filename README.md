@@ -46,15 +46,15 @@ flowchart TB
   end
   subgraph Cloudflare
     direction TB
-    W["Worker<br/>verify signature or secret, allowlist, route"]
-    D["ContactAgent Durable Object<br/>one per contact: SQLite + one alarm"]
-    C["ContactCore<br/>burst wait, memory, reply, reminders"]
+    W["Worker<br/>verify, allowlist, route"]
+    D["ContactAgent Durable Object<br/>one per contact<br/>SQLite + one alarm"]
+    C["ContactCore<br/>burst wait, memory<br/>reply, reminders"]
     W -->|ingest| D -->|alarm| C
   end
   subgraph Services
     direction LR
     O["OpenRouter<br/>reply, extraction, insights"]
-    A["Workers AI<br/>embeddings, rerank, Whisper, Aura-1 voice"]
+    A["Workers AI<br/>embeddings, rerank<br/>Whisper, Aura-1 voice"]
     B["Browser Rendering<br/>page snapshots"]
   end
   M -->|POST /webhook| W
