@@ -58,14 +58,15 @@ export class ContactCore {
   });
 
   private setReminderTool = tool({
-    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns.",
+    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns, relaying its note when there is one.",
     inputSchema: z.object({ text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"), at: z.string().describe("their local time as YYYY-MM-DD HH:mm") }),
     execute: async ({ text, at }) => {
-      const { db, clock } = this.deps, now = clock.now();
-      const r = addReminder(db, now, this.tz(), text, at, this.pending().at(-1)?.id ?? null);
+      const { db, clock } = this.deps;
+      const r = addReminder(db, clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null);
       await this.scheduleNext();
-      // Past Meta's window the reminder is skipped unless they write again first; the model relays this with the confirmation.
-      const far = "id" in r && this.window24h() && db.all<{ due_ts: number }>("SELECT due_ts FROM reminders WHERE id = ?", r.id)[0].due_ts > now + DAY;
+      // reminderTimer's own test, seen from now: past Meta's window from their last message it only arrives if they write again first.
+      const lastIn = db.all<{ last_inbound_ts: number | null }>("SELECT last_inbound_ts FROM contact")[0]?.last_inbound_ts ?? 0;
+      const far = "id" in r && this.window24h() && db.all<{ due_ts: number }>("SELECT due_ts FROM reminders WHERE id = ?", r.id)[0].due_ts > lastIn + DAY;
       return far ? { ...r, note: "on WhatsApp this will only arrive if you message me within the 24 hours before it" } : r;
     },
   });

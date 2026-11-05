@@ -117,7 +117,7 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
       const chat_id = chatOf(to);
       const form = new FormData();
       form.set("chat_id", String(chat_id));
-      form.set("voice", new Blob([bytes as BlobPart], { type: mime }), "voice.ogg");
+      form.set("voice", new Blob([bytes as BlobPart], { type: mime }), "voice.ogg"); // shortcut: the name assumes OGG/Opus, the only format tts produces; derive it from the mime as whatsapp.ts does if another TTS format is wired
       if (opts?.quote) form.set("reply_parameters", JSON.stringify({ message_id: messageOf(opts.quote), allow_sending_without_reply: true }));
       const mid = num(obj(await call("sendVoice", form)).message_id);
       if (mid === undefined) throw new WaError(0, 502, "sendVoice: no message_id");
