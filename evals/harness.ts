@@ -314,7 +314,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock), errors: Contact["errors"] = [];
       // Every logged failure goes into the transcript (turn attempts, extraction, insights, sends); the turns table alone would miss a retried first attempt and background work.
-      const log = (e: Record<string, unknown>) => { if (e.error != null) errors.push({ at: clock.t, line: `bot → ${id}: (${e.event}: ${e.error})` }); };
+      const log = (e: Record<string, unknown>) => { if (e.error != null && e.event !== "turn") errors.push({ at: clock.t, line: `bot → ${id}: (${e.event}: ${e.error})` }); }; // the turn summary repeats a failure already logged as turn_failed
       const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id, log });
       contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, errors }));
     }
