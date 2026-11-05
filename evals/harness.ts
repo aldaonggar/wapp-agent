@@ -164,12 +164,13 @@ export function makeEvalDeps(o: {
   };
 }
 
-/** Fire the contact's pending alarm while it is due by `until` (at most 10 passes). */
+/** Fire the contact's pending alarm while it is due by `until` (at most 10 passes), each with its turn's extraction. */
 export async function drain(core: ContactCore, view: ClockView, clock: FakeClock, until: number): Promise<void> {
   for (let i = 0; i < 10 && view.alarmAt !== null && view.alarmAt <= until; i++) {
     clock.t = Math.max(clock.t, view.alarmAt);
     view.alarmAt = null;
     await core.alarm();
+    await core.afterTurn; // later steps see the stored facts and the follow-up it scheduled
   }
 }
 

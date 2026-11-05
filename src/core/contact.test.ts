@@ -235,8 +235,9 @@ test("an early failure on both attempts still marks the pending rows handled", a
   expect(t.turns()).toHaveLength(1);
   expect(t.turns()[0].error).toContain("upstream down");
   expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
+  await t.core.afterTurn;
   expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000); // only the insights timer is left
-  expect(t.llm.objectCalls).toHaveLength(0); // a failed turn is not remembered
+  expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract"]); // what they said is remembered even though the reply failed
 });
 
 test("a failing recall still gets a reply, with no memories and a recall_failed log", async () => {
@@ -262,6 +263,41 @@ test("a mid-stream llm error sends only the complete bubble", async () => {
   expect(t.turns()).toHaveLength(1);
   expect(t.turns()[0].error).toContain("stream cut");
   expect(t.view.alarmAt).toBeNull();
+});
+
+test("a stream error after one bubble is still remembered", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }), reply: () => ({ chunks: ["react: none\n", "first bubble\n", "---\n", "second is cut o"], error: new Error("stream cut") }) });
+  await t.say("my sister lives in Almaty");
+  await t.run();
+  expect(t.turns()[0].error).toContain("stream cut");
+  expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract"]);
+  expect(JSON.stringify(t.llm.objectCalls[0].messages)).toContain("user: my sister lives in Almaty\\nassistant: first bubble");
+});
+
+test("the next reply does not wait for the previous extraction; extractions stay in order and a failed one does not stop the next", async () => {
+  let release!: (v: unknown) => void;
+  const hang = new Promise((r) => { release = r; });
+  const t = setup({ features: { memory: true }, object: () => (t.llm.objectCalls.length === 1 ? hang : { ops: [] }) });
+  await t.say("first thing");
+  void t.fire(); // replies, then its extraction hangs
+  await vi.waitFor(() => expect(t.llm.objectCalls).toHaveLength(1));
+  t.clock.t += 1000;
+  await t.say("second thing");
+  const due = t.view.alarmAt!;
+  expect(due).toBe(t.clock.t + 3000);
+  await t.fire();
+  expect(t.clock.t).toBe(due); // replied in its own 3 s window: no +1 s re-arms
+  expect(t.wa.sent.filter((s) => s.kind === "text")).toHaveLength(2);
+  expect(t.turns()).toHaveLength(2);
+  expect(t.state().turn_due).toBeNull();
+  expect(t.llm.objectCalls).toHaveLength(1); // the second extraction waits for the first
+  const log = vi.fn();
+  t.deps.log = log;
+  t.view.setAlarm = () => { throw new Error("storage down"); }; // every post-turn step now rejects at its end
+  release({ ops: [] });
+  await t.core.afterTurn;
+  expect(t.llm.objectCalls.map((c) => JSON.stringify(c.messages))).toEqual([expect.stringContaining("user: first thing"), expect.stringContaining("user: second thing")]);
+  expect(log.mock.calls.filter(([e]) => e.event === "post_turn_failed")).toHaveLength(2);
 });
 
 test("a reset mid-turn still gets a reply: the watchdog alarm fires on a fresh core", async () => {

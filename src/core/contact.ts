@@ -40,6 +40,8 @@ export class ContactCore {
   pages = new Map<string, Promise<Snapshot | null>>();
   recallCache: { generation: number; query: string; promise: Promise<Recall> } | null = null;
   abort: AbortController | null = null;
+  /** Extraction and follow-up scheduling, off the reply path: each turn's runs after the previous one's; never rejects. */
+  afterTurn: Promise<void> = Promise.resolve();
   private deps: Deps;
   private forgetTool = tool({
     description: "Delete stored facts matching the query; call when the person asks to forget something",
@@ -262,22 +264,31 @@ export class ContactCore {
       for (const u of extractUrls(r.text ?? "")) this.pages.delete(u);
     }
     this.deps.log({ event: "turn", contact: hash(to), ...row, usage });
-    if (error === null && features.memory) {
-      const noted = await Promise.all(pending.map(async (r, i) => {
-        const p = await cachedPages[i];
-        return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
-      }));
-      const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(outIds));
+    // Not awaited: turnRunning is released now, so the next reply never waits for this extraction.
+    const finished = { pending, cachedPages, outIds, images, tz, sessionId: hash(to) };
+    this.afterTurn = this.afterTurn.then(() => this.postTurn(finished)).catch((e) => this.error("post_turn_failed", e));
+  }
+
+  // Remember the turn (failed turns too: what they said still counts), then re-arm for any plan it stored.
+  private async postTurn(t: { pending: Msg[]; cachedPages: (Promise<Snapshot | null> | undefined)[]; outIds: string[]; images: memory.TurnForMemory["images"]; tz: string; sessionId: string }): Promise<void> {
+    const { db, clock, features } = this.deps;
+    if (features.memory) {
       try {
+        const noted = await Promise.all(t.pending.map(async (r, i) => {
+          const p = await t.cachedPages[i];
+          return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
+        }));
+        const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(t.outIds));
         await memory.remember(this.deps, {
-          messages: [...pending.map((r, i) => ({ role: "user" as const, text: noted[i], id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
-          images, nowLocal: formatLocal(clock.now(), tz), tz, sessionId: hash(to),
+          messages: [...t.pending.map((r, i) => ({ role: "user" as const, text: noted[i], id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
+          images: t.images, nowLocal: formatLocal(clock.now(), t.tz), tz: t.tz, sessionId: t.sessionId,
         });
       } catch (e) {
         this.error("remember_failed", e);
       }
     }
-    scheduleFollowup(db, clock.now(), tz);
+    scheduleFollowup(db, clock.now(), t.tz);
+    await this.scheduleNext();
   }
 
   // One text send: a failure is logged and returns null (callers store a 'failed' row).
