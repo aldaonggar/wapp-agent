@@ -45,13 +45,6 @@ export default {
       }
     }
 
-    // Temporary Durable Object CPU probe (Task 14 removes it). Fixed work: clocks are frozen while sync code runs.
-    if (url.pathname === "/__cpu") {
-      const raw = url.searchParams.get("n") ?? "20000000";
-      if (!/^\d+$/.test(raw)) return new Response("n must be a non-negative integer", { status: 400 });
-      return Response.json(await env.CONTACT.getByName("probe").burn(Math.min(Number(raw), 200_000_000)));
-    }
-
     return new Response("not found", { status: 404 });
   },
 };

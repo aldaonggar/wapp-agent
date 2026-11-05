@@ -44,11 +44,4 @@ export class ContactAgent extends DurableObject<Env> {
   ingest(m: Inbound): Promise<void> { return this.core.ingest(m); }
 
   alarm(): Promise<void> { return this.core.alarm(); }
-
-  // Temporary CPU probe (Task 14 removes it): fixed work, since clocks are frozen during sync code.
-  burn(n: number): { iterations: number; checksum: number } {
-    let h = 0;
-    for (let i = 0; i < n; i++) h = (Math.imul(h ^ i, 0x9e3779b1) + 0x7f4a7c15) | 0;
-    return { iterations: n, checksum: h };
-  }
 }

@@ -1,6 +1,6 @@
 # WhatsApp Memory Agent Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** A WhatsApp agent on Cloudflare Workers that replies like a person (one reply per burst, 1–3 bubbles, streamed), remembers across days with judgement, derives insights, views web pages, follows up on plans, and proves it with evals.
 
@@ -89,19 +89,19 @@ Unit tests live next to code as `src/**/*.test.ts`. `npm test` runs `vitest run 
 - Produces: Worker default export in `src/index.ts` handling `GET /webhook` (returns `hub.challenge` as `text/plain` 200 when `hub.mode === "subscribe"` and `hub.verify_token === env.WHATSAPP_VERIFY_TOKEN`, else 403), `POST /webhook` (401 when the signature is invalid; 200 `ok` otherwise; body handling comes in Task 6), `GET /health` → 200 `ok`, `GET /__cpu?ms=50` (temporary: busy-loops `ms` of CPU in the Worker and returns the measured ms).
 - Produces: `src/worker.ts` = `export { default } from "./index";` (Task 6 adds the `ContactAgent` re-export). `src/env.d.ts` augments `Env` with the seven secret names as `string` and, from Task 6, `CONTACT: DurableObjectNamespace<{ ingest(m: Inbound): Promise<void>; burn(ms: number): Promise<number> }>`.
 
-- [ ] **Step 1: GitHub repo** (the repo is already initialised: `main` holds the docs, work happens on branch `feat/wapp-agent`, already checked out)
+- [x] **Step 1: GitHub repo** (the repo is already initialised: `main` holds the docs, work happens on branch `feat/wapp-agent`, already checked out)
 
 ```bash
 cd /Users/nur/projects/random/wapp-agent && gh repo create aldaonggar/wapp-agent --public --source=. --remote=origin --description "WhatsApp agent with memory on Cloudflare Workers" && git push -u origin main && git push -u origin feat/wapp-agent
 ```
 
-- [ ] **Step 2: package.json, tsconfig, vitest config**
+- [x] **Step 2: package.json, tsconfig, vitest config**
 
 `package.json`: `"type": "module"`, scripts `dev: wrangler dev`, `deploy: wrangler deploy`, `types: wrangler types`, `typecheck: tsc --noEmit`, `test: vitest run src`, `eval: node evals/run.ts`, `eval:report: node evals/report.ts`. `npm i ai@^7 @openrouter/ai-sdk-provider@^3 zod@^4 yaml@^2 && npm i -D wrangler@^4.157 vitest@^5 typescript @types/node`.
 `tsconfig.json`: `target ES2022`, `module ESNext`, `moduleResolution Bundler`, `strict`, `noEmit`, `types: ["./worker-configuration.d.ts", "node"]`, `include: ["src", "evals", "worker-configuration.d.ts"]`.
 `vitest.config.ts`: `test: { include: ["src/**/*.test.ts", "evals/**/*.test.ts"], environment: "node", testTimeout: 120000 }`.
 
-- [ ] **Step 3: wrangler.jsonc**
+- [x] **Step 3: wrangler.jsonc**
 
 ```jsonc
 {
@@ -117,7 +117,7 @@ cd /Users/nur/projects/random/wapp-agent && gh repo create aldaonggar/wapp-agent
 ```
 (The Durable Object binding and `exports` entry are added in Task 6.) Run `npx wrangler types`.
 
-- [ ] **Step 4: Write the failing tests** in `src/whatsapp.test.ts`
+- [x] **Step 4: Write the failing tests** in `src/whatsapp.test.ts`
 
 ```ts
 test("verifySignature accepts the HMAC of the raw body", async () => {
@@ -135,10 +135,10 @@ test("POST /webhook with a bad signature is 401; with a good one 200", ...);
 ```
 (`worker` is the default export of `src/index.ts`, never `src/worker.ts`.)
 
-- [ ] **Step 5: Run tests to verify they fail**  `npx vitest run src/whatsapp.test.ts` → FAIL (module not found).
-- [ ] **Step 6: Implement** `verifySignature`, the routes, `src/worker.ts`, `src/env.d.ts`.
-- [ ] **Step 7: Run tests, typecheck**  `npx vitest run src && npx tsc --noEmit` → PASS.
-- [ ] **Step 8: Upload secrets and deploy**
+- [x] **Step 5: Run tests to verify they fail**  `npx vitest run src/whatsapp.test.ts` → FAIL (module not found).
+- [x] **Step 6: Implement** `verifySignature`, the routes, `src/worker.ts`, `src/env.d.ts`.
+- [x] **Step 7: Run tests, typecheck**  `npx vitest run src && npx tsc --noEmit` → PASS.
+- [x] **Step 8: Upload secrets and deploy**
 
 ```bash
 grep -vE '^(#|CLOUDFLARE_ACCOUNT_ID=|\s*$)' .dev.vars | npx wrangler secret bulk   # stdin; CLOUDFLARE_ACCOUNT_ID stays a var (a secret with a var's name is rejected); empty values upload as empty strings for now
@@ -148,7 +148,7 @@ curl -s "https://wapp-agent.alda-onggar.workers.dev/webhook?hub.mode=subscribe&h
 curl -s "https://wapp-agent.alda-onggar.workers.dev/__cpu?ms=50"  # Worker-level probe; informational
 ```
 
-- [ ] **Step 9: Commit and push**  `git add -A && git commit -m "feat: worker skeleton with webhook verification" && git push -u origin feat/wapp-agent`
+- [x] **Step 9: Commit and push**  `git add -A && git commit -m "feat: worker skeleton with webhook verification" && git push -u origin feat/wapp-agent`
 
 Tell the owner: the webhook URL `https://wapp-agent.alda-onggar.workers.dev/webhook` is live for SETUP.md section 6 (messages are received and ignored until Task 6).
 
@@ -177,7 +177,7 @@ export interface WaClient {
 - Parsing rules: `ts = Number(timestamp) * 1000`; `quotedId = context.id` when `context.id` exists and `context.referred_product` does not; `name = contacts[0].profile.name`; `text` is: the body for text; `caption ?? "[photo]"` for images; `((caption ?? "") + " [a video]").trim()` for video; `"a sticker"`; `"document: <filename> (<mime>)"`; `"location: <name>, <address>"` or `"location: <lat>, <lng>"`; `"contact card: <formatted_name> <phone>"` (one line per card); `audio.voice` → `voice: true`; `mediaId`/`mime` set for image, video, audio, sticker, document; `type: "unsupported"` (including `unsupported.type: "edit"`) → kind `unsupported`; reaction removal (no emoji) → `reaction.emoji` undefined. Statuses: `pricingType = pricing.type`, `errorCode = errors[0].code`.
 - Client rules: `to` is sent as `"+" + digits`; text body `{ messaging_product:"whatsapp", recipient_type:"individual", to, type:"text", text:{ preview_url, body }, context?:{ message_id } }`; reaction body per research §5.3; `markReadTyping` body `{ messaging_product:"whatsapp", status:"read", message_id, typing_indicator:{ type:"text" } }`; `fetchMedia` does `GET ${GRAPH}/${id}?phone_number_id=…` then GETs `url` with the bearer token, one retry of the whole sequence on 404. Non-2xx or a 2xx body with `error` → throw `WaError(code, status)`. On `code === 131056` `sendText` retries after 1 s, 4 s, 16 s (`cfg.sleep`), then throws.
 
-- [ ] **Step 1: Write the failing tests** (payloads copied from `research/whatsapp-cloud-api.md` §3.4)
+- [x] **Step 1: Write the failing tests** (payloads copied from `research/whatsapp-cloud-api.md` §3.4)
 
 ```ts
 test("parseWebhook: text with quoted reply", () => { const { inbound } = parseWebhook(TEXT_WITH_CONTEXT); expect(inbound[0]).toMatchObject({ kind:"text", from:"16505551234", name:"Sheena Nelson", text:"Does it come in another color?", quotedId:"wamid.HBgLMTY1MDM4Nzk0MzkVAgARGBI3MTE5MjVBOTE3MDk5QUVFM0YA", ts: 1749416383000 }); });
@@ -190,10 +190,10 @@ test("markReadTyping sends status read + typing_indicator", ...);
 test("fetchMedia resolves the url then downloads with the token; retries once on 404", ...);
 ```
 
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tests, typecheck** → PASS.
-- [ ] **Step 5: Commit** `git commit -am "feat: whatsapp webhook parsing and graph api client"`
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run tests, typecheck** → PASS.
+- [x] **Step 5: Commit** `git commit -am "feat: whatsapp webhook parsing and graph api client"`
 
 ---
 
@@ -233,16 +233,16 @@ export function makeLlm(apiKey: string, opts?: { fetch?: typeof fetch; log?: (u:
 ```
 Implementation decisions: `createOpenRouter({ apiKey, appName: "wapp-agent", fetch })`; model = `openrouter.chat(id, { provider: needsHostFilter(id) ? { ignore: CHINA_HOSTS } : undefined, structuredOutputs: { strict: false }, reasoning: setting ?? undefined })`; `instructions` = the `system` array, with the first entry carrying `providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } }` when the id starts with `anthropic/`; call-level `providerOptions: { openrouter: { session_id: sessionId, user: sessionId } }` (nothing else at call level: call-level keys replace model-level ones); `maxRetries: 1`; `timeout: { firstChunkMs: 15000, totalMs: 60000 }`; `stopWhen: isStepCount(3)` when tools are present. `text` iterates `result.stream` and yields `part.text` for `text-delta`; an `error` part rejects `done` and ends `text`; `ttftMs` = `performance.now()` delta at the first `text-delta`. Usage: tokens from `const total = await result.usage` (`inputTokens`, `outputTokens`, `inputTokenDetails.cacheReadTokens`, `outputTokenDetails.reasoningTokens`; totals across steps); `costReported = (await result.steps).reduce((s, st) => s + Number(st.usage.raw?.cost ?? st.providerMetadata?.openrouter?.usage?.cost ?? 0), 0)`; `provider` and `finishReason` from `await result.finalStep`; `costTable = costUsd(id, ...)`; `ms` = wall-clock from call start to `done`. `object()` uses `generateText({ output: Output.object({ schema }) })`, one retry on a parse/validation error; usage from `result.usage` and `result.usage.raw?.cost`. Every `Usage` goes to `opts.log` before being returned.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `src/models.test.ts`: `costUsd("deepseek/deepseek-v4.1-flash", {input:10000, output:1000, cached:4000})` equals `((6000*0.045)+(4000*0.018)+(1000*0.5))/1e6` within 1e-9; `maxOutputTokensFor("anthropic/claude-sonnet-5.5")===2048`, `("deepseek/deepseek-v4.1-flash")===400`, `("deepseek/deepseek-v4.1-flash","medium")===2048`; `reasoningFor("moonshotai/kimi-k2.6")` deep-equals `{enabled:false}`; `pickModels({MODEL_REPLY:"z-ai/glm-5.2"}).reply==="z-ai/glm-5.2"`; `replyModelFor({...reply:"z-ai/glm-5.2", vision:"openai/gpt-6.1-terra"}, true)==="openai/gpt-6.1-terra"`.
 `src/llm.test.ts` with a fake `fetch` serving SSE: (a) single-step fixture (two `text-delta` chunks, final usage chunk with `prompt_tokens_details.cached_tokens` and `cost`): `stream()` yields `"hel"`,`"lo"`; `done` has `input/cached/costReported` from the chunk and `ttftMs >= 0`; the request body contains `provider.ignore` for a DeepSeek id and `session_id`; for `anthropic/claude-sonnet-5.5` the first system part has `cache_control`. (b) two-step fixture (first response: a tool call; second: text), tool `execute` returns `{ ok: true }`: `input` equals the sum of both steps' `prompt_tokens` and `costReported` the sum of both `cost` values; `opts.log` called once.
 
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement** `src/models.ts`, `src/llm.ts`.
-- [ ] **Step 4: Run tests, typecheck** → PASS.
-- [ ] **Step 5 (only if `OPENROUTER_API_KEY` is set): live smoke** with `deepseek/deepseek-v4.1-flash`; record first-chunk latency and usage in the commit body.
-- [ ] **Step 6: Commit** `git commit -am "feat: model table and openrouter llm wrapper"`
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement** `src/models.ts`, `src/llm.ts`.
+- [x] **Step 4: Run tests, typecheck** → PASS.
+- [x] **Step 5 (only if `OPENROUTER_API_KEY` is set): live smoke** with `deepseek/deepseek-v4.1-flash`; record first-chunk latency and usage in the commit body.
+- [x] **Step 6: Commit** `git commit -am "feat: model table and openrouter llm wrapper"`
 
 ---
 
@@ -267,7 +267,7 @@ export function formatLocal(ts: number, tz: string): string;  // "YYYY-MM-DD HH:
 ```
 Schema (all `IF NOT EXISTS`): `messages(id TEXT PRIMARY KEY, direction TEXT, kind TEXT, text TEXT, ts INTEGER, quoted_id TEXT, media_id TEXT, mime TEXT, media_note TEXT, voice INTEGER DEFAULT 0, reactions TEXT, turn_id INTEGER, status TEXT DEFAULT 'pending')` + index on `ts`; `facts(id INTEGER PRIMARY KEY AUTOINCREMENT, text, kind, signal INTEGER, created_at INTEGER, event_date TEXT, source_message_ids TEXT, status TEXT DEFAULT 'active', superseded_by INTEGER, followup_done INTEGER DEFAULT 0, embedding BLOB)`; `CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(text, fact_id UNINDEXED)`; `insights(id INTEGER PRIMARY KEY AUTOINCREMENT, text, confidence REAL, evidence_fact_ids TEXT, created_at INTEGER, status TEXT DEFAULT 'active', embedding BLOB)`; `profile(id INTEGER PRIMARY KEY CHECK(id=1), text, updated_at)`; `contact(id INTEGER PRIMARY KEY CHECK(id=1), wa_id, name, timezone, timezone_confirmed INTEGER DEFAULT 0, last_inbound_ts INTEGER, last_proactive_date TEXT)`; `state(id INTEGER PRIMARY KEY CHECK(id=1), turn_due INTEGER, insights_due INTEGER, followup_due INTEGER, followup_fact_id INTEGER, burst_started_at INTEGER, generation INTEGER DEFAULT 0, turn_attempts INTEGER DEFAULT 0, last_insights_run INTEGER DEFAULT 0)` seeded with `INSERT OR IGNORE INTO state(id) VALUES (1)`; `turns(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at, wait_ms, retrieval_ms, ttft_ms, ttfb_ms, total_ms, model, provider, bubbles, regenerated INTEGER DEFAULT 0, error TEXT, usage TEXT)`; `calls(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, job TEXT, model TEXT, usage TEXT)`.
 
-- [ ] **Step 1: Write the failing tests** (`node:sqlite` in-memory)
+- [x] **Step 1: Write the failing tests** (`node:sqlite` in-memory)
 
 ```ts
 test("migrate is idempotent and creates all tables", () => { migrate(db); migrate(db); expect(names).toEqual(expect.arrayContaining(["messages","facts","facts_fts","insights","profile","contact","state","turns","calls"])); expect(db.all("SELECT generation FROM state")[0].generation).toBe(0); });
@@ -277,10 +277,10 @@ test("INSERT OR IGNORE ... RETURNING id yields no row on a duplicate", () => { .
 test("formatLocal formats in the timezone", () => { expect(formatLocal(Date.UTC(2026,10,4,9,5), "Asia/Almaty")).toBe("2026-11-04 14:05"); });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement `src/core/db.ts`.**
-- [ ] **Step 4: Run tests, typecheck** → PASS.
-- [ ] **Step 5: Commit** `git commit -am "feat: sqlite schema and db adapter for durable object and node"`
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement `src/core/db.ts`.**
+- [x] **Step 4: Run tests, typecheck** → PASS.
+- [x] **Step 5: Commit** `git commit -am "feat: sqlite schema and db adapter for durable object and node"`
 
 ---
 
@@ -293,15 +293,15 @@ test("formatLocal formats in the timezone", () => { expect(formatLocal(Date.UTC(
 - Produces (`cadence.ts`): `QUIET_MS = 3000`, `UNFINISHED_MS = 8000`, `MAX_WAIT_MS = 15000`; `looksUnfinished(text: string): boolean` = trimmed text ends with `...`, `…`, `:` or `,`; or its last word (lower-cased, punctuation stripped) is one of `and|so|but|or|because`; or the text is ≤3 words and its first word is one of `hey|hi|hello|yo|wait|hold|quick|hmm|btw|one`; `turnDue(now: number, burstStartedAt: number, lastText: string): number` = `min(now + (unfinished ? 8000 : 3000), burstStartedAt + 15000)`; `bubblePauseMs(chars: number): number` = `min(2000, 400 + 15 * chars)`.
 - Produces (`stream.ts`): `type ReplyEvent = { type: "react"; target: string; emoji: string } | { type: "bubble"; text: string; quote?: string }`; `parseReply(chunks: AsyncIterable<string>, maxBubbles = 3): AsyncGenerator<ReplyEvent>`. Rules: lines split on `\n`; the first complete line matching `/^react:\s*(none|(\S+)\s+(\S+))\s*$/i` is consumed (emit `react` unless `none`); if the first line is not a react line it is content; a line whose trimmed value is exactly `---` closes a bubble; inside a bubble a first line matching `/^quote:\s*(\S+)\s*$/i` sets `quote`; bubbles 1 to `maxBubbles − 1` are emitted (trimmed, only if non-empty) as soon as their `---` arrives; the last allowed bubble collects everything that remains (further `---` lines become blank lines) and is emitted when the stream ends; a bubble longer than 4,096 chars is split at the last paragraph or sentence boundary before the limit.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 cadence: `looksUnfinished("so basically...")===true`, `("hey")===true`, `("quick q")===true`, `("so")===true`, `("see you at 7")===false`, `("I think it's fine")===false`, `("ok thanks")===false`, `("okay")===false`; `turnDue(10_000, 10_000, "ok")===13_000`; `turnDue(10_000, 10_000, "and")===18_000`; `turnDue(24_000, 10_000, "and")===25_000` (cap); `bubblePauseMs(300)===2000`, `(40)===1000`.
 stream (feed each input both whole and one character at a time; expect identical events): `"react: none\nhello\n---\nsecond"` → `[bubble hello, bubble second]`; `"react: #3 ❤️"` → `[react #3 ❤️]`; `"react: none\nquote: #2\nanswer"` → `[bubble answer quote #2]`; `"hello there"` → `[bubble hello there]`; `"react: none\na\n---\nb\n---\nc\n---\nd"` → 3 bubbles, third is `"c\n\nd"`; `"react: none\nwait --- no\n"` → one bubble `"wait --- no"`; the first bubble is emitted before the stream ends (never-resolving tail after the first `---`, `Promise.race`).
 
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement both modules.**
-- [ ] **Step 4: Run tests** → PASS.
-- [ ] **Step 5: Commit** `git commit -am "feat: cadence rules and reply stream parser"`
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement both modules.**
+- [x] **Step 4: Run tests** → PASS.
+- [x] **Step 5: Commit** `git commit -am "feat: cadence rules and reply stream parser"`
 
 ---
 
@@ -338,7 +338,7 @@ export class ContactCore {
 - Produces (`index.ts`): `POST /webhook` parses, drops senders not in `ALLOWED_PHONES` (comma-separated digits; log the drop), awaits `env.CONTACT.getByName(m.from).ingest(m)` per inbound, logs statuses (warn once per isolate when `pricingType === "regular"`), returns 200. `GET /__cpu?ms=50` now calls `env.CONTACT.getByName("probe").burn(ms)`. `src/worker.ts` adds `export { ContactAgent } from "./contact-agent";`.
 - Produces (`evals/harness.ts`): `class FakeClock { t: number; forContact(id: string): Clock & { alarmAt: number | null } }` — each view has its own `alarmAt`; `now()` returns the shared `t`; `sleep(ms)` advances the shared `t` by `ms` and resolves; `setAlarm(at)` sets the view's `alarmAt`. `class FakeWa implements WaClient { sent: { at: number; kind: "text"|"reaction"|"typing"; to: string; body?: string; quote?: string; target?: string; emoji?: string; id: string }[]; media: Map<string, { bytes: Uint8Array; mime: string }>; failNext?: WaError }` (stamps `at` with the shared fake time; `sendText` throws `failNext` once when set). `stubLlm(o?: { reply?: (call: StreamCall) => string | Promise<string>; object?: (call: ObjectCall<unknown>) => unknown }): Llm & { calls: StreamCall[]; objectCalls: ObjectCall<unknown>[] }` (default reply `"react: none\nok"`; `object()` throws when no hook). `hashEmbed(texts: string[]): Promise<Float32Array[]>` (deterministic: hash each word into a 64-dim bag, L2-normalised) and `cosineRerank(query, docs)` built on it. `makeEvalDeps(o: { clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>; embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"] }): Deps` (node:sqlite `:memory:` + `migrate`; defaults: `embed = hashEmbed`, `rerank = cosineRerank`, `transcribe = async () => "(voice)"`, `snapshot = async () => null`, `features = { memory: false, retrieval: "hybrid" }`, the `calls` ledger hook as in `makeDeps`). `drain(core: ContactCore, view: Clock & { alarmAt: number | null }, clock: FakeClock, until: number): Promise<void>` — at most 10 passes of: if `view.alarmAt !== null && view.alarmAt <= until` then `clock.t = Math.max(clock.t, view.alarmAt); view.alarmAt = null; await core.alarm()`, else stop.
 
-- [ ] **Step 1: Write the failing unit tests**
+- [x] **Step 1: Write the failing unit tests**
 
 `timezone.test.ts`: `tzFromPhone("77011234567")==="Asia/Almaty"`, `("79161234567")==="Europe/Moscow"`, `("447700900123")==="Europe/London"`, `("15551234567")==="America/New_York"`, `("99999")==="UTC"`.
 `prompt.test.ts`: `windowHistory` keeps the newest 40 of 60 rows; with 50 rows of 1,000 chars keeps the newest 24; `buildPrompt` puts `SYSTEM_PROMPT` first, the dynamic block second containing `"now: 2026-11-04 14:05"` and a memory line ending in `(said 2026-10-12)`, stamps history rows `[#12 2026-11-04 14:03]`, tags the pending inbound row `#1`, renders an image history row as `(photo: a red bike)`, and emits a `file` part with `mediaType: "image/jpeg"` when a pending row has media.
@@ -357,10 +357,10 @@ export class ContactCore {
 `src/index.test.ts`: `routes one POST with two senders to two objects` (fake `env.CONTACT.getByName` records names; a signed mixed payload → `ingest` once per sender, statuses not routed, 200); `drops a sender not in ALLOWED_PHONES` (no `ingest`, 200); `logs a status with pricingType regular once`.
 `evals/cadence.test.ts` (through `ingest` + `drain`, memory off): burst of 3 messages 1 s apart → one `text` send and one `turns` row; `"so basically..."` → `view.alarmAt − t === 8000`; message arriving mid-generation → one reply whose stub prompt included all messages.
 
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.** Add to `wrangler.jsonc`: `"durable_objects": { "bindings": [{ "name": "CONTACT", "class_name": "ContactAgent" }] }` and `"exports": { "ContactAgent": { "type": "durable-object", "storage": "sqlite" } }` (if the deploy rejects `exports`, use `"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ContactAgent"] }]` and note it). Re-run `npx wrangler types`.
-- [ ] **Step 4: Run all tests, typecheck** → PASS (`npm test`, `npx vitest run evals/cadence.test.ts`).
-- [ ] **Step 5: Deploy and probe**
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.** Add to `wrangler.jsonc`: `"durable_objects": { "bindings": [{ "name": "CONTACT", "class_name": "ContactAgent" }] }` and `"exports": { "ContactAgent": { "type": "durable-object", "storage": "sqlite" } }` (if the deploy rejects `exports`, use `"migrations": [{ "tag": "v1", "new_sqlite_classes": ["ContactAgent"] }]` and note it). Re-run `npx wrangler types`.
+- [x] **Step 4: Run all tests, typecheck** → PASS (`npm test`, `npx vitest run evals/cadence.test.ts`).
+- [x] **Step 5: Deploy and probe**
 
 ```bash
 npx wrangler deploy
@@ -368,8 +368,8 @@ curl -s "https://wapp-agent.alda-onggar.workers.dev/__cpu?ms=50"   # DO-level CP
 ```
 If the probe is cut off (error, or a number far below 50): tell the owner the Free plan caps Durable Object CPU; the $5 Workers Paid upgrade is pre-approved, so ask for the dashboard click, then redeploy and re-probe. If it returns ≈50: continue.
 
-- [ ] **Step 6: Live check** (needs the owner's Meta webhook configured): text the number; `npx wrangler tail --format pretty` shows the turn log line; 1–3 bubbles arrive. If Meta is not ready, note it and continue.
-- [ ] **Step 7: Commit and push** `git commit -am "feat: contact core with cadence, streaming bubbles, durable object and fan-out" && git push`
+- [x] **Step 6: Live check** (needs the owner's Meta webhook configured): text the number; `npx wrangler tail --format pretty` shows the turn log line; 1–3 bubbles arrive. If Meta is not ready, note it and continue.
+- [x] **Step 7: Commit and push** `git commit -am "feat: contact core with cadence, streaming bubbles, durable object and fan-out" && git push`
 
 ---
 
@@ -406,11 +406,11 @@ export function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm): Promis
 
 Short-term scenarios (7): `short-burst-of-three` (3 messages at +0/+1/+2 s; `expect_contains` the three nouns), `short-second-one` ("give me 3 names" → "the second one"), `short-correction` ("meet at 6" … "actually make it 7" → "when are we meeting" → `7`), `short-quoted-reply` (step 1 "A: pizza", step 2 "B: sushi", ask "how about this one?" with `quote: 1` → `pizza`), `short-like-i-said` (colour stated 10 messages earlier), `short-that-place` ("the cafe on Abay street" … "how do I get to that place" → `Abay`), `short-photo-then-question` (`image: photo.jpg`, caption "look" at +0 s; ask "what colour is it?" at +1 s; gold = the fixture's dominant colour; judged).
 
-- [ ] **Step 1: Write the failing tests** (`evals/harness.test.ts`, stub LLM): `loadScenarios` parses a YAML string with every step kind including `quote` and `seed_facts`; `runScenario` on a 2-step scenario returns one probe with `answer === "ok"` and `expect_contains: ["ok"]` → `passed === true`; `fill: 3` inserts 6 rows with `status: "handled"` and advances the clock; `ask at +10 s does not call llm.object` (memory on, stub `object` hook counts calls → 0 because insights are 30 min out); `a counting embed passed to runScenario is called for a say step` (memory on); `evalConfig()` builds the tag.
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement** harness extensions, `run.ts`, `judge.ts`, `report.ts`, `scenarios.test.ts`, the seven YAML files, a 20 KB JPEG fixture of one flat colour.
-- [ ] **Step 4: Run** `npx vitest run evals/harness.test.ts` → PASS. With the keys: `npm run eval -- --filter=short` and `npm run eval:report`; EVALS.md shows the seven short-term results with non-zero `ttfbMs`.
-- [ ] **Step 5: Commit** `git commit -am "feat: eval harness, judge, reporter and short-term scenarios"`
+- [x] **Step 1: Write the failing tests** (`evals/harness.test.ts`, stub LLM): `loadScenarios` parses a YAML string with every step kind including `quote` and `seed_facts`; `runScenario` on a 2-step scenario returns one probe with `answer === "ok"` and `expect_contains: ["ok"]` → `passed === true`; `fill: 3` inserts 6 rows with `status: "handled"` and advances the clock; `ask at +10 s does not call llm.object` (memory on, stub `object` hook counts calls → 0 because insights are 30 min out); `a counting embed passed to runScenario is called for a say step` (memory on); `evalConfig()` builds the tag.
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement** harness extensions, `run.ts`, `judge.ts`, `report.ts`, `scenarios.test.ts`, the seven YAML files, a 20 KB JPEG fixture of one flat colour.
+- [x] **Step 4: Run** `npx vitest run evals/harness.test.ts` → PASS. With the keys: `npm run eval -- --filter=short` and `npm run eval:report`; EVALS.md shows the seven short-term results with non-zero `ttfbMs`.
+- [x] **Step 5: Commit** `git commit -am "feat: eval harness, judge, reporter and short-term scenarios"`
 
 ---
 
@@ -424,11 +424,11 @@ Short-term scenarios (7): `short-burst-of-three` (3 messages at +0/+1/+2 s; `exp
 - Produces (`workers-ai.ts`): `embedViaBinding(ai: Ai): Deps["embed"]` (`ai.run("@cf/baai/bge-m3", { text, truncate_inputs: true })` → `data`, batches of ≤100, drop empty strings (return `[]` for an empty batch), L2-normalise, `Float32Array`); `embedViaRest(accountId: string, token: string, fetchFn?: typeof fetch): Deps["embed"]` (`POST /accounts/{id}/ai/run/@cf/baai/bge-m3` → `result.data`); `rerankViaBinding(ai)` / `rerankViaRest(...)`: `Deps["rerank"]` (`{ query, contexts: docs.map(text => ({ text })) }` → scores ordered by input index from `response[].id`; empty query or docs → zeros); `transcribeViaBinding(ai): Deps["transcribe"]` (`toBase64` in 32 KB `String.fromCharCode` chunks, `{ audio, task: "transcribe", vad_filter: true }` → `text`; throws on empty text); `toBase64(bytes: Uint8Array): string`.
 - Contact behaviour (already specified in Task 6 `ingest`): images over 5 MB or not `image/jpeg|png|webp` get `text = (caption + " [an image that could not be read]").trim()` and no file part.
 
-- [ ] **Step 1: Write the failing tests**: `toBase64(new Uint8Array([104,105]))==="aGk="` and a 70,000-byte buffer round-trips through `atob`; `embedViaRest` posts the documented body and returns normalised vectors (fake fetch `{result:{data:[[3,4]]}}` → `[0.6,0.8]`); `embedViaRest([])` returns `[]` without fetching; `rerankViaRest` maps `response:[{id:1,score:0.9},{id:0,score:0.2}]` to `[0.2,0.9]`; `contact.test.ts`: `voice note with failing transcribe leaves the marker and the stub prompt contains it`; `image on a text-only reply model switches to the vision model` (`models.reply = "z-ai/glm-5.2"`, stub records `modelId === "openai/gpt-6.1-terra"`); `oversized image gets the could-not-read text and no file part`.
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.** Wire real `embed`, `rerank`, `transcribe` in `makeDeps`; in `evals/harness.ts` `runScenario` uses `embedViaRest`/`rerankViaRest` when both env vars are set.
-- [ ] **Step 4: Run tests, typecheck, deploy.** Send a photo and a voice note from the phone; `wrangler tail` shows the transcript in the turn log, never in the reply. Record whether Whisper accepted `audio/ogg; codecs=opus`.
-- [ ] **Step 5: Commit** `git commit -am "feat: images, voice notes and other message types"`
+- [x] **Step 1: Write the failing tests**: `toBase64(new Uint8Array([104,105]))==="aGk="` and a 70,000-byte buffer round-trips through `atob`; `embedViaRest` posts the documented body and returns normalised vectors (fake fetch `{result:{data:[[3,4]]}}` → `[0.6,0.8]`); `embedViaRest([])` returns `[]` without fetching; `rerankViaRest` maps `response:[{id:1,score:0.9},{id:0,score:0.2}]` to `[0.2,0.9]`; `contact.test.ts`: `voice note with failing transcribe leaves the marker and the stub prompt contains it`; `image on a text-only reply model switches to the vision model` (`models.reply = "z-ai/glm-5.2"`, stub records `modelId === "openai/gpt-6.1-terra"`); `oversized image gets the could-not-read text and no file part`.
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.** Wire real `embed`, `rerank`, `transcribe` in `makeDeps`; in `evals/harness.ts` `runScenario` uses `embedViaRest`/`rerankViaRest` when both env vars are set.
+- [x] **Step 4: Run tests, typecheck, deploy.** Send a photo and a voice note from the phone; `wrangler tail` shows the transcript in the turn log, never in the reply. Record whether Whisper accepted `audio/ogg; codecs=opus`.
+- [x] **Step 5: Commit** `git commit -am "feat: images, voice notes and other message types"`
 
 ---
 
@@ -463,7 +463,7 @@ export function cascadeInsights(db: Db, factIds: number[]): void;
 
 Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`, ask on day 4 → `Almaty`), `long-update-moved` (day 1 "sister lives in Almaty", day 5 "she moved to Astana", `fill: 45`, ask "where does my sister live" → `Astana`; ask "where did she live before" → `Almaty`), `long-dates` ("interview at Monzo next Thursday 2pm" said on a Tuesday → `fill: 45` → "when is my interview" → the absolute date), `long-dont-know` (ask about a pet never mentioned → judge gold "says it doesn't know"), `long-preference` (vegetarian → `fill: 45` → "what should I cook tonight" → no meat; judge), `long-work` (`seed_facts: 30`, project name → `fill: 45` → "what was that project called"). `judgement-smalltalk-50` (50 chit-chat lines as separate steps 2 min apart with 3 facts spread in; `expect_facts: { count: 3, gold: [...] }`), `judgement-assistant-suggestions` (assistant proposes restaurants in its replies; `expect_facts` excludes them). `forget-never-returns` (say, ask, "forget my sister's city", `fill: 45`, `expect_facts_not_contains: ["Almaty"]`, ask → `expect_not_contains: ["Almaty"]`). `isolation-canary` (contact `a` says the canary word; `fill: 5`; contact `b` asks → `expect_not_contains: [canary]`).
 
-- [ ] **Step 1: Write the failing unit tests** (`memory.test.ts`; stub `object` returning fixed ops; `hashEmbed`/`cosineRerank`):
+- [x] **Step 1: Write the failing unit tests** (`memory.test.ts`; stub `object` returning fixed ops; `hashEmbed`/`cosineRerank`):
   - `remember persists only signal >= 3 and embeds in one batch` (ops with signals 2, 3, 5 → 2 facts; `embed` called once with 2 texts).
   - `UPDATE supersedes and keeps the old fact retrievable` (`status === "superseded"`, `superseded_by === new id`; `recall` returns both, old marked superseded).
   - `DELETE and UPDATE cascade to insights`.
@@ -471,10 +471,10 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
   - `recall("") returns [] without calling embed`.
   - `forget removes by substring and returns the count`; `profile upsert`.
   - `media_note is written to the image row`; `timezone "Europe/Lisbon" updates the contact row, "Mars/Olympus" is ignored`.
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement** `memory.ts`; wire into `contact.ts` and `prompt.ts`; write the 10 YAML scenarios.
-- [ ] **Step 4: Run unit tests, typecheck** → PASS. With the keys: `npm run eval -- --filter=long`, `--filter=judgement`, `--filter=forget`, `--filter=isolation`; then the baseline `npm run eval -- --no-memory`; `npm run eval:report`. Iterate on the extraction prompt until the judgement scenarios pass; record what changed in the commit body.
-- [ ] **Step 5: Deploy, commit, push** `git commit -am "feat: long-term memory with extraction, hybrid retrieval, profile and forget" && git push`
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement** `memory.ts`; wire into `contact.ts` and `prompt.ts`; write the 10 YAML scenarios.
+- [x] **Step 4: Run unit tests, typecheck** → PASS. With the keys: `npm run eval -- --filter=long`, `--filter=judgement`, `--filter=forget`, `--filter=isolation`; then the baseline `npm run eval -- --no-memory`; `npm run eval:report`. Iterate on the extraction prompt until the judgement scenarios pass; record what changed in the commit body.
+- [x] **Step 5: Deploy, commit, push** `git commit -am "feat: long-term memory with extraction, hybrid retrieval, profile and forget" && git push`
 
 ---
 
@@ -488,11 +488,11 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
 - Produces: `export const InsightSchema = z.object({ insights: z.array(z.object({ text: z.string(), confidence: z.number().min(0).max(1), evidence_fact_ids: z.array(z.number().int()) })).max(3) })`; `deriveInsights(deps: Deps): Promise<number>` — active facts with `created_at > state.last_insights_run` plus, per new fact, the 5 most similar older active facts; one `llm.object` call on `models.derive` asking for up to 3 connections or implications the person never stated together, each citing evidence ids, with confidence; store those with `confidence ≥ 0.5` whose evidence ids are all active facts (embedding via `embed`); set `last_insights_run = now`; return the count.
 - Contact: timer 2 in `alarm()` (Task 6) now calls `deriveInsights` when `features.memory` after setting `insights_due = NULL`.
 
-- [ ] **Step 1: Write the failing tests**: `deriveInsights stores insights with confidence >= 0.5 and evidence ids` (stub returns 0.9 and 0.3 → one stored); `insight is removed when its evidence fact is superseded`; `recall labels insights as derived with confidence` (`MemoryHit.kind === "insight"`, prompt line contains `(derived, confidence 0.9)`); contact test: `insights alarm fires 30 min after the last message and not before` (`view.alarmAt === lastInbound + 30 min`; drain to +31 min → stub `object` called once; `view.alarmAt === null` afterwards).
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.** Scenarios, each `say A` → `say B` → next step `at: +31 min` → `fill: 45` → `expect_insights: { min: 1, evidence_count: 2 }` → `ask` (judged): `derived-almaty-birthday` (flight to Almaty on a date + sister's birthday two days later → "anything I should plan for that trip?"), `derived-lisbon-vegetarian`, `derived-early-flight-routine` ("I run every morning at 7" + "flight at 6am Friday" → "should I run Friday?"), `derived-allergy-dinner` ("allergic to peanuts" + "dinner at a Thai place Saturday" → "anything to watch out for Saturday?").
-- [ ] **Step 4: Run tests; with the keys `npm run eval -- --filter=derived`.** Deploy.
-- [ ] **Step 5: Commit** `git commit -am "feat: derived insights after 30 minutes of quiet"`
+- [x] **Step 1: Write the failing tests**: `deriveInsights stores insights with confidence >= 0.5 and evidence ids` (stub returns 0.9 and 0.3 → one stored); `insight is removed when its evidence fact is superseded`; `recall labels insights as derived with confidence` (`MemoryHit.kind === "insight"`, prompt line contains `(derived, confidence 0.9)`); contact test: `insights alarm fires 30 min after the last message and not before` (`view.alarmAt === lastInbound + 30 min`; drain to +31 min → stub `object` called once; `view.alarmAt === null` afterwards).
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.** Scenarios, each `say A` → `say B` → next step `at: +31 min` → `fill: 45` → `expect_insights: { min: 1, evidence_count: 2 }` → `ask` (judged): `derived-almaty-birthday` (flight to Almaty on a date + sister's birthday two days later → "anything I should plan for that trip?"), `derived-lisbon-vegetarian`, `derived-early-flight-routine` ("I run every morning at 7" + "flight at 6am Friday" → "should I run Friday?"), `derived-allergy-dinner` ("allergic to peanuts" + "dinner at a Thai place Saturday" → "anything to watch out for Saturday?").
+- [x] **Step 4: Run tests; with the keys `npm run eval -- --filter=derived`.** Deploy.
+- [x] **Step 5: Commit** `git commit -am "feat: derived insights after 30 minutes of quiet"`
 
 ---
 
@@ -505,11 +505,11 @@ Scenarios: `long-recall-sister-city` (`seed_facts: 30`, say on day 1, `fill: 45`
 - Produces (`browser.ts`): `makeSnapshot(cfg: { accountId: string; token: string; fetch?: typeof fetch }): Deps["snapshot"]` — `POST https://api.cloudflare.com/client/v4/accounts/{accountId}/browser-rendering/snapshot?cacheTTL=0` with body `{ url, formats: ["screenshot","markdown"], viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, screenshotOptions: { type: "jpeg", quality: 80 }, gotoOptions: { waitUntil: "networkidle2", timeout: 20000 }, bestAttempt: true }`, `AbortSignal.timeout(25000)`; decode `result.screenshot` (base64 → `Uint8Array`), `result.markdown` (strip leading YAML front matter, trim to 12,000 chars), `title: meta?.title ?? ""`, `status: meta?.status ?? 0`, `finalUrl: meta?.finalUrl ?? url`; returns `null` on any non-2xx (log status and `Retry-After` on 429) or timeout. `extractUrls` already exists from Task 6.
 - Contact: `pages` prefetch is already in Task 6 `ingest`; when the thread (pending + last 5 history rows) contains a URL the reply call also gets the `view_page` tool (`inputSchema: z.object({ url: z.string().url() })`, execute → `pages.get(url) ?? snapshot(url)` → `{ title, status, finalUrl, markdown }` text only, or `{ error: "could not open the page" }`); after the turn `remember()` receives `(shared a link: <title> <finalUrl>)` appended to the user text.
 
-- [ ] **Step 1: Write the failing tests**: `makeSnapshot posts the documented body and decodes the result` (fake fetch; `formats`, viewport; returns `{ success:true, result:{ screenshot: base64 of 3 bytes, markdown: "---\ntitle: X\n---\n# Hi" }, meta:{status:200,title:"X",finalUrl:"https://x/"} }` → `jpeg.length===3`, `markdown==="# Hi"`); `falls back to the request url when meta has no finalUrl`; `returns null on 429`; `extractUrls` finds two and ignores `ftp://`; contact tests: `URL at t, text at t+1 s: snapshot called once and the model gets the page text and a file part`; `view_page tool is attached only when the thread has a URL`; `an outbound bubble with a URL is sent with previewUrl`.
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.** Wire `snapshot` in `makeDeps` and in `runScenario` (real REST when `CLOUDFLARE_API_TOKEN` is set).
-- [ ] **Step 4: Run tests, deploy, send a link from the phone; the reply talks about what the page shows.**
-- [ ] **Step 5: Commit** `git commit -am "feat: web page snapshots and view_page tool"`
+- [x] **Step 1: Write the failing tests**: `makeSnapshot posts the documented body and decodes the result` (fake fetch; `formats`, viewport; returns `{ success:true, result:{ screenshot: base64 of 3 bytes, markdown: "---\ntitle: X\n---\n# Hi" }, meta:{status:200,title:"X",finalUrl:"https://x/"} }` → `jpeg.length===3`, `markdown==="# Hi"`); `falls back to the request url when meta has no finalUrl`; `returns null on 429`; `extractUrls` finds two and ignores `ftp://`; contact tests: `URL at t, text at t+1 s: snapshot called once and the model gets the page text and a file part`; `view_page tool is attached only when the thread has a URL`; `an outbound bubble with a URL is sent with previewUrl`.
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.** Wire `snapshot` in `makeDeps` and in `runScenario` (real REST when `CLOUDFLARE_API_TOKEN` is set).
+- [x] **Step 4: Run tests, deploy, send a link from the phone; the reply talks about what the page shows.**
+- [x] **Step 5: Commit** `git commit -am "feat: web page snapshots and view_page tool"`
 
 ---
 
@@ -529,15 +529,17 @@ export function followupDecision(db: Db, now: number, tz: string): FollowupDecis
   Rules (design §4.10): `no-fact` if the fact is not active; `window` if `now − contact.last_inbound_ts > 24 h`; `messaged` if any inbound `ts > eventDate`; `defer` to the next 09:00 local if the local hour is < 9 or ≥ 22, or if `contact.last_proactive_date` equals today in `tz` (one proactive message per day) — in both cases only when that moment is still inside the 24 h window, else `window`; else `send`.
 - Contact: after `remember()` → `scheduleFollowup(db, now, tz)`; timer 3 in `alarm()`: set `followup_due = NULL` first, then `followupDecision`: `send` → one-bubble call `llm.stream({ job: "followup", maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort), reasoning: reasoningFor(...), system: [SYSTEM_PROMPT, dynamic block + "write one short check-in about this plan: <fact text>; no reaction line; one bubble"] })` parsed with `parseReply(text, 1)`, sent with the same error wrapping as `runTurn`, outbound row inserted, `last_proactive_date = today`; `defer` → `followup_due = to` (same `followup_fact_id`); `send` and `skip` → `UPDATE facts SET followup_done = 1` for that fact and clear `followup_fact_id`; in every case finish with `scheduleFollowup(db, now, tz)`, which keeps a deferred fact's `to` and otherwise moves on to the next plan or leaves the timer clear.
 
-- [ ] **Step 1: Write the failing tests**: `scheduleFollowup picks the soonest future plan and adds 2h`; `scheduleFollowup keeps a deferred due for the tracked fact and skips followup_done facts`; `followupDecision` table: 23:30 local → `defer` to 09:00 next day; 10:00 local with last inbound 30 h ago → `skip window`; inbound after the event → `skip messaged`; already sent today → `defer` to 09:00 tomorrow; otherwise `send`; contact tests: `follow-up fires after the alarm and sends exactly one bubble, marks the fact followup_done, and the alarm is clear afterwards`; `a skipped plan is not re-picked (no alarm storm)`; `two plans: after the first fires, followup_due === D2 + 2h`.
-- [ ] **Step 2: Run tests to verify they fail** → FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run tests, typecheck, deploy.**
-- [ ] **Step 5: Commit** `git commit -am "feat: proactive follow-ups inside the 24h window"`
+- [x] **Step 1: Write the failing tests**: `scheduleFollowup picks the soonest future plan and adds 2h`; `scheduleFollowup keeps a deferred due for the tracked fact and skips followup_done facts`; `followupDecision` table: 23:30 local → `defer` to 09:00 next day; 10:00 local with last inbound 30 h ago → `skip window`; inbound after the event → `skip messaged`; already sent today → `defer` to 09:00 tomorrow; otherwise `send`; contact tests: `follow-up fires after the alarm and sends exactly one bubble, marks the fact followup_done, and the alarm is clear afterwards`; `a skipped plan is not re-picked (no alarm storm)`; `two plans: after the first fires, followup_due === D2 + 2h`.
+- [x] **Step 2: Run tests to verify they fail** → FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run tests, typecheck, deploy.**
+- [x] **Step 5: Commit** `git commit -am "feat: proactive follow-ups inside the 24h window"`
 
 ---
 
 ### Task 13: Model comparison and EVALS.md
+
+> Deferred: needs OPENROUTER_API_KEY; see README › Evals.
 
 **Files:**
 - Modify: `evals/report.ts` (comparison tables), `src/models.ts` (winners), `EVALS.md` (generated)
@@ -566,7 +568,7 @@ npm run eval:report
 - Create: `README.md`
 - Modify: `src/index.ts`, `src/contact-agent.ts`, `src/env.d.ts` (remove `/__cpu` and `burn`), `SETUP.md` (point at the README's known limits), the plan (tick boxes)
 
-- [ ] **Step 1: README.md** sections, in this order: what it does and how to text it (the test number, that reviewers must be added first, what to try: a burst of three, a photo, a voice note, a link, "what do you know about me", "forget …", come back tomorrow); architecture diagram (Mermaid: phone → Meta → Worker → ContactAgent DO → OpenRouter / Workers AI / Browser Rendering, with the alarm loop); repo map (one line per file from the File map); the eval results table copied from EVALS.md with a link; model picks with numbers and hosts; known limits (24 h window, test-number recipient list, Free-plan browser and AI quotas, 1,000 free messages/month, no voice replies, follow-ups skipped outside the window, timezone guessed from the phone until the person states it); what I'd build next (follow-ups outside the 24 h window via templates, voice replies); credits (mem0 prompts, Apache-2.0).
-- [ ] **Step 2: Remove the CPU probe route and `burn`; `npm test && npx tsc --noEmit`; `npx wrangler deploy`; text the number once more.**
-- [ ] **Step 3: Commit and push** `git commit -am "docs: readme, remove probe route" && git push`
-- [ ] **Step 4: Hand over**: the repo URL, the Worker URL, the SETUP.md steps still open on the owner's side (reviewer numbers), and the EVALS.md headline numbers.
+- [x] **Step 1: README.md** sections, in this order: what it does and how to text it (the test number, that reviewers must be added first, what to try: a burst of three, a photo, a voice note, a link, "what do you know about me", "forget …", come back tomorrow); architecture diagram (Mermaid: phone → Meta → Worker → ContactAgent DO → OpenRouter / Workers AI / Browser Rendering, with the alarm loop); repo map (one line per file from the File map); the eval results table copied from EVALS.md with a link; model picks with numbers and hosts; known limits (24 h window, test-number recipient list, Free-plan browser and AI quotas, 1,000 free messages/month, no voice replies, follow-ups skipped outside the window, timezone guessed from the phone until the person states it); what I'd build next (follow-ups outside the 24 h window via templates, voice replies); credits (mem0 prompts, Apache-2.0).
+- [x] **Step 2: Remove the CPU probe route and `burn`; `npm test && npx tsc --noEmit`; `npx wrangler deploy`; text the number once more.**
+- [x] **Step 3: Commit and push** `git commit -am "docs: readme, remove probe route" && git push`
+- [x] **Step 4: Hand over**: the repo URL, the Worker URL, the SETUP.md steps still open on the owner's side (reviewer numbers), and the EVALS.md headline numbers.

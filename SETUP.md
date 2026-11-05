@@ -108,9 +108,6 @@ npx wrangler secret put ALLOWED_PHONES   # paste the full comma-separated list w
 
 5. The reviewer must text first. The bot can only send free-form messages within 24 hours of a person's last message; it cannot start a conversation.
 
-## Known limits of this setup (also in the README)
+## Known limits
 
-- Replies only within 24 hours of the person's last message (Meta rule). Proactive check-ins outside that window are skipped.
-- Recipient list on the test number: a handful of verified numbers, each needing a code from that phone.
-- Cloudflare free plan: 10 browser-minutes per day for page previews and one page request every 10 seconds; 10,000 Workers AI neurons per day (about 200 minutes of voice notes).
-- Meta's free tier is 1,000 delivered service messages per month per number; past that, with no payment method on the Messaging account, messages are not delivered.
+See the README's [Known limits](README.md#known-limits).

@@ -13,7 +13,6 @@ async function hmacHex(secret: string, body: string): Promise<string> {
 function fakeEnv(allowed: string, verifyToken = "t") {
   const names: string[] = [];
   const ingested: { name: string; m: Inbound }[] = [];
-  const burned: number[] = [];
   const env = {
     WHATSAPP_APP_SECRET: "secret", WHATSAPP_VERIFY_TOKEN: verifyToken, ALLOWED_PHONES: allowed,
     CONTACT: {
@@ -21,12 +20,11 @@ function fakeEnv(allowed: string, verifyToken = "t") {
         names.push(name);
         return {
           ingest: async (m: Inbound) => { ingested.push({ name, m }); },
-          burn: async (n: number) => { burned.push(n); return { iterations: n, checksum: 7 }; },
         };
       },
     },
   } as unknown as Env;
-  return { env, names, ingested, burned };
+  return { env, names, ingested };
 }
 
 const value = (v: object) => ({ field: "messages", value: { messaging_product: "whatsapp", metadata: { display_phone_number: "15550009999", phone_number_id: "1" }, ...v } });
@@ -72,13 +70,4 @@ test("GET /webhook with an empty WHATSAPP_VERIFY_TOKEN is 403 even for an empty 
   const f = fakeEnv(A, "");
   const res = await worker.fetch(new Request("https://x/webhook?hub.mode=subscribe&hub.challenge=1&hub.verify_token="), f.env, ctx);
   expect(res.status).toBe(403);
-});
-
-test("/__cpu clamps n at 200,000,000 and rejects non-numeric n", async () => {
-  const f = fakeEnv(A);
-  expect((await worker.fetch(new Request("https://x/__cpu?n=abc"), f.env, ctx)).status).toBe(400);
-  const res = await worker.fetch(new Request("https://x/__cpu?n=999999999999"), f.env, ctx);
-  expect(await res.json()).toEqual({ iterations: 200_000_000, checksum: 7 });
-  expect(f.names).toEqual(["probe"]);
-  expect(f.burned).toEqual([200_000_000]);
 });
