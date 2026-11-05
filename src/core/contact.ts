@@ -26,6 +26,7 @@ const DAY = 86_400_000; // Meta's free-form window after their last message; app
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
+export const FALLBACK = "sorry, something broke on my side. can you send that again in a bit?";
 const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
@@ -311,6 +312,18 @@ export class ContactCore {
     const keys = Object.keys(row);
     const turnId = db.all<{ id: number }>(`INSERT INTO turns(${keys}) VALUES (${keys.map(() => "?")}) RETURNING id`, ...Object.values(row))[0].id;
     db.run("UPDATE messages SET status='handled', turn_id=? WHERE id IN (SELECT value FROM json_each(?))", turnId, JSON.stringify(pending.map((r) => r.id)));
+    // A failed turn that showed them no text and has no retry left: one fixed line instead of a typing indicator and silence.
+    // After the rows are handled, so it can never go out twice for the same burst.
+    if (error !== null && bubbles === 0 && to) {
+      try {
+        const wamid = await this.sendBubble(to, FALLBACK), rowId = wamid || `local.${crypto.randomUUID()}`;
+        db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", rowId, FALLBACK, clock.now(), wamid === null ? "failed" : "sent");
+        outIds.push(rowId);
+        this.deps.log({ event: "fallback_sent", contact: this.deps.contactKey, ok: wamid !== null });
+      } catch (e) {
+        this.error("fallback_failed", e);
+      }
+    }
     db.run("UPDATE messages SET turn_id=? WHERE id IN (SELECT value FROM json_each(?))", turnId, JSON.stringify(outIds));
     const next = this.pending().at(-1);
     const now = clock.now();

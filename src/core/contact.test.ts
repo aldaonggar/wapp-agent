@@ -3,7 +3,7 @@ import { FakeClock, FakeWa, drain, hashEmbed, makeEvalDeps, stubLlm } from "../.
 import { routeTransports } from "../telegram";
 import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
-import { ContactCore } from "./contact";
+import { ContactCore, FALLBACK } from "./contact";
 import { vecToBlob } from "./db";
 import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
 
@@ -171,7 +171,7 @@ test("an llm error ends the turn cleanly", async () => {
   expect(t.turns()[0].error).toContain("upstream 500");
   expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
   expect(t.view.alarmAt).toBeNull();
-  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "typing"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "typing", "text"]); // the fallback line after the second failure
 });
 
 test("timers are consumed with memory off", async () => {
@@ -239,6 +239,45 @@ test("an early failure on both attempts still marks the pending rows handled", a
   await t.core.afterTurn;
   expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000); // only the insights timer is left
   expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract"]); // what they said is remembered even though the reply failed
+});
+
+test("two failures in a row send exactly one fallback, after the second alarm, stored as an outbound row; the pending rows are handled", async () => {
+  const t = setup({ reply: () => { throw new Error("upstream 500"); } });
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("the movie was great");
+  await t.fire();
+  expect(t.wa.sent.filter((s) => s.kind === "text")).toEqual([]);
+  await t.fire();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual([FALLBACK]);
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([[FALLBACK, "sent"]]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(log).toHaveBeenCalledWith({ event: "fallback_sent", contact: "test", ok: true });
+  expect(t.view.alarmAt).toBeNull();
+  await t.run(t.clock.t + 3_600_000);
+  expect(t.wa.sent.filter((s) => s.kind === "text")).toHaveLength(1);
+});
+
+test("a reaction-only turn that then fails gets the fallback (no retry: something already went out)", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n"], error: new Error("stream cut") }) });
+  await t.say("the movie was great");
+  await t.fire();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "reaction", "text"]);
+  expect(t.wa.sent.at(-1)!.body).toBe(FALLBACK);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
+});
+
+test("a fallback that cannot be sent is stored failed and logged; the alarm still completes", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n"], error: new Error("stream cut") }) });
+  const log = vi.fn();
+  t.deps.log = log;
+  t.wa.failNext = new WaError(0, 502, "bad gateway");
+  await t.say("the movie was great");
+  await expect(t.fire()).resolves.toBeUndefined();
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([[FALLBACK, "failed"]]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(log).toHaveBeenCalledWith({ event: "fallback_sent", contact: "test", ok: false });
 });
 
 test("a failing recall still gets a reply, with no memories and a recall_failed log", async () => {

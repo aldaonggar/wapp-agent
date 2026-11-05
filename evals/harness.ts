@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { parse } from "yaml";
 import { makeSnapshot } from "../src/browser";
 import { MAX_WAIT_MS } from "../src/core/cadence";
-import { ContactCore } from "../src/core/contact";
+import { ContactCore, FALLBACK } from "../src/core/contact";
 import { fromNode, migrate, vecToBlob } from "../src/core/db";
 import type { Clock, Deps, Features, Inbound, Llm, ModelChoice, ObjectCall, StreamCall, Usage, WaClient } from "../src/core/types";
 import { MODELS, pickModels } from "../src/models";
@@ -389,7 +389,8 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
         // The answer must come from recall, not from the always-present profile: some hit shown to the reply names each term.
         const recalled = (JSON.parse(turn?.recalled ?? "[]") as string[]).map((t) => t.toLowerCase());
         const missing = (step.expect_recalled ?? []).filter((x) => !recalled.some((t) => t.includes(x.toLowerCase())));
-        const { usage, ...verdict }: Verdict = step.max_turns !== undefined && turns > step.max_turns
+        const { usage, ...verdict }: Verdict = answer === FALLBACK ? { label: "wrong" as const, reason: "the turn failed: only the fallback line went out" }
+          : step.max_turns !== undefined && turns > step.max_turns
           ? { label: "wrong" as const, reason: `turns=${turns} > max_turns=${step.max_turns}` }
           : missing.length ? { label: "wrong" as const, reason: missing.map((x) => `not recalled: "${x}"`).join("; ") }
           : await score(realLlm, step, answer, context);
