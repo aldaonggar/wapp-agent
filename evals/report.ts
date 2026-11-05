@@ -12,15 +12,16 @@ const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget",
 const JOB_CATEGORIES: Record<Job, string[]> = { reply: ["short-term"], extract: ["long-term", "judgement"], derive: ["derived"] };
 const NOT_RUN = "not run";
 
-const model = (r: Run, job: Job) => r.config[job] || JOBS[job].default;
-// Default configuration, optionally with one job swapped and memory or retrieval changed.
+const model = (r: Run, job: Job) => r.config.models?.[job] ?? r.config[job] ?? JOBS[job].default; // files from before models were recorded: the defaults at the time
+// Base configuration (no job overridden, memory on, hybrid, lowest effort), optionally with one job swapped, memory off or cosine retrieval.
 const isDefault = (r: Run, o: { memory?: boolean; retrieval?: string; except?: Job } = {}) =>
   r.config.memory === (o.memory ?? true) && r.config.retrieval === (o.retrieval ?? "hybrid") && !r.config.effort &&
-  (["reply", "extract", "derive"] as const).every((j) => j === o.except || model(r, j) === JOBS[j].default);
+  (["reply", "extract", "derive"] as const).every((j) => j === o.except || !r.config[j]);
 const agent = runs.find((r) => isDefault(r));
 const baseline = runs.find((r) => isDefault(r, { memory: false }));
 const cosine = runs.find((r) => isDefault(r, { retrieval: "cosine" }));
-const runFor = (job: Job, id: string) => (id === JOBS[job].default ? agent : runs.find((r) => isDefault(r, { except: job }) && model(r, job) === id));
+const base = (job: Job) => (agent ? model(agent, job) : JOBS[job].default);
+const runFor = (job: Job, id: string) => (id === base(job) ? agent : runs.find((r) => isDefault(r, { except: job }) && model(r, job) === id));
 
 const score = (xs: ScenarioResult[]) => xs.length ? `${xs.filter((s) => s.passed).length}/${xs.length} (${Math.round((100 * xs.filter((s) => s.passed).length) / xs.length)}%)` : NOT_RUN;
 const inCats = (r: Run | undefined, cats: string[]) => r?.scenarios.filter((s) => cats.includes(s.category)) ?? [];
@@ -50,9 +51,11 @@ const out: string[] = [
     ["all", score(baseline?.scenarios ?? []), score(agent?.scenarios ?? [])],
   ]),
   "",
+  `The agent column is the base configuration: reply \`${base("reply")}\`, extract \`${base("extract")}\`, derive \`${base("derive")}\`${agent ? ` (run at ${agent.at})` : ""}.`,
+  "",
   "## Model comparison per job",
   "",
-  "Each candidate runs with the other jobs at their defaults, on the categories its job affects. Cost is that job's model calls per 1,000 reply turns.",
+  "Each candidate runs with the other jobs at the base configuration's models, on the categories its job affects. Cost is that job's model calls per 1,000 reply turns.",
 ];
 for (const job of ["reply", "extract", "derive"] as const) {
   const cats = JOB_CATEGORIES[job];

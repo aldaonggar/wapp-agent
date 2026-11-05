@@ -184,7 +184,7 @@ export function evalEmbedders(env: Record<string, string | undefined>, fetchFn?:
 
 // ---- Scenarios ----
 
-export interface EvalConfig { reply?: string; extract?: string; derive?: string; effort?: "low" | "medium" | "high"; memory: boolean; retrieval: "cosine" | "hybrid"; filter?: string; tag: string }
+export interface EvalConfig { reply?: string; extract?: string; derive?: string; effort?: "low" | "medium" | "high"; memory: boolean; retrieval: "cosine" | "hybrid"; filter?: string; tag: string; models?: Pick<ModelChoice, "reply" | "extract" | "derive"> }
 
 export function evalConfig(): EvalConfig {
   const e = process.env, d = pickModels({});
@@ -197,12 +197,14 @@ export function evalConfig(): EvalConfig {
   const retrieval = (e.EVAL_RETRIEVAL || "hybrid") as EvalConfig["retrieval"];
   if (retrieval !== "cosine" && retrieval !== "hybrid") throw new Error(`EVAL_RETRIEVAL must be cosine or hybrid, got ${retrieval}`);
   const cfg = { reply: pick(e.EVAL_REPLY), extract: pick(e.EVAL_EXTRACT), derive: pick(e.EVAL_DERIVE), effort, memory: e.EVAL_MEMORY !== "0", retrieval, filter: e.EVAL_FILTER || undefined };
+  for (const j of ["reply", "extract", "derive"] as const) if (cfg[j] === d[j]) cfg[j] = undefined; // an override equal to the default is no override, as in the tag
   const id = (m: string) => m.replaceAll("/", "_");
   const tag = [
     `reply=${id(cfg.reply ?? d.reply)}`, `memory=${cfg.memory ? 1 : 0}`, `retrieval=${retrieval}`,
-    cfg.extract && cfg.extract !== d.extract && `extract=${id(cfg.extract)}`, cfg.derive && cfg.derive !== d.derive && `derive=${id(cfg.derive)}`, effort && `effort=${effort}`,
+    cfg.extract && `extract=${id(cfg.extract)}`, cfg.derive && `derive=${id(cfg.derive)}`, effort && `effort=${effort}`,
   ].filter(Boolean).join(",");
-  return { ...cfg, tag };
+  // models: what actually ran, so the report never resolves an old results file against newer defaults.
+  return { ...cfg, tag, models: { reply: cfg.reply ?? d.reply, extract: cfg.extract ?? d.extract, derive: cfg.derive ?? d.derive } };
 }
 
 export type Step =

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { Llm, StreamCall } from "../src/core/types";
+import { JOBS } from "../src/models";
 import { cosineRerank, evalConfig, evalEmbedders, hashEmbed, loadScenarios, parseAt, runScenario, stubLlm, type EvalConfig, type Scenario } from "./harness";
 
 const cfg: EvalConfig = { memory: false, retrieval: "hybrid", tag: "test" };
@@ -255,7 +256,10 @@ test("evalConfig() builds the tag from the EVAL_* env", () => {
   expect(evalConfig()).toEqual({
     reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: undefined, effort: "medium", memory: false, retrieval: "cosine", filter: "short",
     tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,extract=openai_gpt-6-luna,effort=medium",
+    models: { reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: JOBS.derive.default },
   });
+  vi.stubEnv("EVAL_EXTRACT", JOBS.extract.default); // explicitly the default: no override, same tag and file as the default run
+  expect(evalConfig()).toMatchObject({ extract: undefined, tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,effort=medium", models: { extract: JOBS.extract.default } });
   vi.stubEnv("EVAL_EFFORT", "max");
   expect(() => evalConfig()).toThrow(/EVAL_EFFORT/);
 });
