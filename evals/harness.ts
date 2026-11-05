@@ -34,7 +34,7 @@ export class FakeClock {
   }
 }
 
-export interface Sent { at: number; kind: "text" | "reaction" | "typing"; to: string; body?: string; quote?: string; previewUrl?: boolean; target?: string; emoji?: string; id: string }
+export interface Sent { at: number; kind: "text" | "reaction" | "typing" | "audio"; to: string; body?: string; quote?: string; previewUrl?: boolean; target?: string; emoji?: string; bytes?: Uint8Array; mime?: string; id: string }
 
 export class FakeWa implements WaClient {
   sent: Sent[] = [];
@@ -52,6 +52,11 @@ export class FakeWa implements WaClient {
     const e = this.failNext;
     if (e) { this.failNext = undefined; throw e; }
     return { id: this.rec({ kind: "text", to, body, previewUrl: opts?.previewUrl ?? false, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
+  }
+  async sendAudio(to: string, bytes: Uint8Array, mime: string) {
+    const e = this.failNext;
+    if (e) { this.failNext = undefined; throw e; }
+    return { id: this.rec({ kind: "audio", to, bytes, mime }) };
   }
   async sendReaction(to: string, messageId: string, emoji: string) { this.rec({ kind: "reaction", to, target: messageId, emoji }); }
   async markReadTyping(messageId: string) { this.rec({ kind: "typing", to: "", target: messageId }); }
@@ -133,7 +138,7 @@ export async function cosineRerank(query: string, docs: string[]): Promise<numbe
 
 export function makeEvalDeps(o: {
   clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>;
-  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"]; contactKey?: string;
+  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; tts?: Deps["tts"]; snapshot?: Deps["snapshot"]; contactKey?: string;
 }): Deps {
   const db = fromNode(new DatabaseSync(":memory:"));
   migrate(db);
@@ -157,6 +162,7 @@ export function makeEvalDeps(o: {
     embed: o.embed ?? hashEmbed,
     rerank: o.rerank ?? cosineRerank,
     transcribe: o.transcribe ?? (async () => "(voice)"),
+    tts: o.tts ?? (async () => ({ bytes: new Uint8Array([0x4f, 0x67, 0x67, 0x53]), mime: "audio/ogg" })), // "OggS"
     snapshot: o.snapshot ?? (async () => null),
     models: { ...pickModels({}), ...o.models },
     features: { memory: false, retrieval: "hybrid", ...o.features },

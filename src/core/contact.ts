@@ -16,7 +16,7 @@ import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
 
 type Media = { bytes: Uint8Array; mime: string };
 type Recall = { hits: MemoryHit[]; ms: number };
-interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null }
+interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null; voice: number }
 interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
 
 const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
@@ -26,6 +26,7 @@ const DAY = 86_400_000; // WhatsApp's free-form window after their last message
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
+const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: another script goes as text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
@@ -169,6 +170,9 @@ export class ContactCore {
         const snap = this.pending();
         pending = snap;
         const newest = snap.at(-1)!;
+        // A voice note gets one voice note back with the whole reply; the bubbles are held until the stream ends.
+        const voiceReply = newest.kind === "audio" && newest.voice === 1 && !!this.deps.tts && !!wa.sendAudio;
+        const held: { text: string; quote?: string }[] = [];
         await this.scheduleNext();
         const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
         to = contact.wa_id;
@@ -215,6 +219,23 @@ export class ContactCore {
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
 
+        const deliver = async (text: string, quote?: string) => {
+          if (bubbles > 0) {
+            wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
+            const wait = bubblePauseMs(prevChars) - (clock.now() - lastSendAt);
+            if (wait > 0) await clock.sleep(wait);
+          }
+          sends++;
+          bubbles++;
+          const wamid = await this.sendBubble(to, text, quote);
+          if (wamid) ttfb ??= performance.now() - t0;
+          lastSendAt = clock.now();
+          prevChars = text.length;
+          const rowId = wamid || `local.${crypto.randomUUID()}`;
+          db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
+          outIds.push(rowId);
+        };
+
         let restart = false;
         for await (const ev of parseReply(text)) {
           if (sends === 0 && this.state().generation !== gen && regenerated < MAX_REGENERATIONS) {
@@ -237,22 +258,20 @@ export class ContactCore {
             continue;
           }
           const quote = ev.quote ? resolve(ev.quote) : undefined;
-          if (bubbles > 0) {
-            wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
-            const wait = bubblePauseMs(prevChars) - (clock.now() - lastSendAt);
-            if (wait > 0) await clock.sleep(wait);
-          }
-          sends++;
-          bubbles++;
-          const wamid = await this.sendBubble(to, ev.text, quote);
-          if (wamid) ttfb ??= performance.now() - t0;
-          lastSendAt = clock.now();
-          prevChars = ev.text.length;
-          const rowId = wamid || `local.${crypto.randomUUID()}`;
-          db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, ev.text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
-          outIds.push(rowId);
+          if (voiceReply) held.push({ text: ev.text, quote });
+          else await deliver(ev.text, quote);
         }
         if (restart) continue; // the next snapshot takes the new messages
+        if (held.length) {
+          const joined = held.map((b) => b.text).join("\n\n");
+          const wamid = SPEAKABLE.test(joined) ? await this.sendVoice(to, joined) : null;
+          if (wamid) {
+            bubbles = held.length;
+            ttfb ??= performance.now() - t0;
+            db.run("INSERT INTO messages(id, direction, kind, text, ts, voice, status) VALUES (?, 'out', 'audio', ?, ?, 1, 'sent')", wamid, joined, clock.now());
+            outIds.push(wamid);
+          } else for (const b of held) await deliver(b.text, b.quote); // synthesis or upload failed: the text bubbles, paced as usual
+        }
         usage = await done;
         break;
       }
@@ -345,6 +364,19 @@ export class ContactCore {
       done();
     } finally {
       scheduleFollowup(db, clock.now(), tz);
+    }
+  }
+
+  // One voice note for the whole reply; null when synthesis or the upload fails, and the caller falls back to text.
+  private async sendVoice(to: string, text: string): Promise<string | null> {
+    const { tts, wa } = this.deps;
+    if (!tts || !wa.sendAudio) return null;
+    try {
+      const a = await tts(text);
+      return (await wa.sendAudio(to, a.bytes, a.mime)).id;
+    } catch (e) {
+      this.error("voice_reply_failed", e);
+      return null;
     }
   }
 

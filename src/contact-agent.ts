@@ -6,7 +6,7 @@ import type { Db, Deps, Inbound } from "./core/types";
 import { makeLlm } from "./llm";
 import { pickModels } from "./models";
 import { makeWaClient } from "./whatsapp";
-import { embedViaBinding, rerankViaBinding, transcribeViaBinding } from "./workers-ai";
+import { embedViaBinding, rerankViaBinding, transcribeViaBinding, ttsViaBinding } from "./workers-ai";
 
 export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
@@ -23,6 +23,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
     embed: embedViaBinding(env.AI),
     rerank: rerankViaBinding(env.AI),
     transcribe: transcribeViaBinding(env.AI),
+    tts: ttsViaBinding(env.AI),
     snapshot: makeSnapshot({ accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN, log }),
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },

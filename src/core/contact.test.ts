@@ -335,6 +335,61 @@ test("voice note with failing transcribe leaves the marker and the stub prompt c
   expect(JSON.stringify(t.llm.calls[0].messages)).toContain("[voice note could not be transcribed]");
 });
 
+// Voice replies: a voice note in gets one voice note back; anything that fails falls back to the text bubbles.
+const voiceNote = async (t: ReturnType<typeof setup>, transcript = "how are you") => {
+  t.deps.transcribe = async () => transcript;
+  t.wa.media.set("media.v", { bytes: new Uint8Array([1]), mime: "audio/ogg; codecs=opus" });
+  await t.say("", { kind: "audio", mediaId: "media.v", mime: "audio/ogg; codecs=opus", voice: true });
+};
+
+test("a voice note gets one voice note with the whole reply, stored as an audio row", async () => {
+  const t = setup({ reply: () => "react: none\nall good here\n---\nand you?" });
+  const spoken: string[] = [];
+  t.deps.tts = async (text) => { spoken.push(text); return { bytes: new Uint8Array([7]), mime: "audio/ogg" }; };
+  await voiceNote(t);
+  await t.run();
+  expect(spoken).toEqual(["all good here\n\nand you?"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
+  expect(t.wa.sent[1]).toMatchObject({ to: FROM, bytes: new Uint8Array([7]), mime: "audio/ogg" });
+  expect(t.rows("direction = 'out'")).toMatchObject([{ id: "wamid.out.2", text: "all good here\n\nand you?", status: "sent" }]);
+  expect(t.db.all("SELECT kind, voice FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", voice: 1 }]);
+  expect(t.turns()[0]).toMatchObject({ bubbles: 2, error: null });
+  expect(t.turns()[0].ttfb_ms).toBeGreaterThanOrEqual(0);
+});
+
+test("voice reply falls back to the paced text bubbles when synthesis fails, when the upload fails, and when the client cannot send audio", async () => {
+  const cases: [string, (t: ReturnType<typeof setup>) => void][] = [
+    ["tts down", (t) => { t.deps.tts = async () => { throw new Error("aura down"); }; }],
+    ["upload down", (t) => { t.wa.failNext = new WaError(131053, 400, "bad media"); }],
+    ["no sendAudio", (t) => { Object.assign(t.wa, { sendAudio: undefined }); }],
+  ];
+  for (const [name, arrange] of cases) {
+    const t = setup({ reply: () => "react: none\nall good here\n---\nand you?" });
+    const log = vi.fn();
+    t.deps.log = log;
+    arrange(t);
+    await voiceNote(t);
+    await t.run();
+    const texts = t.wa.sent.filter((s) => s.kind === "text");
+    expect(texts.map((s) => s.body), name).toEqual(["all good here", "and you?"]);
+    expect(texts[1].at - texts[0].at, name).toBe(bubblePauseMs("all good here".length));
+    expect(t.wa.sent.some((s) => s.kind === "audio"), name).toBe(false);
+    expect(t.rows("direction = 'out'").map((r) => r.status), name).toEqual(["sent", "sent"]);
+    expect(log.mock.calls.some(([e]) => e.event === "voice_reply_failed"), name).toBe(name !== "no sendAudio");
+  }
+});
+
+test("a text message keeps text replies, and a reply in another script is sent as text even to a voice note", async () => {
+  const t = setup({ reply: () => "react: none\nвсё хорошо" });
+  await voiceNote(t, "как дела");
+  await t.run();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text"]);
+  const u = setup({ reply: () => "react: none\nall good" });
+  await u.say("how are you");
+  await u.run();
+  expect(u.wa.sent.map((s) => s.kind)).toEqual(["typing", "text"]);
+});
+
 test("image on a text-only reply model switches to the vision model", async () => {
   const t = setup();
   t.deps.models = { ...t.deps.models, reply: "z-ai/glm-5.2" };

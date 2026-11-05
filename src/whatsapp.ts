@@ -156,6 +156,20 @@ export function makeWaClient(cfg: {
       }),
     );
 
+  // One message, retried on the pair rate limit (131056) after 1 s, 4 s, 16 s; anything else throws at once.
+  const send = async (payload: Obj): Promise<{ id: string }> => {
+    for (const delay of [1000, 4000, 16000, undefined]) {
+      try {
+        const json = await post(payload);
+        return { id: str(arr(json.messages)[0]?.id) ?? "" };
+      } catch (e) {
+        if (!(e instanceof WaError && e.code === 131056) || delay === undefined) throw e;
+        await sleep(delay);
+      }
+    }
+    throw new Error("unreachable");
+  };
+
   return {
     async sendText(to, body, opts) {
       const payload: Obj = {
@@ -165,16 +179,16 @@ export function makeWaClient(cfg: {
         text: { preview_url: opts?.previewUrl ?? false, body },
       };
       if (opts?.quote) payload.context = { message_id: opts.quote };
-      for (const delay of [1000, 4000, 16000, undefined]) {
-        try {
-          const json = await post(payload);
-          return { id: str(arr(json.messages)[0]?.id) ?? "" };
-        } catch (e) {
-          if (!(e instanceof WaError && e.code === 131056) || delay === undefined) throw e;
-          await sleep(delay);
-        }
-      }
-      throw new Error("unreachable");
+      return send(payload);
+    },
+    // Two steps: multipart upload, then an audio message with the media id. OGG/Opus arrives as a voice note.
+    async sendAudio(to, bytes, mime) {
+      const form = new FormData();
+      form.set("messaging_product", "whatsapp");
+      form.set("type", mime);
+      form.set("file", new Blob([bytes as BlobPart], { type: mime }), `voice.${mime.includes("mpeg") ? "mp3" : mime.slice(6).split(";")[0]}`); // a name/MIME mismatch is rejected (131053)
+      const media = await check(await doFetch(`${GRAPH}/${cfg.phoneNumberId}/media`, { method: "POST", headers: auth, body: form }));
+      return send({ recipient_type: "individual", to: "+" + to, type: "audio", audio: { id: str(media.id) } });
     },
     async sendReaction(to, messageId, emoji) {
       await post({
