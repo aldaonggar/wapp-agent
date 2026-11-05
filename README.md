@@ -235,7 +235,6 @@ npm run eval
 - Timezone is guessed from the phone's country code until the person says where they are; reminder times are resolved in that zone.
 - Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank (0/4 in round 1; "Red" 4/4 with a one-line system prompt in direct calls), and which prompt line tips it is not known.
 - OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model ... your account's allowed-providers setting permits only: ...", and for insights that shows up only as `insights_failed` in the logs. Round 1 of the evals ran under such a key ([SETUP.md section 5](SETUP.md)).
-- An extraction call that times out (60 s) loses that turn's facts for good; seen seven times today with `deepseek-v4.1-flash` as extractor (four are in the committed results), never with haiku or luna.
 - Follow-ups and reminders never retry.
 - The extractor sees only the current turn.
 - Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. `/telegram` answers 404 until the bot token and the webhook secret are both set. The first-message introduction and the far-out-reminder warning rest on the model following a prompt line, not on code. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked.
@@ -245,7 +244,6 @@ npm run eval
 - On WhatsApp, follow-ups and reminders outside the 24-hour window, using approved message templates.
 - Voice replies in the person's language (Aura-1 is English-only; MeloTTS is multilingual but returns WAV, which no platform shows as a voice note).
 - A second run of each model candidate ($0.10 each) to firm up the one-scenario margins in the Evals tables.
-- Retry an extraction call that timed out instead of losing that turn's facts.
 - A per-person daily turn cap before the bot link is shared widely.
 
 ## Credits
