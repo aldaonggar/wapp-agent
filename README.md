@@ -126,7 +126,18 @@ Docs and config
 
 A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. Run on 2026-11-05 with the defaults in [src/models.ts](src/models.ts): **the agent passes 21/21 scenarios, the same agent with memory off 9/21.** Read 21 as 20 to 21: `derived-almaty-birthday` failed its probe in three earlier runs of the day (the reply asked for a landing date it had in memory) and passed in the final one. Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. The tables below are written by `npm run eval:report` from the same result files as [EVALS.md](EVALS.md), which adds p95 latencies, the cached-token share and every transcript. A full 21-scenario run takes 7 to 15 minutes and about $0.13 at table prices ($0.07 agent calls, $0.05 judge); the key is charged about 1.6x table prices.
 
-The matrix ran on 21 scenarios: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1. A 22nd, `reminder-exact-time` (set a reminder, jump the clock, expect the reminder message), was added afterwards and is not in these numbers. Baseline (memory off) against the agent:
+The matrix ran on 21 scenarios: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1. The 22nd scenario below was added after the matrix ran and is not in these numbers. Baseline (memory off) against the agent:
+
+What each category tests:
+
+- **short-term** (7): the conversation window and cadence. Three messages a second apart get one reply that covers all three; "that place", "the second one" and a quoted reply resolve to the right earlier message; a later correction wins; a colour stated ten messages earlier is still known; a photo and a question sent together are one turn and the model sees the image.
+- **long-term** (6): facts that have left the window. "Thursday next week" said on a Tuesday is stored and recalled as an absolute date; a detail from day 1 is recalled on day 4 among thirty unrelated facts, with `expect_recalled` proving retrieval found it rather than the model guessing; a move supersedes the old city but the old one stays as history; a standing preference shapes advice days later unprompted; a pet never mentioned gets "I don't know", not an invention.
+- **derived** (4): insights that exist only across facts. A peanut allergy plus a Thai dinner plan; trip dates plus a birthday two days later; a 6 am flight against a 7 am run; a vegetarian diet plus a city trip. Each needs two or more facts combined after the quiet period.
+- **judgement** (2): what not to store. Fifty lines of small talk two minutes apart must yield exactly the three real facts buried at lines 10, 25 and 41; restaurants the assistant itself suggested must not become facts about the person.
+- **forget** (1): after "forget ...", the fact is gone from every table and never reappears in a reply, even while the chat window still shows it.
+- **isolation** (1): one person's secret word is recalled for them (the control) and never reaches a second contact.
+- A 22nd scenario, `reminder-exact-time` (short-term), covers "remind me in 2 hours": the tool sets an exact local time, the reply confirms it, and after the clock jumps the reminder message arrives.
+
 
 <!-- evals:results -->
 | Category | Baseline (no memory) | This agent |
