@@ -46,6 +46,15 @@ export class ContactCore {
     execute: async ({ query }) => ({ deleted: await memory.forget(this.deps, query) }),
   });
 
+  private viewPageTool = tool({
+    description: "Open a web page the person mentioned and read it",
+    inputSchema: z.object({ url: z.string().url() }),
+    execute: async ({ url }) => {
+      const p = await this.page(url);
+      return p ? { title: p.title, status: p.status, finalUrl: p.finalUrl, markdown: p.markdown.slice(0, 6000) } : { error: "could not open the page" };
+    },
+  });
+
   constructor(deps: Deps) { this.deps = deps; }
 
   async ingest(m: Inbound): Promise<void> {
@@ -173,9 +182,11 @@ export class ContactCore {
           nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
+        const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
+        const tools = { ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
         this.abort = new AbortController();
         const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: features.memory ? { forget: this.forgetTool } : undefined,
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: Object.keys(tools).length ? tools : undefined,
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
           sessionId: hash(to), abortSignal: this.abort.signal,
         });
@@ -248,6 +259,10 @@ export class ContactCore {
     const next = this.pending().at(-1);
     const now = clock.now();
     db.run("UPDATE state SET turn_attempts=0, turn_due=?", next ? turnDue(now, this.state().burst_started_at ?? now, next.text ?? "") : null);
+    const noted = await Promise.all(pending.map(async (r) => {
+    const u = extractUrls(r.text ?? "")[0], p = u ? await this.page(u) : null;
+    return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
+    }));
     for (const r of pending) {
       this.media.delete(r.id);
       for (const u of extractUrls(r.text ?? "")) this.pages.delete(u);
@@ -257,7 +272,7 @@ export class ContactCore {
       const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(outIds));
       try {
         await memory.remember(this.deps, {
-          messages: [...pending.map((r) => ({ role: "user" as const, text: r.text ?? "", id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
+          messages: [...pending.map((r, i) => ({ role: "user" as const, text: noted[i], id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
           images, nowLocal: formatLocal(clock.now(), tz), tz, sessionId: hash(to),
         });
       } catch (e) {

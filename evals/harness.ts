@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { parse } from "yaml";
+import { makeSnapshot } from "../src/browser";
 import { MAX_WAIT_MS } from "../src/core/cadence";
 import { ContactCore } from "../src/core/contact";
 import { fromNode, migrate, vecToBlob } from "../src/core/db";
@@ -297,6 +298,8 @@ type MessageStep = { at: string; contact?: string; say?: string; ask?: string; i
  */
 export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, embedders = evalEmbedders(process.env)): Promise<ScenarioResult> {
   const clock = new FakeClock(T0);
+  const { CLOUDFLARE_ACCOUNT_ID: acc, CLOUDFLARE_API_TOKEN: tok } = process.env;
+  const snapshot = acc && tok ? makeSnapshot({ accountId: acc, token: tok }) : undefined;
   const features: Features = { memory: cfg.memory, retrieval: cfg.retrieval, replyEffort: cfg.effort };
   const models = pickModels({ MODEL_REPLY: cfg.reply, MODEL_EXTRACT: cfg.extract, MODEL_DERIVE: cfg.derive });
   const contacts = new Map<string, Contact>();
@@ -305,7 +308,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     if (!c) {
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock);
-      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders });
+      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot });
       contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0 }));
     }
     return c;

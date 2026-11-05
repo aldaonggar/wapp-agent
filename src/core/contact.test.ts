@@ -4,18 +4,18 @@ import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
 import { ContactCore } from "./contact";
 import { vecToBlob } from "./db";
-import type { Features, Inbound, ObjectCall, StreamCall } from "./types";
+import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
 
 const FROM = "15550000001";
 type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
-function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features> } = {}) {
+function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"] } = {}) {
   const clock = new FakeClock();
   const view = clock.forContact(FROM);
   const wa = new FakeWa(clock);
   const llm = stubLlm({ reply: o.reply, object: o.object });
-  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features });
+  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot });
   const core = new ContactCore(deps);
   const { db } = deps;
   let n = 0;
@@ -410,4 +410,39 @@ test("a failing derive call is logged and does not stop the alarm", async () => 
   await t.run(t.clock.t + 31 * 60_000);
   expect(log).toHaveBeenCalledWith({ event: "insights_failed", error: "derive down" });
   expect(t.view.alarmAt).toBeNull();
+});
+
+const PAGE = { url: "https://a.com/x", finalUrl: "https://a.com/x", title: "A page", status: 200, markdown: "# Hello page", jpeg: new Uint8Array([1, 2, 3]) };
+
+test("URL at t, text at t+1 s: snapshot called once and the model gets the page text and a file part", async () => {
+  const snapshot = vi.fn(async () => PAGE);
+  const t = setup({ snapshot });
+  await t.say("https://a.com/x");
+  t.clock.t += 1000;
+  await t.say("thoughts?");
+  await t.run();
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  const parts = t.llm.calls[0].messages.flatMap((m) => (typeof m.content === "string" ? [] : (m.content as { type: string; text?: string }[])));
+  expect(parts.some((p) => p.type === "text" && !!p.text?.includes("Hello page"))).toBe(true);
+  expect(parts.some((p) => p.type === "file")).toBe(true);
+});
+
+test("view_page tool is attached only when the thread has a URL", async () => {
+  const snapshot = vi.fn(async () => PAGE);
+  const t = setup({ snapshot });
+  await t.say("no link here");
+  await t.run();
+  expect(t.llm.calls[0].tools?.view_page).toBeUndefined();
+  await t.say("https://a.com/x");
+  await t.run();
+  expect(t.llm.calls[1].tools?.view_page).toBeDefined();
+  const out = await t.llm.calls[1].tools!.view_page.execute!({ url: "https://a.com/x" }, { toolCallId: "t", messages: [] } as never);
+  expect(out).toEqual({ title: "A page", status: 200, finalUrl: "https://a.com/x", markdown: "# Hello page" });
+});
+
+test("an outbound bubble with a URL is sent with previewUrl", async () => {
+  const t = setup({ reply: () => "react: none\nsee https://a.com/x" });
+  await t.say("recommend something");
+  await t.run();
+  expect(t.wa.sent.find((s) => s.kind === "text")?.previewUrl).toBe(true);
 });

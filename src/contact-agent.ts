@@ -1,3 +1,4 @@
+import { makeSnapshot } from "./browser";
 import { DurableObject } from "cloudflare:workers";
 import { ContactCore } from "./core/contact";
 import { fromDO, migrate } from "./core/db";
@@ -7,7 +8,6 @@ import { pickModels } from "./models";
 import { makeWaClient } from "./whatsapp";
 import { embedViaBinding, rerankViaBinding, transcribeViaBinding } from "./workers-ai";
 
-const notImplemented = () => Promise.reject(new Error("not implemented")); // snapshot: Task 11
 
 export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
@@ -24,7 +24,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
     embed: embedViaBinding(env.AI),
     rerank: rerankViaBinding(env.AI),
     transcribe: transcribeViaBinding(env.AI),
-    snapshot: notImplemented,
+    snapshot: makeSnapshot({ accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN, log }),
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },
     log,
