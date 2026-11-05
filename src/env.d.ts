@@ -17,7 +17,7 @@ interface Env {
   MODEL_VISION?: string;
   MODEL_EXTRACT?: string;
   MODEL_DERIVE?: string;
-  // Telegram secrets, declared here (not above) so `tsc` passes before they exist in .dev.vars; unset at runtime keeps /telegram dark.
+  // Telegram secrets: here, not in Cloudflare.Env above, because only this interface reaches `env`; unset at runtime keeps /telegram dark.
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_WEBHOOK_SECRET: string;
   ALLOWED_TELEGRAM: string;

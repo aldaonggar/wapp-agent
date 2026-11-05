@@ -32,10 +32,11 @@ export function parseUpdate(body: unknown): { m: Inbound; user: { id: number; us
   const quoted = num(obj(src.reply_to_message).message_id);
   if (quoted !== undefined) m.quotedId = `tg:${chatId}:${quoted}`;
   const caption = str(src.caption);
-  const media = (file: Obj, mime: string | undefined) => { m.mediaId = `tg:${str(file.file_id)}`; if (mime) m.mime = mime; };
+  const media = (file: Obj, mime: string | undefined) => { const fid = str(file.file_id); if (fid) m.mediaId = `tg:${fid}`; if (mime) m.mime = mime; };
   if (src.text !== undefined) {
+    const text = str(src.text) ?? "";
     m.kind = "text";
-    m.text = src.text === "/start" ? "Hi" : str(src.text) ?? "";
+    m.text = /^\/start(\s|$)/.test(text) ? "Hi" : text; // t.me/<bot>?start=x arrives as "/start x"
   } else if (src.photo !== undefined) {
     const sizes = arr(src.photo), best = sizes.reduce((a, b) => ((num(b.width) ?? 0) * (num(b.height) ?? 0) > (num(a.width) ?? 0) * (num(a.height) ?? 0) ? b : a), sizes[0] ?? {});
     m.kind = "image";
@@ -106,11 +107,12 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
         chat_id, text: body, link_preview_options: { is_disabled: !opts?.previewUrl },
         ...(opts?.quote ? { reply_parameters: { message_id: messageOf(opts.quote), allow_sending_without_reply: true } } : {}),
       }));
-      return { id: `tg:${chat_id}:${num(r.message_id) ?? ""}` };
+      const mid = num(r.message_id);
+      return { id: mid === undefined ? "" : `tg:${chat_id}:${mid}` }; // "" makes the core store a failed row, as with WhatsApp
     },
     async sendReaction(to, messageId, emoji) {
       // Telegram's reaction set lists ❤ without the variation selector that models usually emit.
-      await call("setMessageReaction", { chat_id: chatOf(to), message_id: messageOf(messageId), reaction: [{ type: "emoji", emoji: emoji.replace(/️/g, "") }] });
+      await call("setMessageReaction", { chat_id: chatOf(to), message_id: messageOf(messageId), reaction: [{ type: "emoji", emoji: emoji.replace(/\uFE0F/g, "") }] });
     },
     async markReadTyping(messageId) {
       await call("sendChatAction", { chat_id: chatOf(messageId), action: "typing" });

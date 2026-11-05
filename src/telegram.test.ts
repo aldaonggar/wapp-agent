@@ -14,12 +14,15 @@ test("parseUpdate: text with reply carries the chat in every id", () => {
   expect(u.m).toEqual({ id: "tg:123456789:42", from: "tg:123456789", name: "Ann", ts: 1762250000000, kind: "text", text: "yes that one", quotedId: "tg:123456789:40" });
   expect(u.user).toEqual({ id: 123456789, username: "AnnK" });
   expect(one({ text: "/start" }).text).toBe("Hi");
+  expect(one({ text: "/start ref_42" }).text).toBe("Hi");
+  expect(one({ text: "/starting over" }).text).toBe("/starting over");
 });
 
 test("parseUpdate: photo picks the largest size; caption or [photo]", () => {
   const photo = [{ file_id: "s", width: 90, height: 60 }, { file_id: "L", width: 1280, height: 853 }, { file_id: "m", width: 320, height: 213 }];
   expect(one({ photo, caption: "Taj Mahal" })).toMatchObject({ kind: "image", text: "Taj Mahal", mediaId: "tg:L", mime: "image/jpeg" });
   expect(one({ photo }).text).toBe("[photo]");
+  expect(one({ photo: [{ width: 1, height: 1 }] }).mediaId).toBeUndefined();
 });
 
 test("parseUpdate: voice, audio, video, sticker, document, location, venue, contact, unknown", () => {
@@ -72,13 +75,14 @@ function stub(...responses: Response[]) {
 }
 
 test("sendText posts chat id, reply params and preview flag; returns tg:<chat>:<message_id>", async () => {
-  const s = stub(ok({ message_id: 43 }), ok({ message_id: 44 }));
+  const s = stub(ok({ message_id: 43 }), ok({ message_id: 44 }), ok({}));
   const tg = makeTgClient({ token: "TOK", fetch: s.f });
   expect(await tg.sendText("tg:123456789", "hello", { quote: "tg:123456789:40", previewUrl: true })).toEqual({ id: "tg:123456789:43" });
   expect(s.calls[0].url).toBe(`${TG}/botTOK/sendMessage`);
   expect(s.body(0)).toEqual({ chat_id: 123456789, text: "hello", link_preview_options: { is_disabled: false }, reply_parameters: { message_id: 40, allow_sending_without_reply: true } });
   expect(await tg.sendText("tg:123456789", "plain")).toEqual({ id: "tg:123456789:44" });
   expect(s.body(1)).toEqual({ chat_id: 123456789, text: "plain", link_preview_options: { is_disabled: true } });
+  expect(await tg.sendText("tg:123456789", "x")).toEqual({ id: "" }); // no message_id in the result: the core stores a failed row
 });
 
 test("sendReaction (variation selector stripped) and markReadTyping send the documented bodies", async () => {
@@ -105,6 +109,8 @@ test("fetchMedia: getFile then download; mime from the response unless octet-str
   await expect(makeTgClient({ token: "TOK", fetch: c.f }).fetchMedia("tg:V")).rejects.toMatchObject({ code: 0, status: 502 });
   const d = stub(ok({ file_path: "x.bin" }), new Response("", { status: 404 }));
   await expect(makeTgClient({ token: "TOK", fetch: d.f }).fetchMedia("tg:V")).rejects.toMatchObject({ code: 0, status: 404 });
+  const e = stub(ok({ file_path: "documents/file_3.bin" }), new Response(bytes, { headers: { "content-type": "application/octet-stream" } }));
+  expect((await makeTgClient({ token: "TOK", fetch: e.f }).fetchMedia("tg:D")).mime).toBe("");
 });
 
 test("429 is retried once after retry_after seconds; a second 429 or a long retry_after throws", async () => {
@@ -119,6 +125,10 @@ test("429 is retried once after retry_after seconds; a second 429 or a long retr
   const c = stub(err(429, "slow", { retry_after: 60 }));
   await expect(makeTgClient({ token: "T", fetch: c.f, sleep }).sendText("tg:1", "x")).rejects.toMatchObject({ code: 429 });
   expect(c.calls).toHaveLength(1);
+  const d = stub(err(429, "slow"));
+  await expect(makeTgClient({ token: "T", fetch: d.f, sleep }).sendText("tg:1", "x")).rejects.toMatchObject({ code: 429 });
+  expect(d.calls).toHaveLength(1);
+  expect(delays).toEqual([2000, 1000]); // a and b slept once each; c and d never slept
 });
 
 test("an API error becomes WaError(error_code, http status, description); a hung request WaError(0, 0)", async () => {
@@ -152,7 +162,7 @@ test("routeTransports sends tg: ids to Telegram and everything else to WhatsApp"
 // ---- POST /telegram ----
 
 const ctx = {} as ExecutionContext;
-function fakeEnv(allowed: string, secret = "s3cret") {
+function fakeEnv(allowed: string | undefined, secret = "s3cret") {
   const names: string[] = [];
   const ingested: Inbound[] = [];
   const env = {
@@ -173,14 +183,25 @@ test("POST /telegram: missing or wrong secret is 403; unset secret keeps the rou
   expect((await post(f.env, update({ text: "hi" }), "nope")).status).toBe(403);
   expect((await post(fakeEnv("", "").env, update({ text: "hi" }), "s3cret")).status).toBe(404);
   expect(f.ingested).toEqual([]);
+  const bad = await worker.fetch(new Request("https://x/telegram", { method: "POST", body: "{", headers: { "x-telegram-bot-api-secret-token": "s3cret" } }), f.env, ctx);
+  expect(bad.status).toBe(400);
 });
 
-test("POST /telegram: empty allowlist admits; the Durable Object is named tg:<chat_id>", async () => {
+test("POST /telegram: empty or unset allowlist admits; the Durable Object is named tg:<chat_id>", async () => {
+  for (const list of ["", undefined]) {
+    const f = fakeEnv(list);
+    const res = await post(f.env, update({ text: "hi" }), "s3cret");
+    expect(res.status).toBe(200);
+    expect(f.names).toEqual(["tg:123456789"]);
+    expect(f.ingested.map((m) => m.id)).toEqual(["tg:123456789:42"]);
+  }
+});
+
+test("POST /telegram: an ingest failure is logged and still answers 200 so Telegram moves on", async () => {
   const f = fakeEnv("");
-  const res = await post(f.env, update({ text: "hi" }), "s3cret");
-  expect(res.status).toBe(200);
-  expect(f.names).toEqual(["tg:123456789"]);
-  expect(f.ingested.map((m) => m.id)).toEqual(["tg:123456789:42"]);
+  (f.env as unknown as { CONTACT: unknown }).CONTACT = { getByName: () => ({ ingest: async () => { throw new Error("boom"); } }) };
+  expect((await post(f.env, update({ text: "hi" }), "s3cret")).status).toBe(200);
+  expect(JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]))).toEqual({ event: "ingest_failed", error: "boom" });
 });
 
 test("POST /telegram: allowlist by @username (any case) or numeric id; others are dropped with a short log", async () => {

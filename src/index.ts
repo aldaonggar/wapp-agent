@@ -58,9 +58,11 @@ export default {
       let body: unknown;
       try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
       const u = parseUpdate(body); // null: groups, bots, edits, other update kinds
-      if (u && telegramAllowed(env.ALLOWED_TELEGRAM, u.user)) await env.CONTACT.getByName(u.m.from).ingest(u.m);
-      else if (u) console.log(JSON.stringify({ event: "dropped_sender", from: u.user.username ?? "…" + String(u.user.id).slice(-4) }));
-      return new Response("ok"); // Telegram retries anything but 2xx
+      if (u && telegramAllowed(env.ALLOWED_TELEGRAM, u.user)) {
+        // Unlike Meta, Telegram retries a failed update before delivering the next one, so a throw here would stall every chat.
+        try { await env.CONTACT.getByName(u.m.from).ingest(u.m); } catch (e) { console.log(JSON.stringify({ event: "ingest_failed", error: e instanceof Error ? e.message : String(e) })); }
+      } else if (u) console.log(JSON.stringify({ event: "dropped_sender", from: u.user.username ?? "…" + String(u.user.id).slice(-4) }));
+      return new Response("ok");
     }
 
     return new Response("not found", { status: 404 });

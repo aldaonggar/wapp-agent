@@ -144,17 +144,20 @@ npx wrangler secret put ALLOWED_TELEGRAM
 
 Until `TELEGRAM_WEBHOOK_SECRET` is uploaded, `/telegram` answers 404.
 
-5. Register the webhook once (replace the two placeholders with the values from `.dev.vars`):
+5. Register the webhook once, from the project root (the values are read from `.dev.vars` so they never land in your shell history):
 
 ```bash
-curl -s "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" -H "Content-Type: application/json" \
-  -d '{"url":"https://wapp-agent.alda-onggar.workers.dev/telegram","secret_token":"<TELEGRAM_WEBHOOK_SECRET>","allowed_updates":["message","message_reaction"],"drop_pending_updates":true}'
+TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' .dev.vars | cut -d= -f2-)
+SECRET=$(grep '^TELEGRAM_WEBHOOK_SECRET=' .dev.vars | cut -d= -f2-)
+curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
+  -d url=https://wapp-agent.alda-onggar.workers.dev/telegram -d "secret_token=$SECRET" \
+  -d 'allowed_updates=["message","message_reaction"]' -d drop_pending_updates=true
 ```
 
 Expected: `{"ok":true,"result":true,"description":"Webhook was set"}`. Check it:
 
 ```bash
-curl -s "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/getWebhookInfo"
+curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
 ```
 
 `url` must be the Worker's and there must be no `last_error_message`. `allowed_updates` must include `message_reaction`, or reactions never arrive.
