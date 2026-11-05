@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { Llm, Usage } from "../src/core/types";
-import { pickModels } from "../src/models";
+import { EFFORT, pickModels } from "../src/models";
 import type { ProbeResult } from "./harness";
 
 const Verdict = z.object({ label: z.enum(["correct", "partial", "wrong", "hallucinated"]), reason: z.string() });
@@ -20,7 +20,7 @@ const FACTS = `You compare the facts a memory system stored about a person again
 matched: how many gold facts are expressed by at least one stored fact (paraphrases count).
 junk: how many stored facts express none of the gold facts.`;
 
-const opts = { modelId: pickModels({}).judge, reasoning: { effort: "low" as const }, sessionId: "eval-judge" };
+const opts = { modelId: pickModels({}).judge, reasoning: { effort: EFFORT.judge }, sessionId: "eval-judge" };
 
 // Both return the call's usage: judge calls bypass the contacts' ledger, so the runner sums them itself.
 export async function judge(llm: Llm, p: { question: string; gold: string; answer: string }): Promise<{ label: ProbeResult["label"]; reason: string; usage: Usage }> {

@@ -170,14 +170,14 @@ test("each contact gets its own core and sender", async () => {
   expect(r.turns.map((t) => t.contact)).toEqual(["a", "b"]);
 });
 
-test("a judged probe asks Opus at low effort with the conversation so far", async () => {
+test("a judged probe asks Opus at the judge effort with the conversation so far", async () => {
   const llm = stubLlm({ object: () => ({ label: "partial", reason: "half of it" }) });
   const r = await run([{ at: "+0s", say: "meet at 6" }, { at: "+1min", ask: "when are we meeting?", gold: "6" }], llm);
   expect(r.probes[0]).toMatchObject({ label: "partial", reason: "half of it" });
   expect(r.passed).toBe(false);
   expect(llm.objectCalls).toHaveLength(1);
   const call = llm.objectCalls[0];
-  expect(call).toMatchObject({ job: "judge", modelId: "anthropic/claude-opus-5.5", reasoning: { effort: "low" } });
+  expect(call).toMatchObject({ job: "judge", modelId: "anthropic/claude-opus-5.5", reasoning: { effort: "medium" } });
   expect(JSON.stringify(call.messages)).toContain("a: meet at 6");
 });
 

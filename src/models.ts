@@ -60,16 +60,20 @@ export function costUsd(id: string, u: { input: number; output: number; cached: 
   return ((u.input - u.cached) * s.in + u.cached * s.cachedIn + u.output * s.out) / 1e6;
 }
 
-export function maxOutputTokensFor(id: string, effort?: "low" | "medium" | "high"): number {
-  return spec(id).mandatoryThinking || effort === "medium" || effort === "high" ? 2048 : 400;
+export type Effort = "low" | "medium" | "high";
+/** Per-job thinking, chosen 2026-11-05 evening after the no-thinking reply model proved careless about tools and its own history. REPLY_EFFORT overrides reply. */
+export const EFFORT: { reply: Effort; extract: Effort; derive: Effort; judge: Effort } = { reply: "medium", extract: "low", derive: "medium", judge: "medium" };
+
+export function maxOutputTokensFor(id: string, effort?: Effort): number {
+  return spec(id).mandatoryThinking || effort !== undefined ? 2048 : 400; // thinking shares the output budget on most routes
 }
 
 /** REPLY_EFFORT var -> reply reasoning effort; anything else means the model's cheapest setting. */
-export function replyEffortFrom(v: string | undefined): "low" | "medium" | "high" | undefined {
+export function replyEffortFrom(v: string | undefined): Effort | undefined {
   return v === "low" || v === "medium" || v === "high" ? v : undefined;
 }
 
-export function reasoningFor(id: string, effort?: "low" | "medium" | "high"): ReasoningSetting {
+export function reasoningFor(id: string, effort?: Effort): ReasoningSetting {
   return effort ? { effort } : spec(id).lowest;
 }
 

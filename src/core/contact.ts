@@ -1,7 +1,7 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { extractUrls } from "../browser";
-import { maxOutputTokensFor, reasoningFor, replyModelFor } from "../models";
+import { EFFORT, maxOutputTokensFor, reasoningFor, replyModelFor } from "../models";
 import { WaError } from "../whatsapp";
 import { MAX_WAIT_MS, QUIET_MS, UNFINISHED_MS, bubblePauseMs, looksUnfinished, turnDue } from "./cadence";
 import { formatLocal } from "./db";
@@ -270,7 +270,7 @@ export class ContactCore {
           job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
           // view_page opens up once a search ran; search results are untrusted text, so the tools that delete close then.
           activeTools: () => Object.keys(tools).filter((k) => (k === "view_page" ? hasUrl || searched : !(searched && (k === "forget" || k === "cancel_reminder" || k === "search_web")))),
-          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
+          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort ?? EFFORT.reply), reasoning: reasoningFor(model, features.replyEffort ?? EFFORT.reply),
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
 
@@ -485,7 +485,7 @@ export class ContactCore {
     const history = prompt.messages.slice(0, -1);
     const messages = history.at(-1)?.role === "assistant" || history.length === 0 ? [...history, { role: "user" as const, content: "[scheduled check-in]" }] : history;
     const { text, done } = llm.stream({
-      job: "followup", modelId: models.reply, maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort), reasoning: reasoningFor(models.reply, features.replyEffort),
+      job: "followup", modelId: models.reply, maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort ?? EFFORT.reply), reasoning: reasoningFor(models.reply, features.replyEffort ?? EFFORT.reply),
       sessionId: this.deps.contactKey, system, messages,
     });
     let bubbles = 0;

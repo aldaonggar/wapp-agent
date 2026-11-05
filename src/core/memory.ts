@@ -1,6 +1,6 @@
 import type { ModelMessage } from "ai";
 import { z } from "zod";
-import { reasoningFor } from "../models";
+import { EFFORT, reasoningFor } from "../models";
 import { blobToVec, formatLocal, vecToBlob } from "./db";
 import { rezoneReminders } from "./reminders";
 import type { Db, Deps, MemoryHit } from "./types";
@@ -183,7 +183,7 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
     `Conversation (this turn):\n${turn.messages.map((m) => `${m.role}: ${m.text}`).join("\n")}`,
   ].join("\n\n");
   const messages: ModelMessage[] = [{ role: "user", content: [{ type: "text", text: input }, ...turn.images.map((i) => ({ type: "file" as const, mediaType: i.mime, data: i.bytes }))] }];
-  const { value } = await llm.object({ job: "extract", modelId: models.extract, system: EXTRACT_PROMPT, messages, schema: ExtractSchema, reasoning: reasoningFor(models.extract), sessionId: turn.sessionId });
+  const { value } = await llm.object({ job: "extract", modelId: models.extract, system: EXTRACT_PROMPT, messages, schema: ExtractSchema, reasoning: reasoningFor(models.extract, EFFORT.extract), sessionId: turn.sessionId });
 
   const now = clock.now();
   const shown = new Set(known.map((f) => f.id)); // the extractor may only touch facts it was shown, each once

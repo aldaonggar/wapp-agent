@@ -37,7 +37,7 @@ test("deriveInsights stores insights with confidence >= 0.5 and evidence ids", a
   expect(t.db.all("SELECT last_insights_run AS t FROM state")).toEqual([{ t: t.clock.t }]);
   const call = t.llm.objectCalls[0];
   expect(call).toMatchObject({ job: "derive", modelId: t.deps.models.derive, sessionId: "sess", system: INSIGHT_PROMPT });
-  expect("reasoning" in call).toBe(false);
+  expect(call.reasoning).toEqual({ effort: "medium" }); // EFFORT.derive: insights run offline, so thinking is cheap here
   const text = (call.messages[0].content as string);
   expect(text).toContain(`New facts:\n[${fresh}] Flight to Almaty`);
   expect(text).toContain(`Related older facts:\n[${old}] Sister Aru birthday`);

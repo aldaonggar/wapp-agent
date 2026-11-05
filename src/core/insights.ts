@@ -1,3 +1,4 @@
+import { EFFORT, reasoningFor } from "../models";
 import { z } from "zod";
 import { blobToVec, formatLocal, vecToBlob } from "./db";
 import { cosineTopN } from "./memory";
@@ -33,7 +34,7 @@ export async function deriveInsights(deps: Deps, sessionId = "insights"): Promis
   const tz = db.all<{ timezone: string | null }>("SELECT timezone FROM contact")[0]?.timezone || "UTC";
   const line = (f: Fact) => `[${f.id}] ${f.text} (${f.kind}, ${formatLocal(f.created_at, tz).slice(0, 10)})`;
   const input = `Now: ${formatLocal(now, tz)} (${tz})\n\nNew facts:\n${fresh.map(line).join("\n")}\n\nRelated older facts:\n${related.map(line).join("\n") || "(none)"}`;
-  const { value } = await llm.object({ job: "derive", modelId: models.derive, system: INSIGHT_PROMPT, messages: [{ role: "user", content: input }], schema: InsightSchema, sessionId });
+  const { value } = await llm.object({ job: "derive", modelId: models.derive, system: INSIGHT_PROMPT, messages: [{ role: "user", content: input }], schema: InsightSchema, reasoning: reasoningFor(models.derive, EFFORT.derive), sessionId });
 
   const active = new Set(db.all<{ id: number }>("SELECT id FROM facts WHERE status='active'").map((r) => r.id));
   const keep = value.insights.filter((i) => i.text.trim() && i.confidence >= MIN_CONFIDENCE && new Set(i.evidence_fact_ids).size >= 2 && i.evidence_fact_ids.every((id) => active.has(id)));

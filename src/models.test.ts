@@ -9,6 +9,7 @@ describe("models", () => {
   it("maxOutputTokensFor", () => {
     expect(maxOutputTokensFor("anthropic/claude-sonnet-5.5")).toBe(2048);
     expect(maxOutputTokensFor("deepseek/deepseek-v4.1-flash")).toBe(400);
+    expect(maxOutputTokensFor("deepseek/deepseek-v4.1-flash", "low")).toBe(2048);
     expect(maxOutputTokensFor("deepseek/deepseek-v4.1-flash", "medium")).toBe(2048);
   });
   it("reasoningFor", () => {
