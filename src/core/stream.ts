@@ -31,6 +31,9 @@ function splitLong(text: string): string[] {
   return out;
 }
 
+// History lines are shown to the model as "[alias 2026-11-05 21:12] text"; some models copy the stamp into their own bubbles.
+const STAMP = /^\s*\[(?:[^\]\n]{0,40}\s)?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}\]\s*/;
+
 export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3): AsyncGenerator<ReplyEvent> {
   let tail = "";
   let started = false; // first non-empty line seen
@@ -47,7 +50,7 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
       quote = q[1];
       lines.shift();
     }
-    const parts = splitLong(lines.join("\n").trim());
+    const parts = splitLong(lines.map((l) => l.replace(STAMP, "")).join("\n").trim());
     if (parts.length) emitted++; // cap counts logical bubbles, not split pieces
     for (const [i, text] of parts.entries()) {
       yield quote && i === 0 ? { type: "bubble", text, quote } : { type: "bubble", text };

@@ -27,6 +27,8 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["a header with a word is dropped", "react: maybe\nhello", [b("hello")]],
   ["an emoji with text glued on is dropped", "react: 👍hello\nhi", [b("hi")]],
   ["a digit glued to the emoji is dropped", "react: 2❤️\nhi", [b("hi")]],
+  ["a copied history stamp is stripped from each bubble", "react: none\n[2026-11-05 21:12] cool, all set then.\n---\n[Nur 2026-11-05 21:12] night 🌙", [b("cool, all set then."), b("night 🌙")]],
+  ["a bracketed word that is not a stamp stays", "[important] read this", [b("[important] read this")]],
   ["skin tones and ZWJ sequences are one emoji", "react: #1 👍🏽\nreact: #1 👨‍👩‍👧\nhi", [{ type: "react", target: "#1", emoji: "👍🏽" }, { type: "react", target: "#1", emoji: "👨‍👩‍👧" }, b("hi")]],
 ];
 
