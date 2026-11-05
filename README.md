@@ -13,6 +13,7 @@ Status (2026-11-05): the brief asked for WhatsApp, and the WhatsApp Cloud API tr
 - Replies like a person: it waits for a burst of messages to finish, then answers in short bubbles.
 - Introduces itself on your first message: what it is and what it can do, in one or two bubbles.
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
+- Looks things up on the web when it needs current information, telling you first.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
 - Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00; "what reminders do I have" lists them, and any can be cancelled.
@@ -32,6 +33,7 @@ Things to try:
 8. Mention a plan with a date (for example a trip next week) and wait for the check-in.
 9. Say "remind me in 20 minutes to ..." and wait; ask "what reminders do I have" or cancel one.
 10. Send a voice note and get a voice note back.
+11. Ask something that needs a search ("is the Louvre open today?"): it says it is checking, then answers from what it found.
 
 ## Architecture
 
@@ -65,7 +67,7 @@ The Worker is stateless: it checks Telegram's secret header and the allowlist, t
 
 - `src/worker.ts` re-exports `src/index.ts` (the Worker above) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
-- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links.
+- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links. Search: a plain fetch of DuckDuckGo's HTML results and the top three pages, no Browser Rendering.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups; send reminders at their time (no model call).
 
 ## Why the memory is in-house
@@ -84,7 +86,7 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 - [llm.ts](src/llm.ts): streaming and structured calls over the AI SDK and OpenRouter.
 - [whatsapp.ts](src/whatsapp.ts): the parked WhatsApp transport (see the status at the top).
 - [telegram.ts](src/telegram.ts): Bot API update parsing, client (text, reactions, typing, media, voice notes via `sendVoice`), and the transport router.
-- [browser.ts](src/browser.ts): URL extraction and Browser Rendering snapshots.
+- [browser.ts](src/browser.ts): URL extraction, Browser Rendering snapshots, and the DuckDuckGo search behind `search_web`.
 - [workers-ai.ts](src/workers-ai.ts): embeddings, rerank, transcription, text-to-speech.
 - `*.test.ts` next to each file: unit tests.
 
@@ -203,7 +205,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 227 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 246 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -239,7 +241,9 @@ npm run eval
 - Timezone starts as UTC (a Telegram id carries no country code) until the person says where they are; reminder times are resolved in that zone, and a reminder set before the zone was known is moved with it.
 - Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank, and which prompt line tips it is not known.
 - OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model", and for insights that shows up only as `insights_failed` in the logs ([SETUP.md section 5](SETUP.md)).
-- Follow-ups and reminders never retry.
+- Follow-ups never retry. Reminders are delivered at least once: if the object is reset in the middle of a reminder's send, it is sent again a minute later, so at worst it arrives twice; a send the transport refuses is not retried.
+- When a reply cannot be generated (the turn fails twice, or fails after only a reaction went out), the bot sends one fixed line, `sorry, something broke on my side. can you send that again in a bit?`, instead of leaving a typing indicator and silence. A failure after a real bubble sends nothing more.
+- Web search depends on DuckDuckGo's HTML page, which can refuse automated requests: on 2026-11-05 a single plain request from the owner's machine got its bot challenge (HTTP 202) instead of results. A refusal, a challenge or no results all mean the model is told nothing was found and says so; the code never tries to get past the challenge. Only the top 3 results, only each result's own page (no links followed), only what the server sends without JavaScript, and the first 3,000 characters of its text; one search per reply.
 - The extractor sees only the current turn.
 - Bots get no read receipts on Telegram, so only the typing indicator shows. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked. The first-message introduction rests on the model following a prompt line, not on code.
 
