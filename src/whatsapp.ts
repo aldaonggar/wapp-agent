@@ -129,8 +129,12 @@ export function makeWaClient(cfg: {
   phoneNumberId: string;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
+  timeoutMs?: number;
 }): WaClient {
-  const doFetch = cfg.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  const rawFetch = cfg.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
+  // Every Graph API request is bounded; a timeout or network failure surfaces as WaError(0, 0).
+  const fail = (e: unknown): never => { throw e instanceof WaError ? e : new WaError(0, 0, e instanceof Error ? e.message : String(e)); };
+  const doFetch = (url: string, init: RequestInit) => rawFetch(url, { ...init, signal: AbortSignal.timeout(cfg.timeoutMs ?? 15_000) }).catch(fail);
   const sleep = cfg.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const auth = { Authorization: `Bearer ${cfg.token}` };
 
@@ -191,7 +195,7 @@ export function makeWaClient(cfg: {
           const res = await doFetch(meta.url, { headers: auth });
           if (!res.ok) throw new WaError(0, res.status, `media ${mediaId}: ${res.status}`);
           return {
-            bytes: new Uint8Array(await res.arrayBuffer()),
+            bytes: new Uint8Array(await res.arrayBuffer().catch(fail)),
             mime: res.headers.get("content-type") ?? str(meta.mime_type) ?? "",
           };
         } catch (e) {

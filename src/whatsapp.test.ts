@@ -210,3 +210,18 @@ test("fetchMedia throws WaError(0, 502) when the metadata has no url", async () 
   await expect(makeWaClient({ token: "t", phoneNumberId: "PN", fetch: f }).fetchMedia("MID")).rejects.toMatchObject({ code: 0, status: 502 });
   expect(calls).toHaveLength(1);
 });
+
+// Never answers unless `answer` does; rejects only when the request's signal aborts, like fetch.
+const hanging = (answer?: (url: string) => Response | undefined) => (async (url: string, init?: RequestInit) =>
+  answer?.(url) ?? new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal!.reason)))) as unknown as typeof fetch;
+
+test("every Graph API call is bounded: a hung request fails as WaError(0, 0)", async () => {
+  const wa = makeWaClient({ token: "t", phoneNumberId: "PN", fetch: hanging(), timeoutMs: 5 });
+  for (const call of [() => wa.sendText("1", "x"), () => wa.sendReaction("1", "wamid.R", "👍"), () => wa.markReadTyping("wamid.IN"), () => wa.fetchMedia("MID")]) {
+    const err = await call().catch((e) => e);
+    expect(err).toBeInstanceOf(WaError);
+    expect(err).toMatchObject({ code: 0, status: 0 });
+  }
+  const download = hanging((u) => (u.startsWith(GRAPH) ? json({ url: "https://l/m" }) : undefined)); // metadata answers, the download hangs
+  await expect(makeWaClient({ token: "t", phoneNumberId: "PN", fetch: download, timeoutMs: 5 }).fetchMedia("MID")).rejects.toMatchObject({ code: 0, status: 0 });
+});
