@@ -2,7 +2,7 @@
 
 A WhatsApp and Telegram assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
 
-Repo: https://github.com/aldaonggar/wapp-agent (branch `feat/wapp-agent`). Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` answers `ok` followed by the configured transports, today `ok whatsapp,telegram`).
+Repo: https://github.com/aldaonggar/wapp-agent. Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` answers `ok` followed by the configured transports, today `ok whatsapp,telegram`).
 
 What was asked: [init.md](init.md). What was decided and why: [design](docs/superpowers/specs/2026-11-04-whatsapp-memory-agent-design.md). Manual setup done by the owner: [SETUP.md](SETUP.md). Verified API notes: [docs/superpowers/research/](docs/superpowers/research/).
 
@@ -38,18 +38,31 @@ Things to try:
 ## Architecture
 
 ```mermaid
-flowchart LR
-  P[Phone] -->|WhatsApp| M[Meta Cloud API]
-  P -->|Telegram| T[Telegram Bot API]
-  M -->|POST /webhook| W[Worker: verify, allowlist, route]
+flowchart TB
+  subgraph Channels
+    direction LR
+    P[Phone] -->|WhatsApp| M[Meta Cloud API]
+    P -->|Telegram| T[Telegram Bot API]
+  end
+  subgraph Cloudflare
+    direction TB
+    W["Worker<br/>verify signature or secret, allowlist, route"]
+    D["ContactAgent Durable Object<br/>one per contact: SQLite + one alarm"]
+    C["ContactCore<br/>burst wait, memory, reply, reminders"]
+    W -->|ingest| D -->|alarm| C
+  end
+  subgraph Services
+    direction LR
+    O["OpenRouter<br/>reply, extraction, insights"]
+    A["Workers AI<br/>embeddings, rerank, Whisper, Aura-1 voice"]
+    B["Browser Rendering<br/>page snapshots"]
+  end
+  M -->|POST /webhook| W
   T -->|POST /telegram| W
-  W -->|one object per contact| D["ContactAgent Durable Object: SQLite + one alarm"]
-  D -->|ingest, alarm| C[ContactCore: cadence, memory, reminders]
-  C -->|reply, extraction, insights| O[OpenRouter]
-  C -->|embeddings, rerank, Whisper, Aura-1 voice| A[Workers AI]
-  C -->|page snapshots| B[Browser Rendering]
-  C -->|bubbles, reactions, voice notes| M
-  C -->|bubbles, reactions, voice notes| T
+  C --> O
+  C --> A
+  C --> B
+  C -->|bubbles, reactions, voice notes| Channels
 ```
 
 The Worker is stateless: it checks Meta's signature or Telegram's secret header and the allowlist, then hands the message to the one Durable Object named after the contact (`<phone>` or `tg:<chat id>`). That object stores the message, sets its single alarm for when the burst should be over, and on the alarm runs the turn: recall from its own SQLite, stream the reply, send the bubbles, then extract facts in the background and re-arm the alarm for the nearest of insights, check-ins and reminders.
