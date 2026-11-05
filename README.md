@@ -1,26 +1,24 @@
 # wapp-agent
 
-A WhatsApp and Telegram assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
+A Telegram assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
 
-Repo: https://github.com/aldaonggar/wapp-agent. Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` answers `ok` followed by the configured transports, today `ok whatsapp,telegram`).
+Repo: https://github.com/aldaonggar/wapp-agent. Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` answers `ok` followed by the configured transports).
 
 What was asked: [init.md](init.md). What was decided and why: [design](docs/superpowers/specs/2026-11-04-whatsapp-memory-agent-design.md). Manual setup done by the owner: [SETUP.md](SETUP.md). Verified API notes: [docs/superpowers/research/](docs/superpowers/research/).
 
 ## What it does and how to text it
 
-Status (2026-11-05): on WhatsApp the whole chain ran in production (webhook, Durable Object, memory retrieval, model, send), but Meta then permanently restricted the owner's test account pending a business verification the owner cannot do, so WhatsApp delivery is blocked until that lifts. Telegram is the live channel for reviewers. The real-model evals ran on 2026-11-05 (see [Evals](#evals)).
+Status (2026-11-05): the brief asked for WhatsApp, and the WhatsApp Cloud API transport is in the repo ([src/whatsapp.ts](src/whatsapp.ts)) and ran end to end in production (webhook, Durable Object, memory, model, send). Meta then permanently restricted the test account pending a business verification that needs company documents the owner does not have, so that transport is parked. Telegram, added the same day behind the same core, is the channel everything below refers to. The real-model evals ran on 2026-11-05 (see [Evals](#evals)).
 
 - Replies like a person: it waits for a burst of messages to finish, then answers in short bubbles.
 - Introduces itself on your first message: what it is and what it can do, in one or two bubbles.
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
-- Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00. On WhatsApp delivery only works within 24 hours of your last message (Meta's rule, see Known limits), so a reminder for the day after tomorrow needs you to text again before it, and the bot says so when it sets one; on Telegram it arrives regardless.
+- Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00; "what reminders do I have" lists them, and any can be cancelled.
 - Answers a voice note with a voice note (one, carrying the whole reply); a text message gets text.
 
-On WhatsApp (once Meta lifts the restriction): the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
-
-On Telegram: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk; no number registration. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). The same agent and the same memory serve both apps; to it, a Telegram contact and a WhatsApp contact are two different people. A voice note gets a voice note back on Telegram too, and reminders and check-ins are delivered whenever they are due: Telegram has no 24-hour window.
+To talk to it: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). Reminders and check-ins are delivered whenever they are due.
 
 Things to try:
 
@@ -41,12 +39,11 @@ Things to try:
 flowchart TB
   subgraph Channels
     direction LR
-    P[Phone] -->|WhatsApp| M[Meta Cloud API]
-    P -->|Telegram| T[Telegram Bot API]
+    P[Phone] --> T[Telegram Bot API]
   end
   subgraph Cloudflare
     direction TB
-    W["Worker<br/>verify, allowlist, route"]
+    W["Worker<br/>verify secret, allowlist, route"]
     D["ContactAgent Durable Object<br/>one per contact<br/>SQLite + one alarm"]
     C["ContactCore<br/>burst wait, memory<br/>reply, reminders"]
     W -->|ingest| D -->|alarm| C
@@ -57,7 +54,6 @@ flowchart TB
     A["Workers AI<br/>embeddings, rerank<br/>Whisper, Aura-1 voice"]
     B["Browser Rendering<br/>page snapshots"]
   end
-  M -->|POST /webhook| W
   T -->|POST /telegram| W
   C --> O
   C --> A
@@ -65,7 +61,7 @@ flowchart TB
   C -->|bubbles, reactions, voice notes| Channels
 ```
 
-The Worker is stateless: it checks Meta's signature or Telegram's secret header and the allowlist, then hands the message to the one Durable Object named after the contact (`<phone>` or `tg:<chat id>`). That object stores the message, sets its single alarm for when the burst should be over, and on the alarm runs the turn: recall from its own SQLite, stream the reply, send the bubbles, then extract facts in the background and re-arm the alarm for the nearest of insights, check-ins and reminders.
+The Worker is stateless: it checks Telegram's secret header and the allowlist, then hands the message to the one Durable Object named after the contact (`tg:<chat id>`). That object stores the message, sets its single alarm for when the burst should be over, and on the alarm runs the turn: recall from its own SQLite, stream the reply, send the bubbles, then extract facts in the background and re-arm the alarm for the nearest of insights, check-ins and reminders.
 
 - `src/worker.ts` re-exports `src/index.ts` (the Worker above) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
@@ -81,13 +77,13 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 `src/`
 
 - [worker.ts](src/worker.ts): wrangler entry; re-exports the Worker and `ContactAgent`.
-- [index.ts](src/index.ts): `/webhook` GET and POST, `/telegram` POST, allowlists, fan-out, `/health`.
+- [index.ts](src/index.ts): `/telegram` POST, allowlist, fan-out to one Durable Object per contact, `/health`; the parked WhatsApp routes live here too.
 - [contact-agent.ts](src/contact-agent.ts): Durable Object shell and dependency wiring.
 - [env.d.ts](src/env.d.ts): `Env` augmentation (secret names, `CONTACT` binding).
 - [models.ts](src/models.ts): model table, per-job defaults and candidates, prices, cost, host filter.
 - [llm.ts](src/llm.ts): streaming and structured calls over the AI SDK and OpenRouter.
-- [whatsapp.ts](src/whatsapp.ts): webhook parsing, Graph API client, signature check.
-- [telegram.ts](src/telegram.ts): Bot API update parsing, client (text, reactions, typing, media, voice notes via `sendVoice`; no 24-hour window), and the transport router (`tg:` ids go to Telegram, everything else to WhatsApp).
+- [whatsapp.ts](src/whatsapp.ts): the parked WhatsApp transport (see the status at the top).
+- [telegram.ts](src/telegram.ts): Bot API update parsing, client (text, reactions, typing, media, voice notes via `sendVoice`), and the transport router.
 - [browser.ts](src/browser.ts): URL extraction and Browser Rendering snapshots.
 - [workers-ai.ts](src/workers-ai.ts): embeddings, rerank, transcription, text-to-speech.
 - `*.test.ts` next to each file: unit tests.
@@ -104,12 +100,12 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 - [insights.ts](src/core/insights.ts): derived insights.
 - [followups.ts](src/core/followups.ts): schedule and decide proactive check-ins.
 - [reminders.ts](src/core/reminders.ts): explicit reminders at an exact time, behind the `set_reminder` and `cancel_reminder` tools.
-- [timezone.ts](src/core/timezone.ts): timezone guess from the phone's country code.
+- [timezone.ts](src/core/timezone.ts): timezone guess from a phone number's country code (Telegram carries none, so the bot asks).
 
 `evals/`
 
 - [run.ts](evals/run.ts): `npm run eval` CLI (flags become env, then vitest or, with `--braintrust`, the Braintrust CLI).
-- [harness.ts](evals/harness.ts): fake clock and WhatsApp, scenario loader and runner.
+- [harness.ts](evals/harness.ts): fake clock and fake transport, scenario loader and runner.
 - [judge.ts](evals/judge.ts): LLM judge for probes and facts.
 - [braintrust.eval.ts](evals/braintrust.eval.ts): the same scenarios and judge as a Braintrust experiment.
 - [results.ts](evals/results.ts): one results file per configuration, shared by both runners.
@@ -223,28 +219,18 @@ npm test
 npm run eval
 ```
 
-`.dev.vars` (git-ignored) holds eleven names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md). Either transport's set is enough to run: a route whose transport is not fully configured answers 404, and `/health` names the ones that are (503 when neither is).
+`.dev.vars` (git-ignored) holds the Telegram values `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`, the shared `OPENROUTER_API_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and the parked transport's names. Where each comes from is in [SETUP.md](SETUP.md). A transport whose values are missing answers 404 on its route, and `/health` names the ones configured (503 when none is).
 
 ## Known limits
 
-- On WhatsApp, replies only within 24 hours of the person's last message (Meta rule): proactive check-ins and reminders outside that window are skipped (a skipped reminder is logged, never sent late), and the bot says so when it sets a reminder that far out. Telegram has no window.
-- Meta's test number only talks to a small list of verified recipient numbers.
-- Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day (about 200 minutes of voice notes).
-- Meta's free tier is 1,000 delivered service messages per month per number. No payment method is on file. The status webhook's `pricing.type` flip is logged.
-- Voice replies only answer voice notes, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters (172 for that reply); a full reply of 300-900 characters is 400-1,200 neurons, so roughly 8 to 25 voice replies a day fit the Free plan's 10,000 neurons before anything else, after which each voice note costs one failed synthesis call before the text fallback. A reply in a non-Latin script, or any synthesis or upload failure, falls back to the text bubbles.
-- Timezone is guessed from the phone's country code until the person says where they are; reminder times are resolved in that zone.
-- Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank (0/4 in round 1; "Red" 4/4 with a one-line system prompt in direct calls), and which prompt line tips it is not known.
-- OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model ... your account's allowed-providers setting permits only: ...", and for insights that shows up only as `insights_failed` in the logs. Round 1 of the evals ran under such a key ([SETUP.md section 5](SETUP.md)).
+- Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day, shared by voice-note transcription and voice replies.
+- Voice replies only answer voice notes, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters, so roughly 8 to 25 full-length voice replies a day fit the Free plan; after that, and for a reply in a non-Latin script or any synthesis failure, the text bubbles go out instead.
+- Timezone starts as UTC (a Telegram id carries no country code) until the person says where they are; reminder times are resolved in that zone, and a reminder set before the zone was known is moved with it.
+- Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank, and which prompt line tips it is not known.
+- OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model", and for insights that shows up only as `insights_failed` in the logs ([SETUP.md section 5](SETUP.md)).
 - Follow-ups and reminders never retry.
 - The extractor sees only the current turn.
-- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. `/telegram` answers 404 until the bot token and the webhook secret are both set. The first-message introduction and the far-out-reminder warning rest on the model following a prompt line, not on code. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked.
-
-## What I would build next
-
-- On WhatsApp, follow-ups and reminders outside the 24-hour window, using approved message templates.
-- Voice replies in the person's language (Aura-1 is English-only; MeloTTS is multilingual but returns WAV, which no platform shows as a voice note).
-- A second run of each model candidate ($0.10 each) to firm up the one-scenario margins in the Evals tables.
-- A per-person daily turn cap before the bot link is shared widely.
+- Bots get no read receipts on Telegram, so only the typing indicator shows. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked. The first-message introduction rests on the model following a prompt line, not on code.
 
 ## Credits
 
