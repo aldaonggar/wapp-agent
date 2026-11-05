@@ -100,6 +100,10 @@ test("makeSearch asks OpenRouter's web plugin, fetches each cited page in parall
   expect(body).toMatchObject({ model: "openai/gpt-6-luna", max_tokens: 120, reasoning: { effort: "none" }, plugins: [{ id: "web", engine: "exa", max_results: 3 }], provider: { ignore: expect.arrayContaining(["deepseek"]) } });
   expect(body.messages[0].content).toContain("louvre hours");
   expect(maxOpen).toBe(3);
+  for (const s of sent.slice(1)) { // every page fetch is bounded and looks like a browser
+    expect(s.init!.signal).toBeInstanceOf(AbortSignal);
+    expect((s.init!.headers as Record<string, string>)["User-Agent"]).toMatch(/^Mozilla/);
+  }
   expect(out).toEqual([
     { title: "Louvre", url: "https://www.louvre.fr/en/visit/", text: "Open 9 to 18" },
     { title: "T", url: "https://a.example/", text: "snippet" }, // not a text page: the snippet
@@ -134,8 +138,8 @@ test("makeSearch returns [] and logs search_failed for no citations, a non-200, 
 });
 
 test("makeSearch reads at most ~200 KB of a result page and rejects a page without a text content type", async () => {
-  let pulled = 0;
-  const big = new ReadableStream<Uint8Array>({ pull(c) { pulled += 65536; c.enqueue(new Uint8Array(65536).fill(97)); } });
+  let pulled = 0, cancelled = false;
+  const big = new ReadableStream<Uint8Array>({ pull(c) { pulled += 65536; c.enqueue(new Uint8Array(65536).fill(97)); }, cancel() { cancelled = true; } });
   const f = async (u: string) => {
     if (u === OR) return orBody(cite("https://big.example/", "Big", ""), cite("https://none.example/", "None", ""));
     return u.includes("big") ? new Response(big, { headers: { "Content-Type": "text/plain" } }) : new Response("<p>x</p>", { headers: { "Content-Type": "application/octet-stream" } });
@@ -144,4 +148,5 @@ test("makeSearch reads at most ~200 KB of a result page and rejects a page witho
   expect(out[0].text).toHaveLength(3000);
   expect(pulled).toBeLessThanOrEqual(65536 * 6);
   expect(out[1].text).toBe("");
+  expect(cancelled).toBe(true); // the reader is cancelled once the cap is reached
 });
