@@ -1,5 +1,5 @@
 import { expect, test, vi } from "vitest";
-import { extractUrls, makeSearch, makeSnapshot, pageText, parseResults } from "./browser";
+import { extractUrls, makeSearch, makeSnapshot, pageText } from "./browser";
 
 test("extractUrls finds the first two http(s) urls and ignores ftp://", () => {
   const text = "see https://a.com/x?y=1 and http://b.org, also ftp://c.net and https://d.io";
@@ -70,27 +70,6 @@ test("makeSnapshot strips empty and CRLF front matter", async () => {
   }
 });
 
-// Shaped like html.duckduckgo.com/html/: an ad first (y.js, no uddg), then organic results.
-const DDG = `<div class="result results_links result--ad"><h2 class="result__title"><a rel="nofollow" class="result__a" href="https://duckduckgo.com/y.js?ad_domain=ads.example&amp;ad_provider=bingv7aa&amp;u3=https%3A%2F%2Fwww.bing.com%2Faclick">Cheap tickets</a></h2></div>
-<div class="result results_links results_links_deep web-result "><h2 class="result__title">
-  <a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.louvre.fr%2Fen%2Fvisit%3Flang%3Den&amp;rut=abc123">Hours &amp; <b>admission</b> | Mus&eacute;e du Louvre</a></h2>
-  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.louvre.fr%2Fen%2Fvisit%3Flang%3Den">The museum is open...</a></div>
-<div class="result results_links web-result "><a href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FLouvre&amp;rut=d" class="result__a">Louvre &#8211; Wikipedia</a></div>
-<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=javascript%3Aalert(1)">bad</a></div>
-<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.louvre.fr%2Fen%2Fvisit%3Flang%3Den">dup</a></div>
-<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fa.example%2F">A</a></div>
-<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fb.example%2F">B</a></div>`;
-
-test("parseResults keeps organic result__a anchors in order, decodes uddg and entities, and drops ads, non-http targets and repeats", () => {
-  expect(parseResults(DDG)).toEqual([
-    { title: "Hours & admission | Mus&eacute;e du Louvre", url: "https://www.louvre.fr/en/visit?lang=en" },
-    { title: "Louvre \u2013 Wikipedia", url: "https://en.wikipedia.org/wiki/Louvre" },
-    { title: "A", url: "https://a.example/" },
-    { title: "B", url: "https://b.example/" },
-  ]);
-  expect(parseResults("<p>Unfortunately, bots use DuckDuckGo too.</p><div class=\"anomaly-modal__box\"></div>")).toEqual([]);
-});
-
 test("pageText drops scripts, styles, comments and tags, decodes entities, collapses whitespace and keeps 3,000 characters", () => {
   const html = `<html><head><title>T</title><style>body{color:red}</style><script>var x = "<b>no</b>";</script></head>
     <body><!-- nav --><h1>Opening   hours</h1>\n<p>Mon&ndash;Fri&nbsp;9&#8211;18 &amp; Sat <SCRIPT type="x">y()</SCRIPT >10&#x2013;14</p></body></html>`;
@@ -100,60 +79,68 @@ test("pageText drops scripts, styles, comments and tags, decodes entities, colla
 
 const html = (body: string, init: ResponseInit = {}) => new Response(body, { headers: { "Content-Type": "text/html; charset=utf-8" }, ...init });
 
-test("makeSearch fetches the DuckDuckGo HTML page, then the top 3 results' pages in parallel, with a browser User-Agent", async () => {
-  const urls: string[] = [];
-  let open = 0, maxOpen = 0;
-  const f = vi.fn(async (u: string | URL | Request, init?: RequestInit) => {
-    urls.push(String(u));
-    expect((init!.headers as Record<string, string>)["User-Agent"]).toMatch(/^Mozilla\/5\.0 /);
-    expect(init!.signal).toBeInstanceOf(AbortSignal);
-    if (String(u).startsWith("https://html.duckduckgo.com/")) return html(DDG);
+const OR = "https://openrouter.ai/api/v1/chat/completions";
+const cite = (url: string, title = "T", content = "snippet") => ({ type: "url_citation", url_citation: { url, title, content } });
+const orBody = (...annotations: unknown[]) => Response.json({ choices: [{ message: { role: "assistant", content: "x", annotations } }] });
+const search = (f: (u: string, init?: RequestInit) => Promise<Response>, log = vi.fn(), o = {}) => makeSearch({ apiKey: "k", fetch: f as typeof fetch, log, ...o });
+
+test("makeSearch asks OpenRouter's web plugin, fetches each cited page in parallel (capped, text only), dedupes, and keeps 3", async () => {
+  let open = 0, maxOpen = 0, sent: { url: string; init?: RequestInit }[] = [];
+  const f = async (u: string, init?: RequestInit) => {
+    sent.push({ url: u, init });
+    if (u === OR) return orBody(cite("https://www.louvre.fr/en/visit/", "Louvre"), cite("https://louvre.fr/en/visit"), cite("https://a.example/"), cite("https://b.example/"), cite("https://c.example/"));
     open++; maxOpen = Math.max(maxOpen, open);
     await new Promise((r) => setTimeout(r, 5));
     open--;
-    if (String(u).includes("wikipedia")) throw new Error("connection reset");
-    return String(u).startsWith("https://a.") ? new Response("%PDF-1.7", { headers: { "Content-Type": "application/pdf" } }) : html("<p>Open 9 to 18</p>");
-  });
-  const out = await makeSearch({ fetch: f as typeof fetch, log: () => {} })("louvre opening hours & prices");
-  expect(urls[0]).toBe("https://html.duckduckgo.com/html/?q=louvre%20opening%20hours%20%26%20prices");
-  expect(urls.slice(1).sort()).toEqual(["https://a.example/", "https://en.wikipedia.org/wiki/Louvre", "https://www.louvre.fr/en/visit?lang=en"]);
+    return u.startsWith("https://a.") ? new Response("%PDF", { headers: { "Content-Type": "application/pdf" } }) : html("<p>Open 9 to 18</p>");
+  };
+  const out = await search(f)("louvre hours");
+  const body = JSON.parse(sent[0].init!.body as string);
+  expect(sent[0].init!.headers).toMatchObject({ Authorization: "Bearer k" });
+  expect(body).toMatchObject({ model: "openai/gpt-6-luna", max_tokens: 120, reasoning: { effort: "none" }, plugins: [{ id: "web", engine: "exa", max_results: 3 }], provider: { ignore: expect.arrayContaining(["deepseek"]) } });
+  expect(body.messages[0].content).toContain("louvre hours");
   expect(maxOpen).toBe(3);
   expect(out).toEqual([
-    { title: "Hours & admission | Mus&eacute;e du Louvre", url: "https://www.louvre.fr/en/visit?lang=en", text: "Open 9 to 18" },
-    { title: "Louvre \u2013 Wikipedia", url: "https://en.wikipedia.org/wiki/Louvre", text: "" }, // the page failed: kept, with no text
-    { title: "A", url: "https://a.example/", text: "" }, // not a text page
+    { title: "Louvre", url: "https://www.louvre.fr/en/visit/", text: "Open 9 to 18" },
+    { title: "T", url: "https://a.example/", text: "snippet" }, // not a text page: the snippet
+    { title: "T", url: "https://b.example/", text: "Open 9 to 18" },
   ]);
 });
 
-test("makeSearch returns [] and logs the status when DuckDuckGo refuses, answers a challenge page or finds nothing; it never throws", async () => {
-  const cases: [typeof fetch, Record<string, unknown>][] = [
-    [(async () => html("<p>Unfortunately, bots use DuckDuckGo too.</p>", { status: 202 })) as typeof fetch, { status: 202 }],
-    [(async () => html("<p>Select all squares containing a duck</p>")) as typeof fetch, { status: 200 }],
-    [(async () => new Response("", { status: 503 })) as typeof fetch, { status: 503 }],
-    [(async () => { throw new Error("dns"); }) as typeof fetch, { error: "dns" }],
-  ];
-  for (const [f, logged] of cases) {
-    const log = vi.fn();
-    await expect(makeSearch({ fetch: f, log })("q")).resolves.toEqual([]);
-    expect(log).toHaveBeenCalledWith({ event: "search_failed", ...logged });
-    expect(JSON.stringify(log.mock.calls)).not.toContain('"q"');
-  }
+test("makeSearch falls back to the citation snippet when a page fails or is empty", async () => {
+  const f = async (u: string) => {
+    if (u === OR) return orBody(cite("https://x.example/", "X", "  from\n the snippet "), cite("https://y.example/", "Y", "y snippet"));
+    if (u.includes("x.")) throw new Error("reset");
+    return html("<script>1</script>");
+  };
+  expect((await search(f)("q")).map((r) => r.text)).toEqual(["from the snippet", "y snippet"]);
 });
 
-test("parseResults treats scheme, www and a trailing slash as the same page", () => {
-  const a = (u: string) => `<a class="result__a" href="//duckduckgo.com/l/?uddg=${encodeURIComponent(u)}">x</a>`;
-  expect(parseResults(a("https://a.example/") + a("https://a.example") + a("http://www.a.example/") + a("https://b.example/")).map((r) => r.url)).toEqual(["https://a.example/", "https://b.example/"]);
+test("makeSearch returns [] and logs search_failed for no citations, a non-200, a network error and a timeout; never the query", async () => {
+  const hang = (_u: string, init?: RequestInit) => new Promise<Response>((_, rej) => init!.signal!.addEventListener("abort", () => rej(init!.signal!.reason)));
+  const cases: [(u: string, init?: RequestInit) => Promise<Response>, object, object][] = [
+    [async () => orBody(), {}, { reason: "no_citations" }],
+    [async () => orBody({ type: "other" }, cite("ftp://x")), {}, { reason: "no_citations" }],
+    [async () => new Response("", { status: 402 }), {}, { status: 402 }],
+    [async () => { throw new Error("dns"); }, {}, { error: "dns" }],
+    [hang, { timeoutMs: 20 }, { error: expect.stringMatching(/timeout|abort/i) }],
+  ];
+  for (const [f, o, logged] of cases) {
+    const log = vi.fn();
+    await expect(search(f, log, o)("secretquery")).resolves.toEqual([]);
+    expect(log).toHaveBeenCalledWith({ event: "search_failed", ...logged });
+    expect(JSON.stringify(log.mock.calls)).not.toContain("secretquery");
+  }
 });
 
 test("makeSearch reads at most ~200 KB of a result page and rejects a page without a text content type", async () => {
   let pulled = 0;
   const big = new ReadableStream<Uint8Array>({ pull(c) { pulled += 65536; c.enqueue(new Uint8Array(65536).fill(97)); } });
-  const f = (async (u: string | URL | Request) => {
-    const s = String(u);
-    if (s.startsWith("https://html.duckduckgo.com/")) return html(`<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fbig.example%2F">Big</a><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fnone.example%2F">None</a>`);
-    return s.includes("big") ? new Response(big, { headers: { "Content-Type": "text/plain" } }) : new Response("<p>x</p>", { headers: { "Content-Type": "application/octet-stream" } });
-  }) as typeof fetch;
-  const out = await makeSearch({ fetch: f, log: () => {} })("q");
+  const f = async (u: string) => {
+    if (u === OR) return orBody(cite("https://big.example/", "Big", ""), cite("https://none.example/", "None", ""));
+    return u.includes("big") ? new Response(big, { headers: { "Content-Type": "text/plain" } }) : new Response("<p>x</p>", { headers: { "Content-Type": "application/octet-stream" } });
+  };
+  const out = await search(f)("q");
   expect(out[0].text).toHaveLength(3000);
   expect(pulled).toBeLessThanOrEqual(65536 * 6);
   expect(out[1].text).toBe("");

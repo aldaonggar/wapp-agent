@@ -16,7 +16,7 @@ For each person who texts it, kept in a separate store that no other person's co
 
 - Storage runs in the owner's Cloudflare account (Cloudflare Workers and Durable Objects).
 - Messages are carried by Meta's WhatsApp Business Platform, under WhatsApp's own terms.
-- To write a reply, the conversation is sent to third-party language models through OpenRouter (the models in use are listed in the README), to Cloudflare Workers AI for voice transcription and search embeddings, and to Cloudflare Browser Rendering for links you send and for result pages it opens itself. When it looks something up, a short search query it writes from the conversation goes to DuckDuckGo, and the bot fetches the top result pages directly. Those providers process the data to produce the reply; the owner has no control over their retention policies beyond what their terms state.
+- To write a reply, the conversation is sent to third-party language models through OpenRouter (the models in use are listed in the README), to Cloudflare Workers AI for voice transcription and search embeddings, and to Cloudflare Browser Rendering for links you send and for result pages it opens itself. When it looks something up, a short search query it writes from the conversation goes to OpenRouter's web search provider (Exa), and the Worker fetches the result pages directly. Those providers process the data to produce the reply; the owner has no control over their retention policies beyond what their terms state.
 - The owner can read the stored conversations and the service logs.
 
 ## Deleting your data

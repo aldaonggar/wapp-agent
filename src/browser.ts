@@ -1,4 +1,6 @@
 import type { Deps } from "./core/types";
+import { CHINA_HOSTS } from "./models";
+const SEARCH_MODEL = "openai/gpt-6-luna";
 // http(s) URLs in chat text, first two; trailing punctuation is not part of the URL.
 export function extractUrls(text: string): string[] {
   return (text.match(/https?:\/\/[^\s<>"']*[^\s<>"'.,;:!?)\]}]/gi) ?? []).slice(0, 2);
@@ -69,40 +71,45 @@ const decode = (s: string) => s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: s
 
 const key = (u: string) => { const p = URL.parse(u); return p ? p.host.replace(/^www\./, "") + p.pathname.replace(/\/$/, "") + p.search : u; }; // scheme, www and a trailing slash do not make a new page
 
-// DuckDuckGo's HTML results: organic anchors have class result__a and wrap the target in uddg= (ads link to y.js without it).
-export function parseResults(html: string): { title: string; url: string }[] {
-  const out: { title: string; url: string }[] = [];
-  for (const [a, inner] of html.matchAll(/<a\s[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)) {
-    const href = /\shref="([^"]*)"/i.exec(a)?.[1];
-    const url = href ? URL.parse(decode(href), "https://duckduckgo.com")?.searchParams.get("uddg") : null;
-    if (url && /^https?:\/\//i.test(url) && !out.some((r) => key(r.url) === key(url))) out.push({ title: decode(inner.replace(/<[^>]*>/g, "")).trim(), url });
-  }
-  return out;
-}
-
 // Readable text of a page: scripts, styles and comments dropped, tags to spaces, whitespace collapsed, the first 3,000 characters.
 export const pageText = (html: string): string =>
   decode(html.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>|<!--[\s\S]*?-->/gi, " ").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim().slice(0, PAGE_CHARS);
 
-// The top 3 results and their main pages, no Browser Rendering. Never throws: a refusal is [], a page that fails has text "".
-export function makeSearch(cfg: { fetch?: typeof fetch; log?: (e: Record<string, unknown>) => void } = {}): NonNullable<Deps["search"]> {
+// OpenRouter's web plugin finds up to 3 sources (url_citation annotations); each main page is then fetched, falling back to the citation's snippet. Never throws: any failure is [].
+export function makeSearch(cfg: { apiKey: string; fetch?: typeof fetch; timeoutMs?: number; log?: (e: Record<string, unknown>) => void }): NonNullable<Deps["search"]> {
   const f = cfg.fetch ?? fetch, log = cfg.log ?? console.log;
-  const get = (url: string, ms: number) => f(url, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(ms) });
   return async (query) => {
     try {
-      const res = await get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, 6000);
-      const hits = res.status === 200 ? parseResults(await res.text()).slice(0, RESULTS) : [];
-      if (!hits.length) {
-        log({ event: "search_failed", status: res.status }); // 202 is DuckDuckGo's bot challenge; 200 with nothing parsed is a challenge page or no results
+      const res = await f("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfg.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: SEARCH_MODEL, max_tokens: 120, reasoning: { effort: "none" }, plugins: [{ id: "web", engine: "exa", max_results: RESULTS }], provider: { ignore: CHINA_HOSTS },
+          messages: [{ role: "user", content: `List the three most relevant current sources for: ${query}` }],
+        }),
+        signal: AbortSignal.timeout(cfg.timeoutMs ?? 8000),
+      });
+      if (!res.ok) {
+        log({ event: "search_failed", status: res.status });
         return [];
       }
-      return await Promise.all(hits.map(async (h) => {
+      const body = (await res.json()) as { choices?: { message?: { annotations?: { type?: string; url_citation?: { url?: string; title?: string; content?: string } }[] } }[] };
+      const hits: { title: string; url: string; snippet: string }[] = [];
+      for (const a of body.choices?.[0]?.message?.annotations ?? []) {
+        const c = a.type === "url_citation" ? a.url_citation : undefined;
+        if (c?.url && /^https?:\/\//i.test(c.url) && !hits.some((h) => key(h.url) === key(c.url!))) hits.push({ title: c.title ?? "", url: c.url, snippet: c.content ?? "" });
+      }
+      if (!hits.length) {
+        log({ event: "search_failed", reason: "no_citations" });
+        return [];
+      }
+      return await Promise.all(hits.slice(0, RESULTS).map(async ({ snippet, ...h }) => {
+        let text = "";
         try {
-          const r = await get(h.url, 5000);
-          return { ...h, text: r.ok && /^(text|application\/xhtml)/i.test(r.headers.get("content-type") ?? "") ? pageText(await readCapped(r)) : "" };
-        } catch {
-          return { ...h, text: "" };
-        }
+          const r = await f(h.url, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(5000) });
+          if (r.ok && /^(text|application\/xhtml)/i.test(r.headers.get("content-type") ?? "")) text = pageText(await readCapped(r));
+        } catch { /* fall back to the snippet */ }
+        return { ...h, text: text || snippet.replace(/\s+/g, " ").trim().slice(0, PAGE_CHARS) };
       }));
     } catch (e) {
       log({ event: "search_failed", error: e instanceof Error ? e.message : String(e) });
