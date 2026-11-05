@@ -802,7 +802,7 @@ test("view_page is offered from the step after a search, so the model can open a
   await t.say("no link here");
   await t.run();
   expect(before).toEqual(["set_reminder", "cancel_reminder", "forget", "search_web"]);
-  expect(after).toEqual(["set_reminder", "view_page", "search_web"]); // a fetched page must not be able to talk the model into deleting anything
+  expect(after).toEqual(["set_reminder", "view_page"]); // a fetched page must not be able to talk the model into deleting anything
 });
 
 test("without a search dependency there is no search_web tool and view_page keeps its link-only rule", async () => {
@@ -813,11 +813,11 @@ test("without a search dependency there is no search_web tool and view_page keep
   expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]);
 });
 
-test("a stream that dies after the say line gets no fallback: a bubble already went out", async () => {
+test("a stream that dies after only the say line still gets the fallback: the say line is not an answer", async () => {
   const t = setup({ reply: async (c) => { await searchCall(c); return { chunks: ["react: none\n"], error: new Error("stream cut") }; } });
   await t.say("is the louvre open today?");
   await t.run();
-  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up"]);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", FALLBACK]);
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
 });
 
@@ -1127,4 +1127,68 @@ test("a follow-up due after 25 h of silence fires on a Telegram contact and is s
     expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
     expect(t.view.alarmAt).toBeNull();
   }
+});
+
+test("after a search, view_page opens only links from the thread and the results, never a URL a result page suggests", async () => {
+  const snapshot = vi.fn(async (_u: string) => PAGE);
+  const out: unknown[] = [];
+  const viewPage = (c: StreamCall, url: string) => c.tools!.view_page.execute!({ url }, { toolCallId: "v", messages: [] } as never);
+  const t = setup({
+    snapshot, search: async () => [{ title: "A", url: "https://a.example/hours", text: "hours" }],
+    reply: async (c) => {
+      out.push(null);
+      await searchCall(c);
+      out.push(await viewPage(c, "https://evil.example/x?u=1"), await viewPage(c, "https://a.example/hours"), await viewPage(c, "https://mine.example/"));
+      return "react: none\nok";
+    },
+  });
+  await t.say("look at https://mine.example/ and the louvre hours");
+  await t.run();
+  expect(out[1]).toEqual({ error: "could not open the page" });
+  expect(out[2]).toMatchObject({ status: expect.anything() });
+  expect(out[3]).toMatchObject({ status: expect.anything() });
+  expect(snapshot.mock.calls.map((a) => a[0])).not.toContain("https://evil.example/x?u=1");
+  expect(snapshot.mock.calls.map((a) => a[0])).toContain("https://a.example/hours");
+});
+
+test("a voice request in text works in a turn that ran search_web: the say line goes out as text, the answer as one voice note", async () => {
+  const t = setup({ reply: async (c) => { await searchCall(c); return "react: none\nvoice: yes\nopen 9 to 6 today"; } });
+  t.deps.tts = async () => ({ bytes: new Uint8Array([7]), mime: "audio/ogg" });
+  await t.say("look up the louvre hours and send me a voice note");
+  await t.run();
+  expect(t.wa.sent.map((s) => s.kind).filter((k) => k !== "typing")).toEqual(["text", "audio"]);
+});
+
+test("a failed view_page open is not cached: the next call asks for the page again", async () => {
+  let n = 0;
+  const snapshot = vi.fn(async () => (++n === 1 ? null : PAGE));
+  const res: unknown[] = [];
+  const t = setup({ snapshot, reply: async (c) => { for (let i = 0; i < 2; i++) res.push(await c.tools!.view_page.execute!({ url: "https://mine.example/" }, { toolCallId: "v", messages: [] } as never)); return "react: none\nok"; } });
+  await t.say("see https://mine.example/");
+  await t.run();
+  expect(res[0]).toEqual({ error: "could not open the page" });
+  expect(res[1]).toMatchObject({ status: expect.anything() });
+});
+
+test("a reset during the fallback send leaves turn_attempts at 0", async () => {
+  const t = setup({ reply: () => { throw new Error("upstream 500"); } });
+  await t.say("the movie was great");
+  await t.fire();
+  expect(t.state().turn_attempts).toBe(1);
+  t.wa.sendText = () => new Promise(() => {});
+  void t.fire();
+  await new Promise((r) => setTimeout(r, 20));
+  expect(t.state().turn_attempts).toBe(0);
+});
+
+test("a reminder whose send returns an empty id counts as sent in both the reminder row and the message row", async () => {
+  const t = setup({ reply: remind("call the dentist", "2026-11-04 10:30") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me at 10:30 to call the dentist");
+  await t.run();
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = async (...a) => ({ ...(await send(...a)), id: "" });
+  await t.run(ny("2026-11-04 10:30"));
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
+  expect(outs(t).at(-1)).toMatchObject({ text: "Reminder: call the dentist", status: "sent" });
 });

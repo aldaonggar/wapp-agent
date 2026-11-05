@@ -64,8 +64,9 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
   function* line(l: string): Generator<ReplyEvent> {
     // "voice: yes" is a header only before any bubble text; anywhere it is never bubble text, and any other value is no request.
     const voice = /^\s*voice:\s*(\S*)\s*$/i.exec(l);
-    if (voice) {
-      if (emitted === 0 && !cur.some((x) => x.trim()) && /^(yes|y|true)$/i.test(voice[1].replace(/[.,!;:]+$/, ""))) yield { type: "voice" };
+    const head = emitted === 0 && !cur.some((x) => x.trim()), yes = !!voice && /^(yes|y|true)$/i.test(voice[1].replace(/[.,!;:]+$/, ""));
+    if (voice && (head || yes)) { // a one-word body line like "voice: soprano" stays text
+      if (head && yes) yield { type: "voice" };
       return;
     }
     const isHeader = /^\s*react:/i.test(l);

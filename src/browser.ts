@@ -45,7 +45,21 @@ export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: ty
 }
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
-const RESULTS = 3, PAGE_CHARS = 3000;
+const RESULTS = 3, PAGE_CHARS = 3000, PAGE_BYTES = 200_000;
+
+// At most PAGE_BYTES of a body: a huge page must not fill the Durable Object's memory.
+async function readCapped(r: Response): Promise<string> {
+  if (!r.body) return "";
+  const reader = r.body.getReader(), dec = new TextDecoder(), parts: string[] = [];
+  for (let n = 0; n < PAGE_BYTES;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    n += value.length;
+    parts.push(dec.decode(value, { stream: true }));
+  }
+  void reader.cancel().catch(() => {});
+  return parts.join("");
+}
 const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
 const decode = (s: string) => s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
   if (e[0] !== "#") return NAMED[e.toLowerCase()] ?? m;
@@ -53,13 +67,15 @@ const decode = (s: string) => s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: s
   return n <= 0x10ffff ? String.fromCodePoint(n) : m;
 });
 
+const key = (u: string) => { const p = URL.parse(u); return p ? p.host.replace(/^www\./, "") + p.pathname.replace(/\/$/, "") + p.search : u; }; // scheme, www and a trailing slash do not make a new page
+
 // DuckDuckGo's HTML results: organic anchors have class result__a and wrap the target in uddg= (ads link to y.js without it).
 export function parseResults(html: string): { title: string; url: string }[] {
   const out: { title: string; url: string }[] = [];
   for (const [a, inner] of html.matchAll(/<a\s[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)) {
     const href = /\shref="([^"]*)"/i.exec(a)?.[1];
     const url = href ? URL.parse(decode(href), "https://duckduckgo.com")?.searchParams.get("uddg") : null;
-    if (url && /^https?:\/\//i.test(url) && !out.some((r) => r.url === url)) out.push({ title: decode(inner.replace(/<[^>]*>/g, "")).trim(), url });
+    if (url && /^https?:\/\//i.test(url) && !out.some((r) => key(r.url) === key(url))) out.push({ title: decode(inner.replace(/<[^>]*>/g, "")).trim(), url });
   }
   return out;
 }
@@ -83,7 +99,7 @@ export function makeSearch(cfg: { fetch?: typeof fetch; log?: (e: Record<string,
       return await Promise.all(hits.map(async (h) => {
         try {
           const r = await get(h.url, 5000);
-          return { ...h, text: r.ok && /text|html/i.test(r.headers.get("content-type") ?? "text/html") ? pageText(await r.text()) : "" };
+          return { ...h, text: r.ok && /^(text|application\/xhtml)/i.test(r.headers.get("content-type") ?? "") ? pageText(await readCapped(r)) : "" };
         } catch {
           return { ...h, text: "" };
         }

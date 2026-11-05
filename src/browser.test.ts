@@ -139,3 +139,22 @@ test("makeSearch returns [] and logs the status when DuckDuckGo refuses, answers
     expect(JSON.stringify(log.mock.calls)).not.toContain('"q"');
   }
 });
+
+test("parseResults treats scheme, www and a trailing slash as the same page", () => {
+  const a = (u: string) => `<a class="result__a" href="//duckduckgo.com/l/?uddg=${encodeURIComponent(u)}">x</a>`;
+  expect(parseResults(a("https://a.example/") + a("https://a.example") + a("http://www.a.example/") + a("https://b.example/")).map((r) => r.url)).toEqual(["https://a.example/", "https://b.example/"]);
+});
+
+test("makeSearch reads at most ~200 KB of a result page and rejects a page without a text content type", async () => {
+  let pulled = 0;
+  const big = new ReadableStream<Uint8Array>({ pull(c) { pulled += 65536; c.enqueue(new Uint8Array(65536).fill(97)); } });
+  const f = (async (u: string | URL | Request) => {
+    const s = String(u);
+    if (s.startsWith("https://html.duckduckgo.com/")) return html(`<a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fbig.example%2F">Big</a><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fnone.example%2F">None</a>`);
+    return s.includes("big") ? new Response(big, { headers: { "Content-Type": "text/plain" } }) : new Response("<p>x</p>", { headers: { "Content-Type": "application/octet-stream" } });
+  }) as typeof fetch;
+  const out = await makeSearch({ fetch: f, log: () => {} })("q");
+  expect(out[0].text).toHaveLength(3000);
+  expect(pulled).toBeLessThanOrEqual(65536 * 6);
+  expect(out[1].text).toBe("");
+});
