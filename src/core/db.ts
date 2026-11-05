@@ -9,7 +9,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(text, fact_id UNINDEXED)
 CREATE TABLE IF NOT EXISTS insights(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, confidence REAL, evidence_fact_ids TEXT, created_at INTEGER, status TEXT DEFAULT 'active', embedding BLOB);
 CREATE TABLE IF NOT EXISTS profile(id INTEGER PRIMARY KEY CHECK(id=1), text TEXT, updated_at INTEGER);
 CREATE TABLE IF NOT EXISTS contact(id INTEGER PRIMARY KEY CHECK(id=1), wa_id TEXT, name TEXT, timezone TEXT, timezone_confirmed INTEGER DEFAULT 0, last_inbound_ts INTEGER, last_proactive_date TEXT);
-CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY CHECK(id=1), turn_due INTEGER, insights_due INTEGER, followup_due INTEGER, followup_fact_id INTEGER, burst_started_at INTEGER, generation INTEGER DEFAULT 0, turn_attempts INTEGER DEFAULT 0, last_insights_run INTEGER DEFAULT 0);
+CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY CHECK(id=1), turn_due INTEGER, insights_due INTEGER, followup_due INTEGER, followup_fact_id INTEGER, burst_started_at INTEGER, generation INTEGER DEFAULT 0, turn_attempts INTEGER DEFAULT 0, last_insights_run INTEGER DEFAULT 0, reminder_due INTEGER);
+CREATE TABLE IF NOT EXISTS reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, due_ts INTEGER, created_at INTEGER, source_message_id TEXT, status TEXT DEFAULT 'pending');
 CREATE TABLE IF NOT EXISTS turns(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER, wait_ms INTEGER, retrieval_ms INTEGER, ttft_ms INTEGER, ttfb_ms INTEGER, total_ms INTEGER, model TEXT, provider TEXT, bubbles INTEGER, regenerated INTEGER DEFAULT 0, error TEXT, usage TEXT, recalled TEXT);
 CREATE TABLE IF NOT EXISTS calls(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, job TEXT, model TEXT, usage TEXT);
 INSERT OR IGNORE INTO state(id) VALUES (1);
@@ -20,6 +21,7 @@ export function migrate(db: Db): void {
   // Columns added after the first deploy.
   if (!db.all("SELECT 1 FROM pragma_table_info('turns') WHERE name='recalled'").length) db.run("ALTER TABLE turns ADD COLUMN recalled TEXT");
   if (!db.all("SELECT 1 FROM pragma_table_info('facts') WHERE name='followup_due'").length) db.run("ALTER TABLE facts ADD COLUMN followup_due INTEGER");
+  if (!db.all("SELECT 1 FROM pragma_table_info('state') WHERE name='reminder_due'").length) db.run("ALTER TABLE state ADD COLUMN reminder_due INTEGER");
 }
 
 const plain = (r: Record<string, unknown>): Row => {

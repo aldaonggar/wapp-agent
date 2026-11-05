@@ -7,7 +7,7 @@ import { vecToBlob } from "./db";
 import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
 
 const FROM = "15550000001";
-type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
+type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
 function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"] } = {}) {
@@ -76,7 +76,7 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
-  expect(t.llm.calls[0].tools).toBeUndefined(); // memory off: no forget tool
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget");
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
@@ -677,4 +677,86 @@ test("two plans plus a night deferral do not storm: one send, the other skipped 
   expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
   expect(alarms).toBeLessThanOrEqual(6); // turn, insights, 2 night deferrals, send, daily-limit deferral
   expect(t.db.all("SELECT followup_done, followup_due FROM facts ORDER BY id")).toEqual([{ followup_done: 1, followup_due: ny("2026-11-05 09:00") }, { followup_done: 1, followup_due: ny("2026-11-05 09:00") }]); // D2: tomorrow 09:00 is past the 24h window, so it is skipped
+});
+
+// Reminders: the reply model calls set_reminder during the turn; the timer sends their words back at that local time.
+const call = async (c: StreamCall, name: string, input: unknown) => `react: none\n${JSON.stringify(await c.tools![name].execute!(input, { toolCallId: "t", messages: [] } as never))}`;
+const remind = (text: string, at: string) => (c: StreamCall) => call(c, "set_reminder", { text, at });
+const texts = (t: ReturnType<typeof setup>) => t.wa.sent.filter((s) => s.kind === "text");
+
+test("set_reminder stores the reminder and arms the alarm; the timer sends it once, on time, in their words, with no model call", async () => {
+  const t = setup({ reply: remind("call the dentist", "2026-11-05 09:00") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me tomorrow at 9 to call the dentist");
+  await t.run();
+  expect(texts(t).map((s) => s.body)).toEqual(['{"id":1,"at":"2026-11-05 09:00"}']);
+  expect(t.db.all("SELECT text, due_ts, status, source_message_id FROM reminders")).toEqual([{ text: "call the dentist", due_ts: ny("2026-11-05 09:00"), status: "pending", source_message_id: "wamid.in.1" }]);
+  expect(t.state().reminder_due).toBe(ny("2026-11-05 09:00"));
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 09:00"));
+  await t.run(ny("2026-11-05 09:00") - 1);
+  expect(texts(t)).toHaveLength(1);
+  await t.run(ny("2026-11-05 09:00"));
+  expect(texts(t).at(-1)).toMatchObject({ body: "Reminder: call the dentist", at: ny("2026-11-05 09:00") });
+  expect(outs(t).map((r) => [r.text, r.status])).toEqual([['{"id":1,"at":"2026-11-05 09:00"}', "sent"], ["Reminder: call the dentist", "sent"]]);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
+  await t.run(ny("2026-11-06 09:00"));
+  expect(texts(t)).toHaveLength(2);
+  expect(t.llm.calls).toHaveLength(1);
+});
+
+test("set_reminder refuses a time already past with an error the model can relay; nothing is stored or armed", async () => {
+  const t = setup({ reply: remind("x", "2026-11-04 09:59") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me at 9:59");
+  await t.run();
+  expect(texts(t)[0].body).toContain("already past");
+  expect(t.db.all("SELECT 1 FROM reminders")).toEqual([]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reminder and a follow-up due the same day each fire once at their own time", async () => {
+  const t = setup({ features: { memory: true }, object: planOps("2026-11-04 14:00"), reply: (c) => (c.job === "followup" ? "react: none\nhow did it go?" : remind("call the dentist", "2026-11-04 17:00")(c)) });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("interview at two today, remind me at 5 to call the dentist");
+  await t.run(t.clock.t + 60_000);
+  expect(t.state()).toMatchObject({ followup_due: ny("2026-11-04 16:00"), reminder_due: ny("2026-11-04 17:00") });
+  await t.run(ny("2026-11-04 18:00"));
+  expect(texts(t).map((s) => [s.body, s.at])).toEqual([[expect.stringContaining('"id":1'), ny("2026-11-04 10:00") + 3000], ["how did it go?", ny("2026-11-04 16:00")], ["Reminder: call the dentist", ny("2026-11-04 17:00")]]);
+  expect(t.state()).toMatchObject({ followup_due: null, reminder_due: null });
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reminder due more than 24 h after their last message is skipped and logged without the text, not sent", async () => {
+  const t = setup({ reply: remind("water the plants", "2026-11-06 09:00") });
+  t.clock.t = ny("2026-11-04 10:00");
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("remind me the day after tomorrow at 9 to water the plants");
+  await t.run(ny("2026-11-06 09:00"));
+  expect(texts(t)).toHaveLength(1);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "skipped" }]);
+  expect(log).toHaveBeenCalledWith({ event: "reminder_skipped", reason: "window", id: 1 });
+  expect(JSON.stringify(log.mock.calls)).not.toContain("plants");
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("pending reminders are listed in the prompt in local time; cancel_reminder clears the row and the alarm", async () => {
+  const t = setup({ reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : t.llm.calls.length === 2 ? "react: none\none" : call(c, "cancel_reminder", { id: 1 })) });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me tomorrow at 9 to call the dentist");
+  await t.run();
+  t.clock.t += 60_000;
+  await t.say("what reminders do I have?");
+  await t.run();
+  expect(t.llm.calls[1].system[1].content).toContain("reminders (pending, local time):\n- 2026-11-05 09:00 call the dentist (id 1)");
+  t.clock.t += 60_000;
+  await t.say("cancel the dentist one");
+  await t.run();
+  expect(texts(t).at(-1)?.body).toBe('{"cancelled":true}');
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "cancelled" }]);
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
 });

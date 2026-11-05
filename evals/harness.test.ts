@@ -28,12 +28,13 @@ steps:
   - expect_facts: { count: 1, gold: [Likes pizza] }
   - expect_facts_not_contains: [Almaty]
   - expect_insights: { min: 1, evidence_count: 2 }
+  - { at: +2h, expect_sent: [mum] }
 `);
   writeFileSync(join(dir, "two.yaml"), "name: other\ncategory: short-term\nsteps: []\n");
   const [s] = loadScenarios(dir, "every");
   expect(loadScenarios(dir)).toHaveLength(2);
   expect(s.name).toBe("every-kind");
-  expect(s.steps).toHaveLength(9);
+  expect(s.steps).toHaveLength(10);
   expect(s.steps[0]).toEqual({ seed_facts: 30 });
   expect(s.steps[2]).toEqual({ at: "+1s", contact: "b", image: "photo.jpg", caption: "look" });
   expect(s.steps[5]).toMatchObject({ ask: "how about this one?", quote: 2, expect_contains: ["pizza"] });
@@ -51,6 +52,7 @@ test.each([
   ["a non-ISO at", "{ at: 10, say: x }", /step 2: bad at "10"/],
   ["a zero max_turns", "{ at: +1s, ask: x, gold: y, max_turns: 0 }", /step 2: max_turns must be a positive integer/],
   ["a scalar expect_recalled", "{ at: +1s, ask: x, gold: y, expect_recalled: Almaty }", /step 2: expect_recalled must be a non-empty list of strings/],
+  ["an empty expect_sent", "{ at: +2h, expect_sent: [] }", /step 2: expect_sent must be a non-empty list of strings/],
 ])("loadScenarios rejects %s", (_name, step, error) => {
   const dir = mkdtempSync(join(tmpdir(), "scenarios-"));
   writeFileSync(join(dir, "bad.yaml"), `name: bad\ncategory: short-term\nsteps:\n  - { at: +0s, say: first }\n  - ${step}\n`);
@@ -234,6 +236,23 @@ test("costUsd sums the calls ledger", async () => {
   const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25 })) }; } };
   const r = await run([{ at: "+0s", say: "hi" }, { at: "+1min", ask: "there?", gold: "ok", expect_contains: ["ok"] }], llm);
   expect(r.costUsd).toBe(0.5);
+});
+
+test("expect_sent checks the bot's messages since the previous step: a reminder fired by the clock jump passes, a later empty window fails", async () => {
+  const llm = stubLlm({ reply: async (c) => `react: none\n${JSON.stringify(await c.tools!.set_reminder.execute!({ text: "call mum", at: "2026-11-04 12:00" }, { toolCallId: "t", messages: [] } as never))}` });
+  const r = await run([
+    { at: "+0s", ask: "remind me in 2 hours to call mum", gold: "", expect_contains: ["12:00"] },
+    { at: "+2h", expect_sent: ["MUM"] },
+    { at: "+3h", expect_sent: ["mum"] },
+  ], llm);
+  expect(r.probes[0].label).toBe("correct");
+  expect(r.checks).toMatchObject([{ name: "expect_sent", passed: true, detail: "found: Reminder: call mum" }, { name: "expect_sent", passed: false, detail: 'no message since the previous step contains "mum": (nothing sent)' }]);
+  expect(r.transcript).toContain("[2026-11-04 17:00:00] bot → a: Reminder: call mum");
+  expect(llm.calls).toHaveLength(1);
+});
+
+test("the repo's scenarios all validate", () => {
+  expect(loadScenarios("evals/scenarios").map((s) => s.name)).toContain("reminder-exact-time");
 });
 
 test("evalConfig() builds the tag from the EVAL_* env", () => {

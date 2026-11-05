@@ -84,3 +84,12 @@ test("buildPrompt renders every memory status and adds the control sentences onl
   expect(on).toContain("Something they asked you to forget may still appear in the conversation above; never use or mention it again.");
   expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget|know about them/);
 });
+
+test("buildPrompt lists pending reminders in local time with their ids; the system prompt names the tools", () => {
+  const base = { profile: "", memories: [], history: [], pending: [], nowLocal: "2026-11-04 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [] };
+  const dyn = buildPrompt({ ...base, reminders: [{ id: 3, text: "call the dentist", due_ts: Date.UTC(2026, 10, 5, 4, 0) }] }).system[1].content;
+  expect(dyn).toContain("reminders (pending, local time):\n- 2026-11-05 09:00 call the dentist (id 3)");
+  expect(buildPrompt({ ...base, reminders: [] }).system[1].content).not.toContain("reminders");
+  expect(SYSTEM_PROMPT).toContain("call set_reminder");
+  expect(SYSTEM_PROMPT).toContain("cancel_reminder");
+});

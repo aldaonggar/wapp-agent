@@ -212,7 +212,8 @@ export type Step =
   | { at: string; contact?: string; ask: string; gold: string; quote?: number; expect_contains?: string[]; expect_not_contains?: string[]; expect_recalled?: string[]; max_turns?: number }
   | { expect_facts: { count: number; gold: string[] } }
   | { expect_facts_not_contains: string[] }
-  | { expect_insights: { min: number; evidence_count?: number } };
+  | { expect_insights: { min: number; evidence_count?: number } }
+  | { at?: string; expect_sent: string[] }; // the bot's messages since the previous step (after the clock jump to `at`) contain each string
 export interface Scenario { name: string; category: "short-term" | "long-term" | "derived" | "judgement" | "forget" | "isolation"; steps: Step[] }
 export interface ProbeResult { ask: string; gold: string; answer: string; label: "correct" | "partial" | "wrong" | "hallucinated"; reason: string; ttftMs?: number; ttfbMs?: number; totalMs?: number }
 export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; judgeCostUsd: number; passed: boolean; at?: string }
@@ -222,7 +223,7 @@ const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget",
 // Keys each step kind may carry besides its own; `at` and `contact` are accepted on every step.
 const KEYS: Record<string, string[]> = {
   say: ["quote"], image: ["caption", "quote"], url: ["quote"], ask: ["gold", "quote", "expect_contains", "expect_not_contains", "expect_recalled", "max_turns"],
-  fill: [], seed_facts: [], expect_facts: [], expect_facts_not_contains: [], expect_insights: [],
+  fill: [], seed_facts: [], expect_facts: [], expect_facts_not_contains: [], expect_insights: [], expect_sent: [],
 };
 const MESSAGE_KINDS = ["say", "ask", "image", "url"];
 const isInt = (x: unknown, min: number): x is number => Number.isInteger(x) && (x as number) >= min;
@@ -236,7 +237,7 @@ function stepProblem(s: unknown, n: number): string {
   if (MESSAGE_KINDS.includes(kind) && r.at === undefined) return `${kind} needs at`;
   if (r.at !== undefined) try { parseAt(String(r.at), 0); } catch (e) { return (e as Error).message; }
   if (kind === "ask" && typeof r.gold !== "string") return "ask needs gold";
-  for (const k of ["expect_contains", "expect_not_contains", "expect_recalled"])
+  for (const k of ["expect_contains", "expect_not_contains", "expect_recalled", "expect_sent"])
     if (k in r && !(Array.isArray(r[k]) && r[k].length > 0 && r[k].every((x) => typeof x === "string"))) return `${k} must be a non-empty list of strings`;
   if ("quote" in r && !(isInt(r.quote, 1) && r.quote < n)) return `quote must be an earlier step number (1..${n - 1})`;
   if ("max_turns" in r && !isInt(r.max_turns, 1)) return "max_turns must be a positive integer";
@@ -291,7 +292,7 @@ const SEED_FACTS: [string, string][] = [
   ["Has two houseplants named Fern and Frank", "other"], ["Uncle Sam runs a bakery", "person"], ["Takes the 8:10 train", "routine"], ["Wants to learn to surf", "other"],
 ];
 
-interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number }
+interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number; checked: number }
 type MessageStep = { at: string; contact?: string; say?: string; ask?: string; image?: string; caption?: string; url?: string; quote?: number };
 
 /**
@@ -312,7 +313,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock);
       const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id });
-      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0 }));
+      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0, checked: 0 }));
     }
     return c;
   };
@@ -347,6 +348,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
   const probes: ProbeResult[] = [], checks: ScenarioResult["checks"] = [];
   let lastAt = -Infinity, last = "a", judgeCostUsd = 0;
   for (const [i, step] of sc.steps.entries()) {
+    for (const c of contacts.values()) c.checked = c.wa.sent.length; // expect_sent looks from here
     const n = i + 1, m = step as MessageStep;
     if (m.at !== undefined) {
       const T = parseAt(m.at, T0);
@@ -420,6 +422,10 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       const rows = db.all<{ text: string; evidence_fact_ids: string | null }>("SELECT text, evidence_fact_ids FROM insights WHERE status='active'");
       const ok = rows.filter((r) => evidence_count === undefined || (JSON.parse(r.evidence_fact_ids ?? "[]") as unknown[]).length === evidence_count);
       checks.push({ name: "expect_insights", passed: ok.length >= min, detail: `${ok.length} active insights${evidence_count === undefined ? "" : ` citing ${evidence_count} facts`} (want ≥ ${min}): ${rows.map((r) => r.text).join(" | ")}` });
+    } else if ("expect_sent" in step) {
+      const sent = c.wa.sent.slice(c.checked).filter((s) => s.kind === "text").map((s) => s.body ?? "");
+      const missing = step.expect_sent.filter((x) => !sent.some((t) => t.toLowerCase().includes(x.toLowerCase())));
+      checks.push({ name: "expect_sent", passed: missing.length === 0, detail: `${missing.length ? `no message since the previous step contains ${missing.map((x) => `"${x}"`).join(", ")}` : "found"}: ${sent.join(" | ") || "(nothing sent)"}` });
     }
   }
   for (const c of contacts.values()) await drain(c.core, c.view, clock, clock.t + MAX_WAIT_MS + 1); // a trailing say still gets its turn

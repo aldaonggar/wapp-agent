@@ -9,6 +9,7 @@ import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
+import { addReminder, cancelReminder, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
 import { tzFromPhone } from "./timezone";
 import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
@@ -16,11 +17,12 @@ import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
 type Media = { bytes: Uint8Array; mime: string };
 type Recall = { hits: MemoryHit[]; ms: number };
 interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null }
-interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
+interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
 
 const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
 const VOICE_FAILED = "[voice note could not be transcribed]";
 const INSIGHTS_AFTER_MS = 30 * 60_000;
+const DAY = 86_400_000; // WhatsApp's free-form window after their last message
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
@@ -51,6 +53,26 @@ export class ContactCore {
     execute: async ({ url }) => {
       const p = await this.page(url);
       return p ? { title: p.title, status: p.status, finalUrl: p.finalUrl, markdown: p.markdown.slice(0, 6000) } : { error: "could not open the page" };
+    },
+  });
+
+  private setReminderTool = tool({
+    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns.",
+    inputSchema: z.object({ text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"), at: z.string().describe("their local time as YYYY-MM-DD HH:mm") }),
+    execute: async ({ text, at }) => {
+      const r = addReminder(this.deps.db, this.deps.clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null);
+      await this.scheduleNext();
+      return r;
+    },
+  });
+
+  private cancelReminderTool = tool({
+    description: "Cancel a pending reminder by the id shown in the reminders list",
+    inputSchema: z.object({ id: z.number().int() }),
+    execute: async ({ id }) => {
+      const r = cancelReminder(this.deps.db, id);
+      await this.scheduleNext();
+      return r;
     },
   });
 
@@ -94,8 +116,11 @@ export class ContactCore {
       // Every due timer is consumed before the first await: alarms are at-least-once and retry on throw.
       const insightsDue = s.insights_due !== null && now >= s.insights_due;
       const followupDue = s.followup_due !== null && now >= s.followup_due;
+      const reminderDue = s.reminder_due !== null && now >= s.reminder_due;
       if (insightsDue) db.run("UPDATE state SET insights_due=NULL");
       if (followupDue) db.run("UPDATE state SET followup_due=NULL");
+      if (reminderDue) db.run("UPDATE state SET reminder_due=NULL");
+      if (reminderDue) await this.reminderTimer(now); // first: no model call, and it is due at an exact time
       if (s.turn_due !== null && now >= s.turn_due) {
         try { await this.turnTimer(s, now); } catch (e) { this.error("turn_failed", e); }
       }
@@ -178,14 +203,14 @@ export class ContactCore {
 
         const prompt = buildPrompt({
           profile: features.memory ? memory.profileText(db) : "", memories: recalled.hits, history, pending: current, snapshots, memory: features.memory,
-          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
+          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db),
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
         const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
-        const tools = { ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
+        const tools = { set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
         this.abort = new AbortController();
         const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: Object.keys(tools).length ? tools : undefined,
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
@@ -323,6 +348,27 @@ export class ContactCore {
     }
   }
 
+  // Timer 4 (reminder_due is already NULL). Each due reminder is marked before its send: never twice, never retried.
+  private async reminderTimer(now: number): Promise<void> {
+    const { db, clock } = this.deps;
+    try {
+      const c = db.all<{ wa_id: string; last_inbound_ts: number | null }>("SELECT wa_id, last_inbound_ts FROM contact")[0];
+      for (const r of pendingReminders(db).filter((r) => r.due_ts <= now)) {
+        const inWindow = now - (c?.last_inbound_ts ?? 0) <= DAY;
+        db.run("UPDATE reminders SET status=? WHERE id=?", inWindow ? "sent" : "skipped", r.id);
+        if (!inWindow) { this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id }); continue; }
+        const text = `Reminder: ${r.text}`;
+        const wamid = await this.sendBubble(c.wa_id, text);
+        db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, text, clock.now(), wamid === null ? "failed" : "sent");
+      }
+    } catch (e) {
+      this.error("reminder_failed", e);
+      db.run("UPDATE reminders SET status='skipped' WHERE status='pending' AND due_ts <= ?", now); // never re-armed into an alarm storm
+    } finally {
+      scheduleReminder(db);
+    }
+  }
+
   private async sendFollowup(factText: string, tz: string, now: number): Promise<void> {
     const { db, clock, llm, models, features } = this.deps;
     const contact = db.all<{ wa_id: string; name: string | null; timezone_confirmed: number }>("SELECT * FROM contact")[0];
@@ -362,6 +408,8 @@ export class ContactCore {
   }
 
   private state(): State { return this.deps.db.all<State>("SELECT * FROM state")[0]; }
+
+  private tz(): string { return this.deps.db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC"; }
 
   private pending(): Msg[] {
     return this.deps.db.all<Msg>("SELECT * FROM messages WHERE direction='in' AND status='pending' ORDER BY ts, rowid");
@@ -416,7 +464,7 @@ export class ContactCore {
 
   private async scheduleNext(): Promise<void> {
     const s = this.state();
-    const due = [s.turn_due, s.insights_due, s.followup_due].filter((x): x is number => x !== null);
+    const due = [s.turn_due, s.insights_due, s.followup_due, s.reminder_due].filter((x): x is number => x !== null);
     await this.deps.clock.setAlarm(due.length ? Math.min(...due) : null);
   }
 
