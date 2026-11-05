@@ -448,6 +448,36 @@ test("a mid-stream error on a voice note still sends the complete bubble as text
   expect(t.view.alarmAt).toBeNull();
 });
 
+// Voice asked for in text: the model writes a "voice: yes" header and the reply takes the voice-note path.
+test("a text message whose reply carries voice: yes gets one voice note and no text bubbles", async () => {
+  const t = setup({ reply: () => "react: none\nvoice: yes\nsure, here it is\n---\nhave a good one" });
+  const spoken: string[] = [];
+  t.deps.tts = async (text) => { spoken.push(text); return { bytes: new Uint8Array([7]), mime: "audio/ogg" }; };
+  await t.say("say it out loud please");
+  await t.run();
+  expect(spoken).toEqual(["sure, here it is\n\nhave a good one"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
+  expect(t.db.all("SELECT kind, voice, text FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", voice: 1, text: "sure, here it is\n\nhave a good one" }]);
+  expect(t.turns()[0]).toMatchObject({ bubbles: 2, error: null });
+});
+
+test("voice: yes after the first bubble is ignored: the reply stays text", async () => {
+  const t = setup({ reply: () => "react: none\nsure\n---\nvoice: yes\nhere it is" });
+  await t.say("say it out loud please");
+  await t.run();
+  expect(t.wa.sent.map((s) => [s.kind, s.body])).toEqual([["typing", undefined], ["text", "sure"], ["typing", undefined], ["text", "here it is"]]);
+});
+
+test("voice: yes on a client that cannot send audio, or with no text-to-speech, stays text", async () => {
+  for (const arrange of [(t: ReturnType<typeof setup>) => { Object.assign(t.wa, { sendAudio: undefined }); }, (t: ReturnType<typeof setup>) => { t.deps.tts = undefined; }]) {
+    const t = setup({ reply: () => "react: none\nvoice: yes\nsure, here it is" });
+    arrange(t);
+    await t.say("say it out loud please");
+    await t.run();
+    expect(t.wa.sent.map((s) => [s.kind, s.body])).toEqual([["typing", undefined], ["text", "sure, here it is"]]);
+  }
+});
+
 test("when the extractor learns the real timezone, a clock-time reminder keeps the wall time the person was told and a duration keeps its instant", async () => {
   const t = setup({
     features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "America/Los_Angeles" } : { insights: [] }),

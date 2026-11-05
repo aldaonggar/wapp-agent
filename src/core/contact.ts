@@ -290,6 +290,10 @@ export class ContactCore {
               }
               continue;
             }
+            if (ev.type === "voice") { // asked for in text: the same held voice reply as for a voice note in, only before the first bubble
+              if (bubbles === 0 && this.deps.tts && wa.sendAudio) voiceReply = true;
+              continue;
+            }
             const quote = ev.quote ? resolve(ev.quote) : undefined;
             if (voiceReply && !SPEAKABLE.test(ev.text)) { // from here on the reply streams as text, starting with what was held
               voiceReply = false;
@@ -479,7 +483,7 @@ export class ContactCore {
     });
     let bubbles = 0;
     for await (const ev of parseReply(text, 1)) {
-      if (ev.type === "react") continue;
+      if (ev.type !== "bubble") continue;
       bubbles++;
       const wamid = await this.sendBubble(contact.wa_id, ev.text);
       db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, ev.text, clock.now(), wamid === null ? "failed" : "sent");

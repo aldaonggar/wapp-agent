@@ -31,6 +31,12 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["em dashes become commas, hyphens and number ranges stay", "react: none\nhey! glad you did. i am here — how is it going?\n---\nwait—no, 2024–2026 was a well-known era", [b("hey! glad you did. i am here, how is it going?"), b("wait, no, 2024–2026 was a well-known era")]],
   ["an em dash before punctuation or at the start leaves no stray comma", "— fine.\n---\nok —.", [b("fine."), b("ok.")]],
   ["a bracketed word that is not a stamp stays", "[important] read this", [b("[important] read this")]],
+  ["voice header after the react line", "react: #1 👍\nvoice: yes\nhere you go", [{ type: "react", target: "#1", emoji: "👍" }, { type: "voice" }, b("here you go")]],
+  ["voice header first, react after it", "voice: yes\nreact: none\nhere you go", [{ type: "voice" }, b("here you go")]],
+  ["voice header is case-insensitive and takes y, true and trailing punctuation", "react: none\nVOICE: Y\nvoice: True.\nok", [{ type: "voice" }, { type: "voice" }, b("ok")]],
+  ["voice header with another value is no request and no text", "react: none\nvoice: no\nvoice: maybe\nvoice:\nok", [b("ok")]],
+  ["voice header after bubble text is ignored and never shown", "react: none\nhello\nvoice: yes\n---\nvoice: yes\nbye", [b("hello"), b("bye")]],
+  ["a line that only starts with voice: is text", "react: none\nvoice: deep and calm, loved it", [b("voice: deep and calm, loved it")]],
   ["skin tones and ZWJ sequences are one emoji", "react: #1 👍🏽\nreact: #1 👨‍👩‍👧\nhi", [{ type: "react", target: "#1", emoji: "👍🏽" }, { type: "react", target: "#1", emoji: "👨‍👩‍👧" }, b("hi")]],
 ];
 

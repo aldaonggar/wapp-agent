@@ -110,3 +110,11 @@ test("buildPrompt lists pending reminders in local time with their ids; the syst
   expect(SYSTEM_PROMPT).toContain("never write a timestamp, a bracketed time or a date prefix");
   expect(SYSTEM_PROMPT).toContain("Never an em dash or en dash");
 });
+
+test("the system prompt offers search and a voice note on request, and says how to ask for each", () => {
+  expect(SYSTEM_PROMPT).toContain("- Look things up on the web when you need current information.");
+  expect(SYSTEM_PROMPT).toContain("browsing beyond a quick web search and links they send");
+  expect(SYSTEM_PROMPT).toContain("search_web is only for current or outside information");
+  expect(SYSTEM_PROMPT).toContain("- Voice notes: when they send you one, or whenever they ask for one, your reply goes out as a voice note (you can say so when asked). A plain text message still gets a text reply.");
+  expect(SYSTEM_PROMPT).toContain('- If they ask you to say it out loud, speak, or send a voice note, put "voice: yes" as a header line right after the react line and write the reply the way you would say it; it goes out as one voice note.');
+});

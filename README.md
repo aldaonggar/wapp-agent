@@ -17,7 +17,7 @@ Status (2026-11-05): the brief asked for WhatsApp, and the WhatsApp Cloud API tr
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
 - Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00; "what reminders do I have" lists them, and any can be cancelled.
-- Answers a voice note with a voice note (one, carrying the whole reply); a text message gets text.
+- Answers a voice note with a voice note (one, carrying the whole reply), or when you ask for one ("say it out loud"); any other text message gets text.
 
 To talk to it: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). Reminders and check-ins are delivered whenever they are due.
 
@@ -32,7 +32,7 @@ Things to try:
 7. Come back the next day and refer to something you said earlier.
 8. Mention a plan with a date (for example a trip next week) and wait for the check-in.
 9. Say "remind me in 20 minutes to ..." and wait; ask "what reminders do I have" or cancel one.
-10. Send a voice note and get a voice note back.
+10. Send a voice note and get a voice note back, or type "say that out loud" and get one.
 11. Ask something that needs a search ("is the Louvre open today?"): it says it is checking, then answers from what it found.
 
 ## Architecture
@@ -205,7 +205,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 246 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 256 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -237,7 +237,7 @@ npm run eval
 ## Known limits
 
 - Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day, shared by voice-note transcription and voice replies.
-- Voice replies only answer voice notes, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters, so roughly 8 to 25 full-length voice replies a day fit the Free plan; after that, and for a reply in a non-Latin script or any synthesis failure, the text bubbles go out instead.
+- Voice replies go out only for a voice note, or when you ask for one in text, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters, so roughly 8 to 25 full-length voice replies a day fit the Free plan; after that, and for a reply in a non-Latin script or any synthesis failure, the text bubbles go out instead.
 - Timezone starts as UTC (a Telegram id carries no country code) until the person says where they are; reminder times are resolved in that zone, and a reminder set before the zone was known is moved with it.
 - Photo turns are answered by `gpt-6.1-terra`, not the reply model: under the production system prompt `deepseek-v4.1-flash` says a plain red test image is blank, and which prompt line tips it is not known.
 - OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model", and for insights that shows up only as `insights_failed` in the logs ([SETUP.md section 5](SETUP.md)).
