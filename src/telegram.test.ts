@@ -200,6 +200,25 @@ test("end to end: a voice note from a Telegram contact is answered with one send
   expect(deps.db.all("SELECT kind, text, status FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", text: "all good here", status: "sent" }]);
 });
 
+test("end to end: the /start update gets the first-contact introduction line; the next message does not", async () => {
+  const clock = new FakeClock(), view = clock.forContact("start"), wa = new FakeWa(clock), tg = new FakeWa(clock);
+  const llm = stubLlm({ reply: () => "react: none\nhi, I'm the assistant that remembers" });
+  const deps = makeEvalDeps({ clock: view, wa, llm });
+  deps.wa = routeTransports(wa, tg);
+  const core = new ContactCore(deps);
+  await core.ingest(parseUpdate(update({ text: "/start", date: clock.t / 1000 }))!.m);
+  await drain(core, view, clock, clock.t + 60_000);
+  expect(llm.calls).toHaveLength(1);
+  expect(llm.calls[0].system[1].content).toContain("first contact: nothing has been said before");
+  expect(JSON.stringify(llm.calls[0].messages)).toContain("Hi, I just pressed Start.");
+  expect(tg.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["hi, I'm the assistant that remembers"]);
+  clock.t += 60_000;
+  await core.ingest(parseUpdate(update({ text: "what can you do?", message_id: 43, date: clock.t / 1000 }))!.m);
+  await drain(core, view, clock, clock.t + 60_000);
+  expect(llm.calls).toHaveLength(2);
+  expect(llm.calls[1].system[1].content).not.toContain("first contact:");
+});
+
 // ---- POST /telegram ----
 
 const ctx = {} as ExecutionContext;

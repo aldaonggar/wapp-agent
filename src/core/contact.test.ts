@@ -79,7 +79,7 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
   expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
-  expect(t.llm.calls[0].system[1].content).not.toContain("forget");
+  expect(t.llm.calls[0].system[1].content).not.toContain("forget tool"); // memory off: no control sentences (the first-contact line may say "forget")
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["hi", "sent"], ["second", "sent"]]);
   const turns = t.turns();

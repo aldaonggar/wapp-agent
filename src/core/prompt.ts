@@ -67,6 +67,9 @@ const CONTROLS = `If they ask what you know about them, answer with a short plai
 If they ask you to forget something, call the forget tool before writing anything, then confirm in one line without repeating what was forgotten.
 Something they asked you to forget may still appear in the conversation above; never use or mention it again.`;
 
+// Only while the history window is empty: the first reply says what this is, in the model's own words.
+const INTRO = `first contact: nothing has been said before. Before anything else, introduce yourself in one short bubble, in your own words: a personal assistant that remembers. What you can do, in one breath: remember what they tell you across days, set reminders at a time they name, read photos, listen to voice notes, read links they send, and forget anything on request. Then answer them or ask what they want. Two short bubbles at most.`;
+
 const memoryLine = (m: MemoryHit) =>
   `- ${m.text} (${m.kind === "insight" ? `derived, confidence ${m.confidence ?? 0}` : m.status === "superseded" ? `superseded on ${m.date}` : `said ${m.date}`})`;
 
@@ -82,6 +85,7 @@ export function buildPrompt(input: {
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
     input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
     input.memory && CONTROLS,
+    input.history.length === 0 && INTRO,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,
   ].filter(Boolean).join("\n\n");
 
