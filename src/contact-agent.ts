@@ -1,5 +1,5 @@
-import { makeSnapshot } from "./browser";
 import { DurableObject } from "cloudflare:workers";
+import { makeSnapshot } from "./browser";
 import { ContactCore } from "./core/contact";
 import { fromDO, migrate } from "./core/db";
 import type { Db, Deps, Inbound } from "./core/types";
@@ -7,7 +7,6 @@ import { makeLlm } from "./llm";
 import { pickModels } from "./models";
 import { makeWaClient } from "./whatsapp";
 import { embedViaBinding, rerankViaBinding, transcribeViaBinding } from "./workers-ai";
-
 
 export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));

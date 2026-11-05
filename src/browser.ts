@@ -8,7 +8,7 @@ const SNAPSHOT_PATH = "browser-rendering/snapshot";
 const MAX_MARKDOWN = 12_000;
 
 // null on any failure (non-2xx, success:false, missing fields, timeout): the model is simply told the page could not be opened.
-export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: typeof fetch; log?: (e: Record<string, unknown>) => void }): Deps["snapshot"] {
+export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: typeof fetch; timeoutMs?: number; log?: (e: Record<string, unknown>) => void }): Deps["snapshot"] {
   const f = cfg.fetch ?? fetch, log = cfg.log ?? console.log;
   return async (url) => {
     try {
@@ -20,7 +20,7 @@ export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: ty
           viewport: { width: 390, height: 844, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
           screenshotOptions: { type: "jpeg", quality: 80 }, gotoOptions: { waitUntil: "networkidle2", timeout: 20000 }, bestAttempt: true,
         }),
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(cfg.timeoutMs ?? 25_000),
       });
       if (!res.ok) {
         log({ event: "snapshot_failed", status: res.status, retryAfter: res.headers.get("Retry-After") });
@@ -34,7 +34,7 @@ export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: ty
       }
       return {
         url, finalUrl: body.meta?.finalUrl ?? url, title: body.meta?.title ?? "", status: body.meta?.status ?? 0,
-        markdown: markdown.replace(/^---\n[\s\S]*?\n---\n/, "").slice(0, MAX_MARKDOWN),
+        markdown: markdown.replace(/^---\r?\n[\s\S]*?\r?\n?---\r?\n/, "").slice(0, MAX_MARKDOWN),
         jpeg: Uint8Array.from(atob(screenshot), (c) => c.charCodeAt(0)),
       };
     } catch (e) {

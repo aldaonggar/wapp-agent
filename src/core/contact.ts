@@ -259,16 +259,18 @@ export class ContactCore {
     const next = this.pending().at(-1);
     const now = clock.now();
     db.run("UPDATE state SET turn_attempts=0, turn_due=?", next ? turnDue(now, this.state().burst_started_at ?? now, next.text ?? "") : null);
-    const noted = await Promise.all(pending.map(async (r) => {
-    const u = extractUrls(r.text ?? "")[0], p = u ? await this.page(u) : null;
-    return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
-    }));
+    // Cache entries only (never starts a snapshot); read before the cleanup below drops them.
+    const cachedPages = pending.map((r) => this.pages.get(extractUrls(r.text ?? "")[0] ?? ""));
     for (const r of pending) {
       this.media.delete(r.id);
       for (const u of extractUrls(r.text ?? "")) this.pages.delete(u);
     }
     this.deps.log({ event: "turn", contact: hash(to), ...row, usage });
     if (error === null && features.memory) {
+      const noted = await Promise.all(pending.map(async (r, i) => {
+        const p = await cachedPages[i];
+        return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
+      }));
       const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(outIds));
       try {
         await memory.remember(this.deps, {

@@ -446,3 +446,25 @@ test("an outbound bubble with a URL is sent with previewUrl", async () => {
   await t.run();
   expect(t.wa.sent.find((s) => s.kind === "text")?.previewUrl).toBe(true);
 });
+
+test("remember gets a (shared a link) note from the resolved snapshot; the stored row is unchanged", async () => {
+  const t = setup({ features: { memory: true }, snapshot: async () => PAGE, object: () => ({ ops: [] }) });
+  await t.say("look https://a.com/x");
+  await t.run();
+  const prompt = JSON.stringify(t.llm.objectCalls[0].messages);
+  expect(prompt).toContain("look https://a.com/x (shared a link: A page https://a.com/x)");
+  expect(t.rows("direction='in'")[0].text).toBe("look https://a.com/x");
+});
+
+test("view_page is attached when the URL is in one of the last 5 handled rows, not the 6th-from-last", async () => {
+  for (const [after, attached] of [[1, true], [2, false]] as const) {
+    const t = setup();
+    await t.say("https://a.com/x");
+    await t.run();
+    for (let i = 0; i < after; i++) { t.clock.t += 60_000; await t.say(`plain ${i}`); await t.run(); }
+    t.clock.t += 60_000;
+    await t.say("and now?");
+    await t.run();
+    expect(!!t.llm.calls.at(-1)!.tools?.view_page).toBe(attached);
+  }
+});
