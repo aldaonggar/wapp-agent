@@ -93,6 +93,8 @@ Expected: `{"success":true}`.
 
 5. Text the test number from your phone. The bot should answer within a few seconds.
 
+Publishing: Meta's dashboard says an unpublished app only receives test webhooks sent from the dashboard itself, so real messages reach the Worker only once the app is published. Before switching: App settings → **Basic** → **Privacy policy URL** and **Terms of service URL** both `https://github.com/aldaonggar/wapp-agent/blob/feat/wapp-agent/PRIVACY.md` (move to `main` once the branch is merged) → **Save changes**. Then the **App mode** toggle in the top bar → **Live**. No business verification is needed for the test number.
+
 ## 7. Adding a reviewer (2 minutes each, needs the reviewer on the phone)
 
 Meta's test number only talks to numbers on its recipient list, and the list is small (historically 5 including you). For each reviewer:
