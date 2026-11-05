@@ -35,6 +35,10 @@ const per1000 = (scs: ScenarioResult[], job: string) => {
   const cost = scs.reduce((c, s) => c + (s.costByJob?.[job] ?? 0), 0), n = turnsOf(scs);
   return n ? `$${((cost / n) * 1000).toFixed(2)}` : "–";
 };
+const cachedShare = (scs: ScenarioResult[], job: string) => { // of that job's input tokens; "–" for files from before tokens were recorded
+  const input = scs.reduce((a, s) => a + (s.tokensByJob?.[job]?.input ?? 0), 0), cached = scs.reduce((a, s) => a + (s.tokensByJob?.[job]?.cached ?? 0), 0);
+  return input ? `${Math.round((100 * cached) / input)}%` : "–";
+};
 const table = (head: string[], rows: string[][]) => [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
 const latencyCols = ["ttft p50 / p95 ms", "first bubble p50 / p95 ms", "total p50 / p95 ms"];
 const latency = (scs: ScenarioResult[]) => [lat(scs, "ttft_ms"), lat(scs, "ttfb_ms"), lat(scs, "total_ms")];
@@ -61,9 +65,9 @@ for (const job of ["reply", "extract", "derive"] as const) {
   const cats = JOB_CATEGORIES[job];
   const rows = JOBS[job].candidates.flatMap((id) => {
     const scs = inCats(runFor(job, id), cats);
-    return scs.length ? [[id + (id === JOBS[job].default ? " (default)" : ""), score(scs), ...latency(scs), per1000(scs, job)]] : [];
+    return scs.length ? [[id + (id === JOBS[job].default ? " (default)" : ""), score(scs), ...latency(scs), per1000(scs, job), cachedShare(scs, job)]] : [];
   });
-  out.push("", `### ${job} (${cats.join(", ")})`, "", rows.length ? table(["Model", "Passed", ...latencyCols, `${job} cost / 1,000 replies`], rows) : `${NOT_RUN}.`);
+  out.push("", `### ${job} (${cats.join(", ")})`, "", rows.length ? table(["Model", "Passed", ...latencyCols, `${job} cost / 1,000 replies`, "cached input"], rows) : `${NOT_RUN}.`);
 }
 
 const groups = new Map<string, ScenarioResult[]>();

@@ -6,7 +6,7 @@ const m = (id: string, i: number, out: number, cachedIn: number, vision: boolean
 
 // USD per 1M tokens, OpenRouter list prices 2026-11-04 (design §4.1).
 export const MODELS: Record<string, ModelSpec> = Object.fromEntries([
-  m("deepseek/deepseek-v4.1-flash", 0.045, 0.5, 0.018, true, { effort: "none" }),
+  m("deepseek/deepseek-v4.1-flash", 0.045, 0.5, 0.018, false, { effort: "none" }), // accepts images, but under the production prompt it calls them blank (EVALS.md 2026-11-05): photos go to the vision default
   m("openai/gpt-6.1-terra", 1, 5, 0.05, true, { effort: "none" }),
   m("openai/gpt-6.1-sol", 2, 10, 0.1, true, { effort: "low" }, true),
   m("anthropic/claude-sonnet-5.5", 2, 10, 0.1, true, { effort: "low" }, true),

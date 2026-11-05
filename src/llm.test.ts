@@ -159,4 +159,14 @@ describe("llm.object", () => {
     await expect(makeLlm("k", { fetch: f }).object(call)).rejects.toBeTruthy();
     expect(bodies).toHaveLength(1);
   });
+
+  it("puts cache_control on the system message for anthropic ids only", async () => {
+    const { f, bodies } = fake([json('{"a":1}'), json('{"a":1}')]);
+    const llm = makeLlm("k", { fetch: f });
+    await llm.object({ ...call, modelId: "anthropic/claude-haiku-5.5" });
+    expect(bodies[0].messages[0]).toMatchObject({ role: "system" });
+    expect(JSON.stringify(bodies[0].messages[0])).toContain("cache_control");
+    await llm.object(call);
+    expect(JSON.stringify(bodies[1].messages[0])).not.toContain("cache_control");
+  });
 });

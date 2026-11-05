@@ -98,12 +98,16 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
 
     async object<T>(call: ObjectCall<T>) {
       const t0 = performance.now();
+      // Same cache marker as stream(): Anthropic caches only a prefix that carries it, and the extraction prompt is 2k tokens on every turn.
+      const instructions: string | SystemModelMessage[] = call.modelId.startsWith("anthropic/")
+        ? [{ role: "system", content: call.system, providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } }]
+        : call.system;
       let lastErr: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const r = await generateText({
             model: model(call.modelId, call.reasoning),
-            instructions: call.system,
+            instructions,
             messages: call.messages,
             output: Output.object({ schema: call.schema }),
             maxRetries: 1,

@@ -217,7 +217,7 @@ export type Step =
   | { expect_insights: { min: number; evidence_count?: number } };
 export interface Scenario { name: string; category: "short-term" | "long-term" | "derived" | "judgement" | "forget" | "isolation"; steps: Step[] }
 export interface ProbeResult { ask: string; gold: string; answer: string; label: "correct" | "partial" | "wrong" | "hallucinated"; reason: string; ttftMs?: number; ttfbMs?: number; totalMs?: number }
-export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; judgeCostUsd: number; passed: boolean; at?: string }
+export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; tokensByJob?: Record<string, { input: number; cached: number }>; judgeCostUsd: number; passed: boolean; at?: string }
 type Verdict = Pick<ProbeResult, "label" | "reason"> & { usage?: Usage };
 
 const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget", "isolation"];
@@ -427,11 +427,16 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
   flush();
 
   const turns = [...contacts.values()].flatMap((c) => c.deps.db.all("SELECT * FROM turns ORDER BY id").map((r) => ({ contact: c.id, ...r })));
-  const costByJob: Record<string, number> = {};
+  const costByJob: Record<string, number> = {}, tokensByJob: NonNullable<ScenarioResult["tokensByJob"]> = {};
   for (const c of contacts.values())
-    for (const r of c.deps.db.all<{ job: string; usage: string }>("SELECT job, usage FROM calls")) costByJob[r.job] = (costByJob[r.job] ?? 0) + (JSON.parse(r.usage) as Usage).costTable;
+    for (const r of c.deps.db.all<{ job: string; usage: string }>("SELECT job, usage FROM calls")) {
+      const u = JSON.parse(r.usage) as Usage, t = (tokensByJob[r.job] ??= { input: 0, cached: 0 });
+      costByJob[r.job] = (costByJob[r.job] ?? 0) + u.costTable;
+      t.input += u.input;
+      t.cached += u.cached;
+    }
   return {
-    name: sc.name, category: sc.category, probes, checks, transcript, turns, costByJob, judgeCostUsd,
+    name: sc.name, category: sc.category, probes, checks, transcript, turns, costByJob, tokensByJob, judgeCostUsd,
     costUsd: Object.values(costByJob).reduce((a, b) => a + b, 0),
     passed: probes.every((p) => p.label === "correct") && checks.every((c) => c.passed),
   };

@@ -251,9 +251,10 @@ test("judge calls are summed into judgeCostUsd, apart from costUsd", async () =>
 
 test("costUsd sums the calls ledger", async () => {
   const stub = stubLlm();
-  const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25 })) }; } };
+  const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25, input: 1000, cached: 400 })) }; } };
   const r = await run([{ at: "+0s", say: "hi" }, { at: "+1min", ask: "there?", gold: "ok", expect_contains: ["ok"] }], llm);
   expect(r.costUsd).toBe(0.5);
+  expect(r.tokensByJob).toEqual({ reply: { input: 2000, cached: 800 } });
 });
 
 test("evalConfig() builds the tag from the EVAL_* env", () => {
