@@ -1,0 +1,475 @@
+{
+  "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,derive=anthropic_claude-sonnet-5.5",
+  "config": {
+    "derive": "anthropic/claude-sonnet-5.5",
+    "memory": true,
+    "retrieval": "hybrid",
+    "filter": "derived",
+    "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,derive=anthropic_claude-sonnet-5.5"
+  },
+  "at": "2026-11-05T19:56:29.266Z",
+  "scenarios": [
+    {
+      "name": "derived-allergy-dinner",
+      "category": "derived",
+      "probes": [
+        {
+          "ask": "anything to watch out for Saturday?",
+          "gold": "Peanuts are common in Thai dishes: tell the restaurant about the peanut allergy",
+          "answer": "not sure what Saturday is — what's the plan?",
+          "label": "wrong",
+          "reason": "The reply asks what Saturday is, even though the conversation says it's a Thai dinner, and it never warns about peanuts in Thai food or tells the user to inform the restaurant.",
+          "ttftMs": 717,
+          "ttfbMs": 2622,
+          "totalMs": 2622
+        }
+      ],
+      "checks": [
+        {
+          "name": "expect_insights",
+          "passed": false,
+          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+        }
+      ],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: I'm allergic to peanuts, seriously allergic",
+        "[2026-11-04 15:00:03] bot → a: noted, i'll keep that in mind. how serious are we talking — carry an epipen level?",
+        "[2026-11-04 15:02:00] a: we're having dinner at a Thai place on Saturday",
+        "[2026-11-04 15:02:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:02:03] bot → a: good to know. Thai food is one of the trickier ones for peanuts — lots of curries and satay. i'd mention it when you book, and again when you order.",
+        "[2026-11-04 15:02:03] bot → a: (remember_failed: The operation was aborted due to timeout)",
+        "[2026-11-04 15:33:00] a: ok bedtime, night",
+        "[2026-11-04 15:33:03] bot → a: (reacted 🌙)",
+        "[2026-11-04 15:33:03] bot → a: night! sleep well",
+        "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
+        "[2026-11-06 15:00:00] a: anything to watch out for Saturday?",
+        "[2026-11-06 15:00:03] bot → a: not sure what Saturday is — what's the plan?"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 327,
+          "ttft_ms": 1985,
+          "ttfb_ms": 2791,
+          "total_ms": 2791,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1075,\"output\":28,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000034726999999999995,\"costReported\":0.00007962,\"ms\":2466.873458,\"ttftMs\":1985.4457499999999,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 542,
+          "ttft_ms": 963,
+          "ttfb_ms": 2651,
+          "total_ms": 2652,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1167,\"output\":47,\"cached\":512,\"reasoning\":0,\"costTable\":0.000062191,\"costReported\":0.00026826,\"ms\":2108.924083000001,\"ttftMs\":963.452792,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Is seriously allergic to peanuts\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793806383000,
+          "wait_ms": 3000,
+          "retrieval_ms": 401,
+          "ttft_ms": 832,
+          "ttfb_ms": 1649,
+          "total_ms": 1649,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1247,\"output\":12,\"cached\":0,\"reasoning\":0,\"costTable\":0.000062115,\"costReported\":0.0003885,\"ms\":1247.317624999996,\"ttftMs\":831.6047079999989,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Is seriously allergic to peanuts\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793977203000,
+          "wait_ms": 3000,
+          "retrieval_ms": 1340,
+          "ttft_ms": 717,
+          "ttfb_ms": 2622,
+          "total_ms": 2622,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1793,\"output\":16,\"cached\":1024,\"reasoning\":0,\"costTable\":0.00006103699999999999,\"costReported\":0.00028062,\"ms\":1280.1215419999935,\"ttftMs\":717.4072079999896,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Is seriously allergic to peanuts\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00022007,
+        "extract": 0.000210188,
+        "derive": 0.00158
+      },
+      "judgeCostUsd": 0.005532,
+      "costUsd": 0.002010258,
+      "passed": false,
+      "at": "2026-11-05T19:54:40.490Z"
+    },
+    {
+      "name": "derived-almaty-birthday",
+      "category": "derived",
+      "probes": [
+        {
+          "ask": "anything I should plan for that trip?",
+          "gold": "A gift or celebration for Aru's birthday on 12 December, two days after landing in Almaty",
+          "answer": "Almaty in December is cold, so pack properly — it's proper winter there, not sweater weather.",
+          "label": "wrong",
+          "reason": "The reply gives only generic weather advice and misses Aru's birthday on 12 December, two days after landing.",
+          "ttftMs": 811,
+          "ttfbMs": 2423,
+          "totalMs": 2424
+        }
+      ],
+      "checks": [
+        {
+          "name": "expect_insights",
+          "passed": false,
+          "detail": "0 active insights citing 2 facts (want ≥ 1): Her flight lands in Almaty on Dec 10, two days before her sister Aru's birthday on Dec 12, so she can celebrate it with Aru in person."
+        }
+      ],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: booked my flight to Almaty, I land on 2026-12-10",
+        "[2026-11-04 15:00:03] bot → a: (reacted 🎉)",
+        "[2026-11-04 15:00:03] bot → a: that's exciting! how long are you staying?",
+        "[2026-11-04 15:02:00] a: my sister Aru's birthday is on 2026-12-12, she lives there",
+        "[2026-11-04 15:02:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:02:03] bot → a: so the trip's for her birthday, that's lovely. is Aru the reason you picked Almaty, or have you been before?",
+        "[2026-11-04 15:33:00] a: ok bedtime, night",
+        "[2026-11-04 15:33:03] bot → a: (reacted 😴)",
+        "[2026-11-04 15:33:03] bot → a: night! sleep well",
+        "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
+        "[2026-11-06 15:00:00] a: anything I should plan for that trip?",
+        "[2026-11-06 15:00:03] bot → a: Almaty in December is cold, so pack properly — it's proper winter there, not sweater weather."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 245,
+          "ttft_ms": 1159,
+          "ttfb_ms": 1614,
+          "total_ms": 1614,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1085,\"output\":19,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000030677,\"costReported\":0.00007182,\"ms\":1367.9678749999875,\"ttftMs\":1159.3169589999889,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 399,
+          "ttft_ms": 720,
+          "ttfb_ms": 1790,
+          "total_ms": 1791,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1201,\"output\":38,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007304499999999999,\"costReported\":0.0004059,\"ms\":1389.9103749999922,\"ttftMs\":719.7114169999986,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Flying to Almaty, lands on 2026-12-10\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793806383000,
+          "wait_ms": 3000,
+          "retrieval_ms": 601,
+          "ttft_ms": 987,
+          "ttfb_ms": 1788,
+          "total_ms": 1788,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1385,\"output\":12,\"cached\":0,\"reasoning\":0,\"costTable\":0.000068325,\"costReported\":0.0004299,\"ms\":1186.776291000002,\"ttftMs\":987.1900409999944,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Her flight lands in Almaty on Dec 10, two days before her sister Aru's birthday on Dec 12, so she can celebrate it with Aru in person.\",\"Sister Aru lives in Almaty\",\"Sister Aru's birthday is on 2026-12-12\",\"Flying to Almaty, lands on 2026-12-10\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793977203000,
+          "wait_ms": 3000,
+          "retrieval_ms": 555,
+          "ttft_ms": 811,
+          "ttfb_ms": 2423,
+          "total_ms": 2424,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1927,\"output\":27,\"cached\":0,\"reasoning\":0,\"costTable\":0.000100215,\"costReported\":0.0006105,\"ms\":1863.8859590000066,\"ttftMs\":810.7865420000016,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Flying to Almaty, lands on 2026-12-10\",\"Her flight lands in Almaty on Dec 10, two days before her sister Aru's birthday on Dec 12, so she can celebrate it with Aru in person.\",\"Sister Aru's birthday is on 2026-12-12\",\"Sister Aru lives in Almaty\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000272262,
+        "extract": 0.0005142300000000001,
+        "derive": 0.002582
+      },
+      "judgeCostUsd": 0.005,
+      "costUsd": 0.0033684920000000003,
+      "passed": false,
+      "at": "2026-11-05T19:54:58.325Z"
+    },
+    {
+      "name": "derived-early-flight-routine",
+      "category": "derived",
+      "probes": [
+        {
+          "ask": "what's my Friday morning looking like?",
+          "gold": "The 6am flight means she will be at the airport or in the air at 7, so the usual 7am run will not happen",
+          "answer": "You've got that 06:00 flight on Friday — so the usual 7am run won't fit unless you squeeze it in earlier or skip it.",
+          "label": "correct",
+          "reason": "The reply notes the 6am Friday flight and says the usual 7am run won't fit, which matches the gold; the hedge about squeezing it in earlier is minor.",
+          "ttftMs": 1070,
+          "ttfbMs": 2204,
+          "totalMs": 2205
+        }
+      ],
+      "checks": [
+        {
+          "name": "expect_insights",
+          "passed": true,
+          "detail": "1 active insights citing 2 facts (want ≥ 1): The 06:00 flight on Nov 6 means the usual 7am morning run will be missed that day, so it would need to happen earlier or be skipped."
+        }
+      ],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: I run every morning at 7, never skip it",
+        "[2026-11-04 15:00:03] bot → a: that's serious discipline. 7am every day, rain or shine?",
+        "[2026-11-04 15:02:00] a: my flight is at 6am on Friday the 6th of November, so early",
+        "[2026-11-04 15:02:03] bot → a: [2026-11-04 10:02] ouch, that means you're up way before 7 that day. flying somewhere fun?",
+        "[2026-11-04 15:33:00] a: ok bedtime, night",
+        "[2026-11-04 15:33:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:33:03] bot → a: night! good luck with the early start friday",
+        "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
+        "[2026-11-05 15:00:00] a: what's my Friday morning looking like?",
+        "[2026-11-05 15:00:03] bot → a: You've got that 06:00 flight on Friday — so the usual 7am run won't fit unless you squeeze it in earlier or skip it."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 445,
+          "ttft_ms": 950,
+          "ttfb_ms": 1668,
+          "total_ms": 1668,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1078,\"output\":20,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000030862,\"costReported\":0.00007092,\"ms\":1221.5376249999972,\"ttftMs\":950.1085420000018,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 554,
+          "ttft_ms": 924,
+          "ttfb_ms": 1775,
+          "total_ms": 1775,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1174,\"output\":32,\"cached\":512,\"reasoning\":0,\"costTable\":0.000055006,\"costReported\":0.00025236,\"ms\":1219.4314169999998,\"ttftMs\":924.4604169999948,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Runs every morning at 7\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793806383000,
+          "wait_ms": 3000,
+          "retrieval_ms": 490,
+          "ttft_ms": 949,
+          "ttfb_ms": 2463,
+          "total_ms": 2463,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1311,\"output\":19,\"cached\":512,\"reasoning\":0,\"costTable\":0.000054671,\"costReported\":0.00027786,\"ms\":1973.6446250000008,\"ttftMs\":949.3170830000017,\"finishReason\":\"stop\"}",
+          "recalled": "[\"The 06:00 flight on Nov 6 means the usual 7am morning run will be missed that day, so it would need to happen earlier or be skipped.\",\"Flight at 06:00 on 2026-11-06\",\"Runs every morning at 7\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793890803000,
+          "wait_ms": 3000,
+          "retrieval_ms": 552,
+          "ttft_ms": 1070,
+          "ttfb_ms": 2204,
+          "total_ms": 2205,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1868,\"output\":37,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010256000000000001,\"costReported\":0.0006048,\"ms\":1647.8488750000106,\"ttftMs\":1069.6139590000093,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Runs every morning at 7\",\"The 06:00 flight on Nov 6 means the usual 7am morning run will be missed that day, so it would need to happen earlier or be skipped.\",\"Flight at 06:00 on 2026-11-06\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00024309899999999998,
+        "extract": 0.00046074,
+        "derive": 0.002432
+      },
+      "judgeCostUsd": 0.005208,
+      "costUsd": 0.003135839,
+      "passed": true,
+      "at": "2026-11-05T19:55:14.511Z"
+    },
+    {
+      "name": "derived-lisbon-vegetarian",
+      "category": "derived",
+      "probes": [
+        {
+          "ask": "any tips for eating out when I get to my new city?",
+          "gold": "Vegetarian-friendly restaurants in Lisbon, since she is vegetarian and moving there",
+          "answer": "Honestly Lisbon is a great city for that — lots of vegetarian-friendly spots, and the fish-heavy places usually have good veggie sides too.\n\nWatch out for things cooked in fish stock or with prosciutto hidden in salads, and learn a couple of phrases like \"sem carne\" and \"sem peixe\". Happy to dig into specific neighborhoods once you know where you're living.",
+          "label": "correct",
+          "reason": "The reply recalls both Lisbon and her vegetarianism and gives vegetarian-friendly eating-out tips for Lisbon, which matches the gold.",
+          "ttftMs": 945,
+          "ttfbMs": 2845,
+          "totalMs": 2845
+        }
+      ],
+      "checks": [
+        {
+          "name": "expect_insights",
+          "passed": false,
+          "detail": "0 active insights citing 2 facts (want ≥ 1): "
+        }
+      ],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: I'm vegetarian, been for years",
+        "[2026-11-04 15:00:03] bot → a: Got it, I'll keep that in mind. Anything in particular that made you mention it today?",
+        "[2026-11-04 15:02:00] a: I'm moving to Lisbon next month for a new job",
+        "[2026-11-04 15:02:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:02:03] bot → a: Lisbon! That's exciting. How are you feeling about it?",
+        "[2026-11-04 15:33:00] a: ok bedtime, night",
+        "[2026-11-04 15:33:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:33:03] bot → a: Night! Sleep well 🌙",
+        "[2026-11-04 15:33:03] (45 canned message pairs, one a minute, until 2026-11-04 17:03:03)",
+        "[2026-11-06 15:00:00] a: any tips for eating out when I get to my new city?",
+        "[2026-11-06 15:00:03] bot → a: Honestly Lisbon is a great city for that — lots of vegetarian-friendly spots, and the fish-heavy places usually have good veggie sides too.\n\nWatch out for things cooked in fish stock or with prosciutto hidden in salads, and learn a couple of phrases like \"sem carne\" and \"sem peixe\". Happy to dig into specific neighborhoods once you know where you're living.",
+        "[2026-11-06 15:00:03] bot → a: (remember_failed: The operation was aborted due to timeout)"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 226,
+          "ttft_ms": 916,
+          "ttfb_ms": 1486,
+          "total_ms": 1486,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1074,\"output\":25,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000033182,\"costReported\":0.00007572,\"ms\":1260.9954579999903,\"ttftMs\":915.65445799999,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 423,
+          "ttft_ms": 673,
+          "ttfb_ms": 1522,
+          "total_ms": 1522,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1158,\"output\":23,\"cached\":1024,\"reasoning\":0,\"costTable\":0.000035962,\"costReported\":0.00009852,\"ms\":1097.994292000003,\"ttftMs\":672.5752499999944,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Is vegetarian\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793806383000,
+          "wait_ms": 3000,
+          "retrieval_ms": 503,
+          "ttft_ms": 673,
+          "ttfb_ms": 1612,
+          "total_ms": 1612,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1249,\"output\":15,\"cached\":512,\"reasoning\":0,\"costTable\":0.000049881,\"costReported\":0.00025446,\"ms\":1108.2835829999967,\"ttftMs\":673.317750000002,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Moving to Lisbon in December 2026 for a new job\",\"Is vegetarian\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793977203000,
+          "wait_ms": 3000,
+          "retrieval_ms": 342,
+          "ttft_ms": 945,
+          "ttfb_ms": 2845,
+          "total_ms": 2845,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1828,\"output\":82,\"cached\":512,\"reasoning\":0,\"costTable\":0.00010943599999999999,\"costReported\":0.00050856,\"ms\":2501.7418330000073,\"ttftMs\":944.8826249999984,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Moving to Lisbon in December 2026 for a new job\",\"Is vegetarian\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000228461,
+        "extract": 0.000239083,
+        "derive": 0.001638
+      },
+      "judgeCostUsd": 0.005592,
+      "costUsd": 0.002105544,
+      "passed": false,
+      "at": "2026-11-05T19:56:29.261Z"
+    }
+  ]
+}

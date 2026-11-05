@@ -1,0 +1,571 @@
+{
+  "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,effort=medium",
+  "config": {
+    "effort": "medium",
+    "memory": true,
+    "retrieval": "hybrid",
+    "filter": "short",
+    "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,effort=medium"
+  },
+  "at": "2026-11-05T19:57:48.242Z",
+  "scenarios": [
+    {
+      "name": "short-burst-of-three",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "and milk. can you send me that list back so I don't forget",
+          "gold": "eggs, flour and milk",
+          "answer": "eggs, flour, milk",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 1549,
+          "ttfbMs": 1997,
+          "totalMs": 1997
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: making pancakes tonight, need to grab eggs",
+        "[2026-11-04 15:00:01] a: flour",
+        "[2026-11-04 15:00:02] a: and milk. can you send me that list back so I don't forget",
+        "[2026-11-04 15:00:05] bot → a: eggs, flour, milk"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 262,
+          "ttft_ms": 1549,
+          "ttfb_ms": 1997,
+          "total_ms": 1997,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1148,\"output\":38,\"cached\":0,\"reasoning\":25,\"costTable\":0.00007065999999999999,\"costReported\":0.00039,\"ms\":1720.45725,\"ttftMs\":1549.3891250000001,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00007065999999999999,
+        "extract": 0.00010038
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.00017104,
+      "passed": true,
+      "at": "2026-11-05T19:55:27.314Z"
+    },
+    {
+      "name": "short-correction",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "wait when am I meeting Sam again?",
+          "gold": "7 (it was moved from 6 to 7)",
+          "answer": "[2026-11-04 10:10] tomorrow at 7 in the evening, coffee with Sam",
+          "label": "correct",
+          "reason": "The reply gives 7 tomorrow, which matches the updated time in the gold. 'Evening' is a reasonable reading of the bot's earlier question and the user's move to 7, not an invented fact.",
+          "ttftMs": 1175,
+          "ttfbMs": 1894,
+          "totalMs": 1894
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: meeting Sam for coffee tomorrow at 6",
+        "[2026-11-04 15:00:03] bot → a: nice, sam's always good for a catch-up",
+        "[2026-11-04 15:00:03] bot → a: that 6 in the evening?",
+        "[2026-11-04 15:02:00] a: actually make it 7, he's stuck at work",
+        "[2026-11-04 15:02:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:02:03] bot → a: 7 it is. want me to give you a nudge earlier in the day so it doesn't sneak up on you?",
+        "[2026-11-04 15:10:00] a: wait when am I meeting Sam again?",
+        "[2026-11-04 15:10:03] bot → a: [2026-11-04 10:10] tomorrow at 7 in the evening, coffee with Sam"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 361,
+          "ttft_ms": 3489,
+          "ttfb_ms": 4331,
+          "total_ms": 4342,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1100,\"output\":146,\"cached\":0,\"reasoning\":133,\"costTable\":0.0001225,\"costReported\":0.0005052,\"ms\":3980.150458,\"ttftMs\":3489.057833,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 507,
+          "ttft_ms": 3984,
+          "ttfb_ms": 4899,
+          "total_ms": 4899,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1203,\"output\":116,\"cached\":0,\"reasoning\":89,\"costTable\":0.000112135,\"costReported\":0.0005001,\"ms\":4390.45775,\"ttftMs\":3984.3037079999995,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Meeting Sam for coffee on 2026-11-05 18:00\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 464,
+          "ttft_ms": 1175,
+          "ttfb_ms": 1894,
+          "total_ms": 1894,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1324,\"output\":69,\"cached\":0,\"reasoning\":39,\"costTable\":0.00009408,\"costReported\":0.00048,\"ms\":1427.4876669999976,\"ttftMs\":1174.6077079999995,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Meeting Sam for coffee on 2026-11-05 18:00\",\"Meeting Sam for coffee on 2026-11-05 19:00\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000328715,
+        "extract": 0.00037884
+      },
+      "judgeCostUsd": 0.004992,
+      "costUsd": 0.000707555,
+      "passed": true,
+      "at": "2026-11-05T19:55:43.571Z"
+    },
+    {
+      "name": "short-like-i-said",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ok so like I said, which colour am I going with? need to tell the shop",
+          "gold": "teal",
+          "answer": "it's teal! you told me that one already 😄\n\nbut the shade you never landed on — so tell the shop \"teal\" and bring a swatch back, or pick one there. deep jewel teal vs soft sage-teal are very different rooms.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 1922,
+          "ttfbMs": 3496,
+          "totalMs": 3496
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: repainting the bedroom this weekend, going with teal",
+        "[2026-11-04 15:00:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:00:03] bot → a: teal is a good call — bold but still calm once the lights are low. whole room or just an accent wall?",
+        "[2026-11-04 15:01:00] a: the landlord said it's fine as long as I paint it back before I move out",
+        "[2026-11-04 15:01:03] bot → a: so you get the fun of choosing a color and none of the permanence, honestly not a bad deal. though painting it back later will sting a little\n\nwhat shade of teal are you leaning toward — deep and moody or something brighter?",
+        "[2026-11-04 15:03:00] a: also need new curtains",
+        "[2026-11-04 15:03:03] bot → a: [2026-11-04 10:03] curtains make or break teal, honestly. go warm — cream, oatmeal, or a soft linen — and it'll read cozy instead of cold. anything grey-blue next to it just turns everything murky",
+        "[2026-11-04 15:05:00] a: something light, linen maybe",
+        "[2026-11-04 15:05:03] bot → a: [2026-11-04 10:05] linen's perfect for it. hang them a bit wider than the window frame and high up near the ceiling — makes the whole room feel bigger, and the light coming through linen in the morning is unreal\n\nare you painting this weekend or earlier?",
+        "[2026-11-04 15:07:00] a: and the hardware store closes at 5 on saturday which is annoying",
+        "[2026-11-04 15:07:03] bot → a: [2026-11-04 10:07] ugh, five on a saturday is criminal. worth grabbing the paint and tape friday night so saturday morning is all taping and rolling — and you're not racing the clock\n\nwhat teal did you land on?",
+        "[2026-11-04 15:10:00] a: ok so like I said, which colour am I going with? need to tell the shop",
+        "[2026-11-04 15:10:03] bot → a: it's teal! you told me that one already 😄\n\nbut the shade you never landed on — so tell the shop \"teal\" and bring a swatch back, or pick one there. deep jewel teal vs soft sage-teal are very different rooms."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 186,
+          "ttft_ms": 3255,
+          "ttfb_ms": 3860,
+          "total_ms": 3860,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1103,\"output\":218,\"cached\":1024,\"reasoning\":200,\"costTable\":0.000130987,\"costReported\":0.00031602,\"ms\":3672.8698749999967,\"ttftMs\":3255.0965829999986,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 744,
+          "ttft_ms": 1506,
+          "ttfb_ms": 3144,
+          "total_ms": 3144,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1235,\"output\":107,\"cached\":0,\"reasoning\":59,\"costTable\":0.000109075,\"costReported\":0.0004989,\"ms\":2399.2295410000006,\"ttftMs\":1506.1970000000001,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 478,
+          "ttft_ms": 1119,
+          "ttfb_ms": 2315,
+          "total_ms": 2315,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1321,\"output\":68,\"cached\":1024,\"reasoning\":14,\"costTable\":0.000065797,\"costReported\":0.00020142,\"ms\":1835.3752079999977,\"ttftMs\":1119.4902079999993,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793804703000,
+          "wait_ms": 3000,
+          "retrieval_ms": 457,
+          "ttft_ms": 1651,
+          "ttfb_ms": 3111,
+          "total_ms": 3111,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1411,\"output\":104,\"cached\":1024,\"reasoning\":47,\"costTable\":0.00008784699999999999,\"costReported\":0.00027162,\"ms\":2652.930625000001,\"ttftMs\":1651.2298340000052,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
+        },
+        {
+          "contact": "a",
+          "id": 5,
+          "started_at": 1793804823000,
+          "wait_ms": 3000,
+          "retrieval_ms": 392,
+          "ttft_ms": 1725,
+          "ttfb_ms": 3024,
+          "total_ms": 3024,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1519,\"output\":104,\"cached\":1024,\"reasoning\":42,\"costTable\":0.00009270699999999999,\"costReported\":0.00030402,\"ms\":2631.013874999997,\"ttftMs\":1724.6524159999972,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
+        },
+        {
+          "contact": "a",
+          "id": 6,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 356,
+          "ttft_ms": 1922,
+          "ttfb_ms": 3496,
+          "total_ms": 3496,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1630,\"output\":108,\"cached\":1024,\"reasoning\":47,\"costTable\":0.000099702,\"costReported\":0.00034212,\"ms\":3137.7257919999975,\"ttftMs\":1921.5071669999961,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.0005861149999999999,
+        "extract": 0.0006554249999999998
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.0012415399999999997,
+      "passed": true,
+      "at": "2026-11-05T19:56:10.665Z"
+    },
+    {
+      "name": "short-photo-then-question",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "what colour is it?",
+          "gold": "red",
+          "answer": "it comes through as plain white on my end — nothing drawn on it that i can make out. was there supposed to be something in the picture?",
+          "label": "wrong",
+          "reason": "The gold says the colour is red, but the reply says the image is plain white, which contradicts it.",
+          "ttftMs": 1605,
+          "ttfbMs": 2348,
+          "totalMs": 2349
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: [photo photo.jpg] look",
+        "[2026-11-04 15:00:01] a: what colour is it?",
+        "[2026-11-04 15:00:04] bot → a: it comes through as plain white on my end — nothing drawn on it that i can make out. was there supposed to be something in the picture?"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804404000,
+          "wait_ms": 3000,
+          "retrieval_ms": 210,
+          "ttft_ms": 1605,
+          "ttfb_ms": 2348,
+          "total_ms": 2349,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1299,\"output\":91,\"cached\":1024,\"reasoning\":62,\"costTable\":0.000076307,\"costReported\":0.00022242,\"ms\":2138.2281250000015,\"ttftMs\":1605.057458000003,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000076307,
+        "extract": 0.000108795
+      },
+      "judgeCostUsd": 0.003496,
+      "costUsd": 0.000185102,
+      "passed": false,
+      "at": "2026-11-05T19:56:15.336Z"
+    },
+    {
+      "name": "short-quoted-reply",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "how about this one?",
+          "gold": "pizza: the option the person quoted (step 1), not sushi; the reply treats pizza as the one being asked about",
+          "answer": "pizza's always a safe bet. depends on the mood though — sushi if you want to feel fancy, pizza if you want to be happy",
+          "label": "partial",
+          "reason": "The reply opens on pizza as the option being asked about, but then hedges by weighing sushi against pizza instead of focusing on pizza alone.",
+          "ttftMs": 1097,
+          "ttfbMs": 1829,
+          "totalMs": 1829
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: dinner options tonight. A: pizza",
+        "[2026-11-04 15:00:02] a: B: sushi",
+        "[2026-11-04 15:00:05] bot → a: (reacted 🍣)",
+        "[2026-11-04 15:00:05] bot → a: ooh sushi. is it a real night out or delivery-on-the-couch kind of thing?",
+        "[2026-11-04 15:01:00] a: (replying to step 1) how about this one?",
+        "[2026-11-04 15:01:03] bot → a: (reacted 🍕)",
+        "[2026-11-04 15:01:03] bot → a: pizza's always a safe bet. depends on the mood though — sushi if you want to feel fancy, pizza if you want to be happy"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 193,
+          "ttft_ms": 2322,
+          "ttfb_ms": 3092,
+          "total_ms": 3092,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1118,\"output\":116,\"cached\":1024,\"reasoning\":90,\"costTable\":0.00008066200000000001,\"costReported\":0.00019812,\"ms\":2897.730125000002,\"ttftMs\":2322.230625000004,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 217,
+          "ttft_ms": 1097,
+          "ttfb_ms": 1829,
+          "total_ms": 1829,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1199,\"output\":57,\"cached\":1024,\"reasoning\":19,\"costTable\":0.000054807,\"costReported\":0.00015162,\"ms\":1612.1607500000027,\"ttftMs\":1096.5562090000021,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00013546900000000001,
+        "extract": 0.00020053499999999998
+      },
+      "judgeCostUsd": 0.004376,
+      "costUsd": 0.000336004,
+      "passed": false,
+      "at": "2026-11-05T19:56:23.768Z"
+    },
+    {
+      "name": "short-second-one",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ooh the second one. would that suit a girl?",
+          "gold": "talks about the second of the three names the assistant suggested in its previous reply (by name)",
+          "answer": "Smudge totally works for a girl — it's soft and a little mischievous, no strong gender lean either way.\n\nif you want something a touch more feminine that still fits the vibe: Misty, Stormy, or Dusty. same cloudy-grey energy.",
+          "label": "correct",
+          "reason": "Reply correctly identifies the second name as Smudge and discusses whether it suits a girl; the extra name suggestions are harmless.",
+          "ttftMs": 1660,
+          "ttfbMs": 2870,
+          "totalMs": 2870
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: give me 3 name ideas for my new grey kitten",
+        "[2026-11-04 15:00:03] bot → a: ooh a grey kitten, congrats 🐱\n\nok here's three: Ash, Smudge, and Pepper\n\nAsh if you want something sleek, Smudge if it's got soft cloudy patches, Pepper if it's a tiny chaos gremlin. which vibe is it?",
+        "[2026-11-04 15:02:00] a: ooh the second one. would that suit a girl?",
+        "[2026-11-04 15:02:03] bot → a: Smudge totally works for a girl — it's soft and a little mischievous, no strong gender lean either way.\n\nif you want something a touch more feminine that still fits the vibe: Misty, Stormy, or Dusty. same cloudy-grey energy."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 240,
+          "ttft_ms": 1649,
+          "ttfb_ms": 3167,
+          "total_ms": 3167,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1103,\"output\":137,\"cached\":1024,\"reasoning\":72,\"costTable\":0.00009048699999999999,\"costReported\":0.00021882,\"ms\":2927.519708,\"ttftMs\":1649.3897910000014,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 399,
+          "ttft_ms": 1660,
+          "ttfb_ms": 2870,
+          "total_ms": 2870,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1235,\"output\":75,\"cached\":0,\"reasoning\":15,\"costTable\":0.00009307499999999999,\"costReported\":0.0004605,\"ms\":2470.8114170000044,\"ttftMs\":1660.3143339999951,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Get(s) a new grey kitten\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00018356199999999996,
+        "extract": 0.00024863
+      },
+      "judgeCostUsd": 0.004536,
+      "costUsd": 0.00043219199999999997,
+      "passed": true,
+      "at": "2026-11-05T19:56:33.303Z"
+    },
+    {
+      "name": "short-that-place",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "my sister wants to go, remind me where that place is so I can text her",
+          "gold": "the cafe on Abay street (green door)",
+          "answer": "[2026-11-04 10:03] on Abay street, the one with the green door. if you want the exact spot I'd need to dig for it, but the green door is a pretty strong landmark\nhope she likes it as much as you did",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 1354,
+          "ttfbMs": 2567,
+          "totalMs": 2917
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: found a great little cafe on Abay street yesterday, the one with the green door",
+        "[2026-11-04 15:00:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:00:03] bot → a: a cafe with a green door on Abay, that sounds like my kind of place. what did you get?",
+        "[2026-11-04 15:01:00] a: their flat white is unreal",
+        "[2026-11-04 15:01:03] bot → a: (reacted ☕)",
+        "[2026-11-04 15:01:03] bot → a: flat white done right is hard to find. is it your new regular now or too early to say?",
+        "[2026-11-04 15:03:00] a: my sister wants to go, remind me where that place is so I can text her",
+        "[2026-11-04 15:03:03] bot → a: [2026-11-04 10:03] on Abay street, the one with the green door. if you want the exact spot I'd need to dig for it, but the green door is a pretty strong landmark",
+        "[2026-11-04 15:03:05] bot → a: hope she likes it as much as you did",
+        "[2026-11-04 15:03:05] bot → a: (remember_failed: The operation was aborted due to timeout)"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 268,
+          "ttft_ms": 4848,
+          "ttfb_ms": 5579,
+          "total_ms": 5579,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1109,\"output\":229,\"cached\":1024,\"reasoning\":217,\"costTable\":0.000136757,\"costReported\":0.00033102,\"ms\":5309.950374999986,\"ttftMs\":4848.020333999986,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 891,
+          "ttft_ms": 1759,
+          "ttfb_ms": 3653,
+          "total_ms": 3653,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1216,\"output\":46,\"cached\":0,\"reasoning\":19,\"costTable\":0.00007772,\"costReported\":0.00042,\"ms\":2760.6266659999965,\"ttftMs\":1758.9114160000026,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Favorite cafe on Abay street, has a green door\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 397,
+          "ttft_ms": 1354,
+          "ttfb_ms": 2567,
+          "total_ms": 2917,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1292,\"output\":87,\"cached\":1024,\"reasoning\":26,\"costTable\":0.00007399199999999999,\"costReported\":0.00021552,\"ms\":2519.585791999998,\"ttftMs\":1353.5662500000035,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Favorite cafe on Abay street, has a green door\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00028846899999999997,
+        "extract": 0.00023351999999999997
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.0005219889999999999,
+      "passed": true,
+      "at": "2026-11-05T19:57:48.241Z"
+    }
+  ]
+}

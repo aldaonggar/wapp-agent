@@ -1,0 +1,153 @@
+{
+  "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=cosine",
+  "config": {
+    "memory": true,
+    "retrieval": "cosine",
+    "filter": "long-recall|long-work",
+    "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=cosine"
+  },
+  "at": "2026-11-05T19:50:15.164Z",
+  "scenarios": [
+    {
+      "name": "long-recall-sister-city",
+      "category": "long-term",
+      "probes": [
+        {
+          "ask": "what's my sister's clinic called again? want to send her flowers at work",
+          "gold": "Paws & Co",
+          "answer": "Paws & Co — she's in Almaty. Sweet idea.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 802,
+          "ttfbMs": 1354,
+          "totalMs": 1354
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
+        "[2026-11-04 15:00:00] a: my sister Aru lives in Almaty, she runs a little vet clinic there called Paws & Co",
+        "[2026-11-04 15:00:03] bot → a: that's lovely — a vet clinic is such good work. does she own it outright or is it a partnership?",
+        "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
+        "[2026-11-04 16:30:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-07 15:00:00] a: what's my sister's clinic called again? want to send her flowers at work",
+        "[2026-11-07 15:00:03] bot → a: Paws & Co — she's in Almaty. Sweet idea."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 188,
+          "ttft_ms": 769,
+          "ttfb_ms": 1622,
+          "total_ms": 1622,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1288,\"output\":28,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007196000000000001,\"costReported\":0.00042,\"ms\":1433.3245420000003,\"ttftMs\":769.453459,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Has a dog named Biscuit\",\"Brother Tom is a nurse\",\"Likes spicy ramen\",\"Colleague Dana works in sales\",\"Cousin Mira just had a baby\",\"Gym is around the corner from home\",\"Lives in a flat on the fourth floor\",\"Best friend Priya lives in Toronto\",\"Likes espresso\",\"Allergic to cats\",\"Owns a green Vespa\",\"Supports Arsenal\"]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1794063603000,
+          "wait_ms": 3000,
+          "retrieval_ms": 120,
+          "ttft_ms": 802,
+          "ttfb_ms": 1354,
+          "total_ms": 1354,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":2064,\"output\":20,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010287999999999999,\"costReported\":0.0006432,\"ms\":1230.3165420000005,\"ttftMs\":802.1866669999999,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Brother Tom is a nurse\",\"Sister Aru lives in Almaty and runs a small vet clinic called Paws & Co\",\"Sister Aru runs a vet clinic called Paws & Co in Almaty\",\"Colleague Dana works in sales\",\"Manager is called Oliver\",\"Cousin Mira just had a baby\",\"Uses a standing desk\",\"Gym is around the corner from home\",\"Works as a product designer\",\"Likes espresso\",\"Has a dog named Biscuit\",\"Likes spicy ramen\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00017484,
+        "extract": 0.00030336
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.0004782,
+      "passed": true,
+      "at": "2026-11-05T19:50:08.644Z"
+    },
+    {
+      "name": "long-work",
+      "category": "long-term",
+      "probes": [
+        {
+          "ask": "ugh who's the client on that payments project again?",
+          "gold": "Fernhill Bakeries",
+          "answer": "Fernhill Bakeries — the Bluebird dashboard. Dana's in sales on it too, if you need her side.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 1326,
+          "ttfbMs": 1721,
+          "totalMs": 1721
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
+        "[2026-11-04 15:00:00] a: starting a new project at work today, codenamed Bluebird: a payments dashboard for our client Fernhill Bakeries",
+        "[2026-11-04 15:00:03] bot → a: (reacted 🎉)",
+        "[2026-11-04 15:00:03] bot → a: ooh, Bluebird! that's a nice one to say out loud. what's the first thing you're tackling on it?",
+        "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
+        "[2026-11-04 16:30:03] bot → a: (insights_failed: No allowed providers are available for the selected model. Providers serving deepseek/deepseek-v4-pro-20260423: streamlake, baidu, relace, gmicloud, siliconflow, digitalocean, deepinfra, alibaba, novita, venice, atlas-cloud, nebius, azure, but your account's allowed-providers setting permits only: google-vertex, openai, anthropic. To change your allowed providers, visit: https://openrouter.ai/settings/privacy.)",
+        "[2026-11-07 15:00:00] a: ugh who's the client on that payments project again?",
+        "[2026-11-07 15:00:03] bot → a: Fernhill Bakeries — the Bluebird dashboard. Dana's in sales on it too, if you need her side."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 133,
+          "ttft_ms": 1227,
+          "ttfb_ms": 2107,
+          "total_ms": 2107,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1289,\"output\":35,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007550499999999999,\"costReported\":0.0004287,\"ms\":1973.087707999999,\"ttftMs\":1227.2063749999998,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Works as a product designer\",\"Colleague Dana works in sales\",\"Uses a standing desk\",\"Likes espresso\",\"Manager is called Oliver\",\"Has a dog named Biscuit\",\"Prefers tea in the afternoon\",\"Favourite band is Radiohead\",\"Reads before bed every night\",\"Bikes to work when it is dry\",\"Gym is around the corner from home\",\"Likes spicy ramen\"]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1794063603000,
+          "wait_ms": 3000,
+          "retrieval_ms": 126,
+          "ttft_ms": 1326,
+          "ttfb_ms": 1721,
+          "total_ms": 1721,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1981,\"output\":34,\"cached\":0,\"reasoning\":0,\"costTable\":0.000106145,\"costReported\":0.0006351,\"ms\":1590.3892080000005,\"ttftMs\":1326.2472500000003,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Started a project codenamed Bluebird: a payments dashboard for client Fernhill Bakeries\",\"Colleague Dana works in sales\",\"Works as a product designer\",\"Client Fernhill Bakeries\",\"Manager is called Oliver\",\"Plays chess online most evenings\",\"Likes spicy ramen\",\"Is saving for a sailing trip\",\"Uses a standing desk\",\"Owns a green Vespa\",\"Lives in a flat on the fourth floor\",\"Has a dog named Biscuit\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00018165,
+        "extract": 0.000265165
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.000446815,
+      "passed": true,
+      "at": "2026-11-05T19:50:15.160Z"
+    }
+  ]
+}
