@@ -14,12 +14,12 @@ Status (2026-11-05): on WhatsApp the whole chain ran in production (webhook, Dur
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
-- Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00. Delivery only works within 24 hours of your last message (Meta's rule, see Known limits), so a reminder for the day after tomorrow needs you to text again before it.
+- Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00. On WhatsApp delivery only works within 24 hours of your last message (Meta's rule, see Known limits), so a reminder for the day after tomorrow needs you to text again before it, and the bot says so when it sets one; on Telegram it arrives regardless.
 - Answers a voice note with a voice note (one, carrying the whole reply); a text message gets text.
 
 On WhatsApp (once Meta lifts the restriction): the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
 
-On Telegram: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk; no number registration. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). The same agent and the same memory serve both apps; to it, a Telegram contact and a WhatsApp contact are two different people.
+On Telegram: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk; no number registration. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). The same agent and the same memory serve both apps; to it, a Telegram contact and a WhatsApp contact are two different people. A voice note gets a voice note back on Telegram too, and reminders and check-ins are delivered whenever they are due: Telegram has no 24-hour window.
 
 Things to try:
 
@@ -72,7 +72,7 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 - [models.ts](src/models.ts): model table, per-job defaults and candidates, prices, cost, host filter.
 - [llm.ts](src/llm.ts): streaming and structured calls over the AI SDK and OpenRouter.
 - [whatsapp.ts](src/whatsapp.ts): webhook parsing, Graph API client, signature check.
-- [telegram.ts](src/telegram.ts): Bot API update parsing, client, and the transport router (`tg:` ids go to Telegram, everything else to WhatsApp).
+- [telegram.ts](src/telegram.ts): Bot API update parsing, client (text, reactions, typing, media, voice notes via `sendVoice`; no 24-hour window), and the transport router (`tg:` ids go to Telegram, everything else to WhatsApp).
 - [browser.ts](src/browser.ts): URL extraction and Browser Rendering snapshots.
 - [workers-ai.ts](src/workers-ai.ts): embeddings, rerank, transcription, text-to-speech.
 - `*.test.ts` next to each file: unit tests.
@@ -131,7 +131,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 212 tests in 16 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 39 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 216 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 39 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -162,7 +162,7 @@ npm run eval
 
 ## Known limits
 
-- Replies only within 24 hours of the person's last message (Meta rule). Proactive check-ins and reminders outside that window are skipped (a skipped reminder is logged, never sent late).
+- On WhatsApp, replies only within 24 hours of the person's last message (Meta rule): proactive check-ins and reminders outside that window are skipped (a skipped reminder is logged, never sent late), and the bot says so when it sets a reminder that far out. Telegram has no window.
 - Meta's test number only talks to a small list of verified recipient numbers.
 - Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day (about 200 minutes of voice notes).
 - Meta's free tier is 1,000 delivered service messages per month per number. No payment method is on file. The status webhook's `pricing.type` flip is logged.
@@ -171,11 +171,11 @@ npm run eval
 - The model comparison has not run (see Evals).
 - Follow-ups and reminders never retry.
 - The extractor sees only the current turn.
-- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. The 24-hour follow-up window is applied as on WhatsApp although Telegram has no such rule. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked. The system prompt still says "WhatsApp" and allows `*bold*`, which Telegram shows literally.
+- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked.
 
 ## What I would build next
 
-- Follow-ups and reminders outside the 24-hour window, using approved message templates.
+- On WhatsApp, follow-ups and reminders outside the 24-hour window, using approved message templates.
 - Voice replies in the person's language (Aura-1 is English-only; MeloTTS is multilingual but returns WAV, which no platform shows as a voice note).
 - Run the model comparison once the OpenRouter key exists, then set the defaults from the results.
 
