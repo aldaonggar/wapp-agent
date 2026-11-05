@@ -361,7 +361,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       const msg: Inbound = { id: `wamid.${n}`, from: c.phone, ts: clock.t, kind: "text", text, ...(m.quote ? { quotedId: `wamid.${m.quote}` } : {}) };
       if (m.image !== undefined) {
         Object.assign(msg, { kind: "image", mediaId: `media.${n}`, mime: "image/jpeg" });
-        c.wa.media.set(`media.${n}`, { bytes: readFileSync(new URL(`./fixtures/${m.image}`, import.meta.url)), mime: "image/jpeg" });
+        c.wa.media.set(`media.${n}`, { bytes: readFileSync(join("evals/fixtures", m.image)), mime: "image/jpeg" });
       }
       flush();
       const context = transcript.slice(-12);

@@ -1,6 +1,6 @@
 # Manual setup (owner)
 
-Everything here happens in web dashboards and cannot be scripted. Do the sections in order; each one ends with a value you paste into `.dev.vars` (git-ignored, already created with the key names). When all eight values are filled in, tell Claude and it uploads them to the Worker.
+Everything here happens in web dashboards and cannot be scripted. Do the sections in order; sections 1 to 7 each end with a value you paste into `.dev.vars` (git-ignored, already created with the key names), and the optional section 8 uses its own file. When all eight values are filled in, tell Claude and it uploads them to the Worker.
 
 | Value | From |
 |---|---|
@@ -107,6 +107,15 @@ npx wrangler secret put ALLOWED_PHONES   # paste the full comma-separated list w
 ```
 
 5. The reviewer must text first. The bot can only send free-form messages within 24 hours of a person's last message; it cannot start a conversation.
+
+## 8. Braintrust (optional, 3 minutes)
+
+Only for the eval dashboard; the Worker never needs it, and `npm run eval -- --braintrust` runs locally without it.
+
+1. https://www.braintrust.dev → sign up (free tier) → create an organization if asked.
+2. In the app's settings, open **API keys** → create one → copy it.
+3. Put it in a new file `.env.braintrust` in the project root (git-ignored) as one line: `BRAINTRUST_API_KEY=<key>`. Do not add it to `.dev.vars`; it is not a Worker secret.
+4. `npm run eval -- --braintrust` → the run appears as an experiment under the project `wapp-agent`, named after the configuration (a rerun gets a derived name).
 
 ## Known limits
 

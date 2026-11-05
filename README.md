@@ -49,6 +49,10 @@ flowchart LR
 - OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper. Browser Rendering: `/snapshot` for links.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups.
 
+## Why the memory is in-house
+
+There are memory libraries and hosted memory services (mem0, Zep and others) that do extraction, storage and retrieval for you. I did not use one. Memory is the core of this brief, so every step had to be inspectable and tunable: what counts as a fact, how strong a signal it needs before it is kept, when a new fact supersedes an old one, what is recalled for a turn and why. The platform also gives most of the plumbing away: each contact already has a SQLite database inside their Durable Object, so isolation and persistence were free, and what remained was one extraction prompt, one embedding per fact and retrieval over a few hundred vectors. Of the ones named above, each either needs an external database, puts a network hop in front of every reply, or does not run on Cloudflare Workers without patching. The extraction prompts are adapted from mem0's open-source prompts (Apache-2.0), so the prompt work builds on what is known to work.
+
 ## Repo map
 
 `src/`
@@ -79,12 +83,14 @@ flowchart LR
 
 `evals/`
 
-- [run.ts](evals/run.ts): `npm run eval` CLI (flags become env, then vitest).
+- [run.ts](evals/run.ts): `npm run eval` CLI (flags become env, then vitest or, with `--braintrust`, the Braintrust CLI).
 - [harness.ts](evals/harness.ts): fake clock and WhatsApp, scenario loader and runner.
 - [judge.ts](evals/judge.ts): LLM judge for probes and facts.
+- [braintrust.eval.ts](evals/braintrust.eval.ts): the same scenarios and judge as a Braintrust experiment.
+- [results.ts](evals/results.ts): one results file per configuration, shared by both runners.
 - [report.ts](evals/report.ts): `evals/results/*.json` to [EVALS.md](EVALS.md).
 - [scenarios.test.ts](evals/scenarios.test.ts): one test per scenario (real models).
-- [harness.test.ts](evals/harness.test.ts), [cadence.test.ts](evals/cadence.test.ts): offline tests with a stub model.
+- [harness.test.ts](evals/harness.test.ts), [cadence.test.ts](evals/cadence.test.ts), [results.test.ts](evals/results.test.ts): offline tests (stub model, no keys).
 - [scenarios/](evals/scenarios): 21 YAML scenarios. [fixtures/photo.jpg](evals/fixtures/photo.jpg): test image.
 
 Docs and config
@@ -109,10 +115,13 @@ npm run eval -- --effort=high                  # reasoning effort: low | medium 
 npm run eval -- --no-memory                    # baseline without memory
 npm run eval -- --retrieval=cosine             # cosine only instead of hybrid
 npm run eval -- --filter=forget                # scenarios whose name matches a regex
+npm run eval -- --braintrust                   # same run as a Braintrust experiment; the flags above still apply
 npm run eval:report                            # results -> EVALS.md
 ```
 
-Tests that run today (offline): `npm test` is 175 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts` is 34 tests in 2 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
+
+Tests that run today (offline): `npm test` is 175 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 35 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
