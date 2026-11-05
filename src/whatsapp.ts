@@ -182,13 +182,15 @@ export function makeWaClient(cfg: {
       return send(payload);
     },
     // Two steps: multipart upload, then an audio message with the media id. OGG/Opus arrives as a voice note.
-    async sendAudio(to, bytes, mime) {
+    async sendAudio(to, bytes, mime, opts) {
       const form = new FormData();
       form.set("messaging_product", "whatsapp");
       form.set("type", mime);
       form.set("file", new Blob([bytes as BlobPart], { type: mime }), `voice.${mime.includes("mpeg") ? "mp3" : mime.slice(6).split(";")[0]}`); // a name/MIME mismatch is rejected (131053)
       const media = await check(await doFetch(`${GRAPH}/${cfg.phoneNumberId}/media`, { method: "POST", headers: auth, body: form }));
-      return send({ recipient_type: "individual", to: "+" + to, type: "audio", audio: { id: str(media.id) } });
+      const payload: Obj = { recipient_type: "individual", to: "+" + to, type: "audio", audio: { id: str(media.id) } };
+      if (opts?.quote) payload.context = { message_id: opts.quote };
+      return send(payload);
     },
     async sendReaction(to, messageId, emoji) {
       await post({

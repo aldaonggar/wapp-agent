@@ -26,7 +26,7 @@ const DAY = 86_400_000; // WhatsApp's free-form window after their last message
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
-const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: another script goes as text
+const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
@@ -171,7 +171,7 @@ export class ContactCore {
         pending = snap;
         const newest = snap.at(-1)!;
         // A voice note gets one voice note back with the whole reply; the bubbles are held until the stream ends.
-        const voiceReply = newest.kind === "audio" && newest.voice === 1 && !!this.deps.tts && !!wa.sendAudio;
+        let voiceReply = newest.kind === "audio" && newest.voice === 1 && !!this.deps.tts && !!wa.sendAudio;
         const held: { text: string; quote?: string }[] = [];
         await this.scheduleNext();
         const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
@@ -237,39 +237,48 @@ export class ContactCore {
         };
 
         let restart = false;
-        for await (const ev of parseReply(text)) {
-          if (sends === 0 && this.state().generation !== gen && regenerated < MAX_REGENERATIONS) {
-            this.abort.abort();
-            regenerated++;
-            restart = true;
-            break;
-          }
-          if (ev.type === "react") {
-            const target = ev.target ? resolve(ev.target) : pending.at(-1)?.id;
-            if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
-            reacted = true;
-            sends++;
-            try {
-              await wa.sendReaction(to, target, ev.emoji);
-              this.setReaction(target, "me", ev.emoji);
-            } catch (e) {
-              this.error("send_failed", e, { kind: "reaction" });
+        try {
+          for await (const ev of parseReply(text)) {
+            if (sends === 0 && this.state().generation !== gen && regenerated < MAX_REGENERATIONS) {
+              this.abort.abort();
+              regenerated++;
+              restart = true;
+              break;
             }
-            continue;
+            if (ev.type === "react") {
+              const target = ev.target ? resolve(ev.target) : pending.at(-1)?.id;
+              if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
+              reacted = true;
+              sends++;
+              try {
+                await wa.sendReaction(to, target, ev.emoji);
+                this.setReaction(target, "me", ev.emoji);
+              } catch (e) {
+                this.error("send_failed", e, { kind: "reaction" });
+              }
+              continue;
+            }
+            const quote = ev.quote ? resolve(ev.quote) : undefined;
+            if (voiceReply && !SPEAKABLE.test(ev.text)) { // from here on the reply streams as text, starting with what was held
+              voiceReply = false;
+              for (const b of held.splice(0)) await deliver(b.text, b.quote);
+            }
+            if (voiceReply) held.push({ text: ev.text, quote });
+            else await deliver(ev.text, quote);
           }
-          const quote = ev.quote ? resolve(ev.quote) : undefined;
-          if (voiceReply) held.push({ text: ev.text, quote });
-          else await deliver(ev.text, quote);
+        } catch (e) {
+          for (const b of held.splice(0)) await deliver(b.text, b.quote); // the stream died: the complete bubbles go out as text, like the text path
+          throw e;
         }
         if (restart) continue; // the next snapshot takes the new messages
         if (held.length) {
-          const joined = held.map((b) => b.text).join("\n\n");
-          const wamid = SPEAKABLE.test(joined) ? await this.sendVoice(to, joined) : null;
+          const joined = held.map((b) => b.text).join("\n\n"), quote = held.find((b) => b.quote)?.quote; // one voice note carries one quote
+          const wamid = await this.sendVoice(to, joined, quote);
           if (wamid) {
             sends++;
             bubbles = held.length;
             ttfb ??= performance.now() - t0;
-            db.run("INSERT INTO messages(id, direction, kind, text, ts, voice, status) VALUES (?, 'out', 'audio', ?, ?, 1, 'sent')", wamid, joined, clock.now());
+            db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, voice, status) VALUES (?, 'out', 'audio', ?, ?, ?, 1, 'sent')", wamid, joined, clock.now(), quote ?? null);
             outIds.push(wamid);
           } else for (const b of held) await deliver(b.text, b.quote); // synthesis or upload failed: the text bubbles, paced as usual
         }
@@ -369,12 +378,12 @@ export class ContactCore {
   }
 
   // One voice note for the whole reply; null when synthesis or the upload fails, and the caller falls back to text.
-  private async sendVoice(to: string, text: string): Promise<string | null> {
+  private async sendVoice(to: string, text: string, quote?: string): Promise<string | null> {
     const { tts, wa } = this.deps;
     if (!tts || !wa.sendAudio) return null;
     try {
       const a = await tts(text);
-      return (await wa.sendAudio(to, a.bytes, a.mime)).id;
+      return (await wa.sendAudio(to, a.bytes, a.mime, { quote })).id;
     } catch (e) {
       this.error("voice_reply_failed", e);
       return null;

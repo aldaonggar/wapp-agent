@@ -342,16 +342,16 @@ const voiceNote = async (t: ReturnType<typeof setup>, transcript = "how are you"
   await t.say("", { kind: "audio", mediaId: "media.v", mime: "audio/ogg; codecs=opus", voice: true });
 };
 
-test("a voice note gets one voice note with the whole reply, stored as an audio row", async () => {
-  const t = setup({ reply: () => "react: none\nall good here\n---\nand you?" });
+test("a voice note gets one voice note with the whole reply and the model's quote, stored as an audio row", async () => {
+  const t = setup({ reply: () => "react: none\nquote: #1\nall good here\n---\nand you?" });
   const spoken: string[] = [];
   t.deps.tts = async (text) => { spoken.push(text); return { bytes: new Uint8Array([7]), mime: "audio/ogg" }; };
   await voiceNote(t);
   await t.run();
   expect(spoken).toEqual(["all good here\n\nand you?"]);
   expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
-  expect(t.wa.sent[1]).toMatchObject({ to: FROM, bytes: new Uint8Array([7]), mime: "audio/ogg" });
-  expect(t.rows("direction = 'out'")).toMatchObject([{ id: "wamid.out.2", text: "all good here\n\nand you?", status: "sent" }]);
+  expect(t.wa.sent[1]).toMatchObject({ to: FROM, bytes: new Uint8Array([7]), mime: "audio/ogg", quote: "wamid.in.1" });
+  expect(t.rows("direction = 'out'")).toMatchObject([{ id: "wamid.out.2", text: "all good here\n\nand you?", status: "sent", quoted_id: "wamid.in.1" }]);
   expect(t.db.all("SELECT kind, voice FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", voice: 1 }]);
   expect(t.turns()[0]).toMatchObject({ bubbles: 2, error: null });
   expect(t.turns()[0].ttfb_ms).toBeGreaterThanOrEqual(0);
@@ -377,6 +377,48 @@ test("voice reply falls back to the paced text bubbles when synthesis fails, whe
     expect(t.rows("direction = 'out'").map((r) => r.status), name).toEqual(["sent", "sent"]);
     expect(log.mock.calls.some(([e]) => e.event === "voice_reply_failed"), name).toBe(name !== "no sendAudio");
   }
+});
+
+test("a non-Latin bubble on a voice note streams as text at once, not after the whole reply", async () => {
+  const t = setup();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const stream = t.llm.stream.bind(t.llm);
+  t.deps.llm.stream = (c) => {
+    const s = stream(c); // drained first so the stub's own `done` still settles
+    return { done: s.done, text: (async function* () { for await (const chunk of s.text) void chunk; yield "react: none\nвсё хорошо\n---\n"; await gate; yield "и у тебя?"; })() };
+  };
+  await voiceNote(t, "как дела");
+  const turn = t.run();
+  await vi.waitFor(() => expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["всё хорошо"])); // sent while the stream is still open
+  release();
+  await turn;
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text", "typing", "text"]);
+  expect(t.turns()).toMatchObject([{ bubbles: 2, error: null }]);
+});
+
+test("a mid-stream error on a voice note still sends the complete bubble as text, like the text path", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n", "bubble one\n", "---\n", "bubble two is cut o"], error: new Error("stream cut") }) });
+  await voiceNote(t);
+  await t.run();
+  expect(t.wa.sent.map((s) => [s.kind, s.body ?? s.emoji])).toEqual([["typing", undefined], ["reaction", "👍"], ["text", "bubble one"]]);
+  expect(t.turns()).toMatchObject([{ error: expect.stringContaining("stream cut"), bubbles: 1 }]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("when the extractor learns the real timezone, a pending reminder keeps the wall time the person was told", async () => {
+  const t = setup({ features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "America/Los_Angeles" } : { insights: [] }), reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : "react: none\nok") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("I'm in LA btw, remind me tomorrow at 9 to call the dentist");
+  await t.run(); // the +1 number was guessed as New York: the tool confirmed 09:00 there (14:00Z)
+  expect(t.db.all("SELECT timezone FROM contact")).toEqual([{ timezone: "America/Los_Angeles" }]);
+  expect(t.db.all("SELECT due_ts FROM reminders")).toEqual([{ due_ts: Date.UTC(2026, 10, 5, 17, 0) }]); // 09:00 Los Angeles
+  expect(t.state().reminder_due).toBe(Date.UTC(2026, 10, 5, 17, 0));
+  t.clock.t += 60_000;
+  await t.say("thanks");
+  await t.run();
+  expect(t.llm.calls[1].system[1].content).toContain("- 2026-11-05 09:00 call the dentist (id 1)");
 });
 
 test("a text message keeps text replies, and a reply in another script is sent as text even to a voice note", async () => {

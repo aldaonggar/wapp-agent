@@ -7,4 +7,4 @@ steps:
   - at: +0s
     ask: "remind me in 2 hours to call mum"
     gold: "confirms a reminder at 12:00 today (noon; it is 10:00 now); naming 12:00, noon or 'in 2 hours' counts"
-  - { at: +2h 1min, expect_sent: [mum] }
+  - { at: +2h 1min, expect_sent: ["Reminder:", mum] }

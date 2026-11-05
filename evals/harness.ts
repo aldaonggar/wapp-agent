@@ -53,10 +53,10 @@ export class FakeWa implements WaClient {
     if (e) { this.failNext = undefined; throw e; }
     return { id: this.rec({ kind: "text", to, body, previewUrl: opts?.previewUrl ?? false, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
   }
-  async sendAudio(to: string, bytes: Uint8Array, mime: string) {
+  async sendAudio(to: string, bytes: Uint8Array, mime: string, opts?: { quote?: string }) {
     const e = this.failNext;
     if (e) { this.failNext = undefined; throw e; }
-    return { id: this.rec({ kind: "audio", to, bytes, mime }) };
+    return { id: this.rec({ kind: "audio", to, bytes, mime, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
   }
   async sendReaction(to: string, messageId: string, emoji: string) { this.rec({ kind: "reaction", to, target: messageId, emoji }); }
   async markReadTyping(messageId: string) { this.rec({ kind: "typing", to: "", target: messageId }); }
@@ -219,7 +219,7 @@ export type Step =
   | { expect_facts: { count: number; gold: string[] } }
   | { expect_facts_not_contains: string[] }
   | { expect_insights: { min: number; evidence_count?: number } }
-  | { at?: string; expect_sent: string[] }; // the bot's messages since the previous step (after the clock jump to `at`) contain each string
+  | { at?: string; expect_sent: string[] }; // the bot's messages since the previous step (after the clock jump to `at`) contain each string; the previous message step must be an ask, so its reply is not in the window
 export interface Scenario { name: string; category: "short-term" | "long-term" | "derived" | "judgement" | "forget" | "isolation"; steps: Step[] }
 export interface ProbeResult { ask: string; gold: string; answer: string; label: "correct" | "partial" | "wrong" | "hallucinated"; reason: string; ttftMs?: number; ttfbMs?: number; totalMs?: number }
 export interface ScenarioResult { name: string; category: string; probes: ProbeResult[]; checks: { name: string; passed: boolean; detail: string }[]; transcript: string[]; turns: Record<string, unknown>[]; costUsd: number; costByJob: Record<string, number>; judgeCostUsd: number; passed: boolean; at?: string }
@@ -234,7 +234,7 @@ const KEYS: Record<string, string[]> = {
 const MESSAGE_KINDS = ["say", "ask", "image", "url"];
 const isInt = (x: unknown, min: number): x is number => Number.isInteger(x) && (x as number) >= min;
 
-function stepProblem(s: unknown, n: number): string {
+function stepProblem(s: unknown, n: number, prev: unknown[]): string {
   if (typeof s !== "object" || s === null) return "is not a mapping";
   const r = s as Record<string, unknown>, kinds = Object.keys(KEYS).filter((k) => k in r), kind = kinds[0];
   if (kinds.length !== 1) return `needs exactly one of ${Object.keys(KEYS).join(", ")}`;
@@ -247,6 +247,10 @@ function stepProblem(s: unknown, n: number): string {
     if (k in r && !(Array.isArray(r[k]) && r[k].length > 0 && r[k].every((x) => typeof x === "string"))) return `${k} must be a non-empty list of strings`;
   if ("quote" in r && !(isInt(r.quote, 1) && r.quote < n)) return `quote must be an earlier step number (1..${n - 1})`;
   if ("max_turns" in r && !isInt(r.max_turns, 1)) return "max_turns must be a positive integer";
+  if (kind === "expect_sent") {
+    const last = [...prev].reverse().find((p) => MESSAGE_KINDS.some((k) => k in (p as object)));
+    if (!last || !("ask" in (last as object))) return "expect_sent needs an ask as the previous message step: a say's reply would land in its window";
+  }
   return "";
 }
 
@@ -255,7 +259,7 @@ export function loadScenarios(dir: string, filter?: string): Scenario[] {
   return readdirSync(dir).filter((f) => /\.ya?ml$/.test(f)).sort().map((f) => {
     const sc = parse(readFileSync(join(dir, f), "utf8")) as Scenario | null;
     const problem = !sc || typeof sc.name !== "string" || !CATEGORIES.includes(sc.category) || !Array.isArray(sc.steps) ? "needs name, category and steps"
-      : sc.steps.map((s, i) => { const p = stepProblem(s, i + 1); return p && `step ${i + 1}: ${p}`; }).find(Boolean);
+      : sc.steps.map((s, i) => { const p = stepProblem(s, i + 1, sc.steps.slice(0, i)); return p && `step ${i + 1}: ${p}`; }).find(Boolean);
     if (problem) throw new Error(`${f}: ${problem}`);
     return sc!;
   }).filter((sc) => !re || re.test(sc.name));

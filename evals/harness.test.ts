@@ -53,6 +53,7 @@ test.each([
   ["a zero max_turns", "{ at: +1s, ask: x, gold: y, max_turns: 0 }", /step 2: max_turns must be a positive integer/],
   ["a scalar expect_recalled", "{ at: +1s, ask: x, gold: y, expect_recalled: Almaty }", /step 2: expect_recalled must be a non-empty list of strings/],
   ["an empty expect_sent", "{ at: +2h, expect_sent: [] }", /step 2: expect_sent must be a non-empty list of strings/],
+  ["expect_sent after a say", "{ at: +2h, expect_sent: [mum] }", /step 2: expect_sent needs an ask as the previous message step/],
 ])("loadScenarios rejects %s", (_name, step, error) => {
   const dir = mkdtempSync(join(tmpdir(), "scenarios-"));
   writeFileSync(join(dir, "bad.yaml"), `name: bad\ncategory: short-term\nsteps:\n  - { at: +0s, say: first }\n  - ${step}\n`);
