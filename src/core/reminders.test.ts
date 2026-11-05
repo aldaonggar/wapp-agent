@@ -2,7 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 import { expect, test } from "vitest";
 import { fromNode, migrate } from "./db";
 import { localToUtc } from "./followups";
-import { addReminder, cancelReminder, pendingReminders, scheduleReminder } from "./reminders";
+import { addReminder, cancelReminder, pendingReminders, rezoneReminders, scheduleReminder } from "./reminders";
 
 const TZ = "America/New_York", H = 3_600_000;
 const at = (s: string) => localToUtc(s, TZ)!;
@@ -25,6 +25,21 @@ test("addReminder resolves the person's local time across DST and tolerates ISO 
   expect(addReminder(db, now, TZ, "f", "2026-02-03", null)).toEqual({ id: 7, at: "2026-02-03 12:00" });
   expect(addReminder(db, now, "Asia/Almaty", "g", "2026-02-02 10:00", null)).toEqual({ id: 8, at: "2026-02-02 10:00" });
   expect(dueOf(db, 8)).toBe(Date.UTC(2026, 1, 2, 5, 0));
+  expect(addReminder(db, now, TZ, "h", "2026-03-08 02:30", null)).toEqual({ id: 9, at: "2026-03-08 03:30" }); // the hour that does not exist: the confirmation says 03:30
+  addReminder(db, now, TZ, "z".repeat(300), "2026-02-04 09:00", null);
+  expect(db.all("SELECT length(text) AS n FROM reminders WHERE id = 10")).toEqual([{ n: 200 }]);
+});
+
+test("rezoneReminders keeps the wall time the person was told when the zone is corrected, pending rows only", () => {
+  const db = fresh();
+  const now = at("2026-11-04 10:00");
+  addReminder(db, now, TZ, "call the dentist", "2026-11-05 09:00", null);
+  addReminder(db, now, TZ, "done already", "2026-11-05 20:00", null);
+  db.run("UPDATE reminders SET status = 'sent' WHERE id = 2");
+  rezoneReminders(db, TZ, "America/Los_Angeles");
+  expect(dueOf(db, 1)).toBe(Date.UTC(2026, 10, 5, 17, 0)); // 09:00 Los Angeles, was 14:00Z
+  expect(dueOf(db, 2)).toBe(at("2026-11-05 20:00"));
+  expect(due(db)).toBe(Date.UTC(2026, 10, 5, 17, 0));
 });
 
 test("addReminder refuses the past, more than a year ahead, and junk, storing nothing; the current minute is accepted", () => {
@@ -33,6 +48,8 @@ test("addReminder refuses the past, more than a year ahead, and junk, storing no
   expect(addReminder(db, now, TZ, "x", "2026-11-04 09:59", null)).toEqual({ error: expect.stringContaining("already past; it is 2026-11-04 10:00 now") });
   expect(addReminder(db, now, TZ, "x", "2027-11-06 10:00", null)).toEqual({ error: expect.stringContaining("more than a year ahead") });
   expect(addReminder(db, now, TZ, "x", "tomorrow at 9", null)).toEqual({ error: expect.stringContaining('"YYYY-MM-DD HH:mm"') });
+  for (const bad of ["2026-11-05T14:00:00Z", "2026-11-05T09:00+05:00", "2026-11-05 09:00 PM", "2026-11-05 9:00"]) // a zone or AM/PM would be misread as local digits
+    expect(addReminder(db, now, TZ, "x", bad, null)).toEqual({ error: expect.stringContaining(`got "${bad}"`) });
   expect(db.all("SELECT 1 FROM reminders")).toEqual([]);
   expect(due(db)).toBeNull();
   expect(addReminder(db, now, TZ, "x", "2026-11-04 10:00", null)).toEqual({ id: 1, at: "2026-11-04 10:00" }); // fires at once

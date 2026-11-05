@@ -74,6 +74,9 @@ test("quiet hours before 09:00 defer to today 09:00", () => {
 
 test("localToUtc at the real DST edges", () => {
   expect(localToUtc("2026-03-08 03:30", TZ)).toBe(Date.UTC(2026, 2, 8, 7, 30)); // just after spring-forward, already EDT
+  expect(localToUtc("2026-03-08 02:30", TZ)).toBe(Date.UTC(2026, 2, 8, 7, 30)); // inside the gap: shifted forward to 03:30 EDT
+  expect(localToUtc("2026-03-29 02:30", "Europe/Berlin")).toBe(Date.UTC(2026, 2, 29, 1, 30)); // same with a positive offset: 03:30 CEST
+  expect(localToUtc("2026-11-01 01:30", TZ)).toBe(Date.UTC(2026, 10, 1, 5, 30)); // fall-back overlap: the first occurrence (EDT)
   expect(at("2026-11-01 12:00") - at("2026-10-31 12:00")).toBe(25 * H); // fall back
   expect(at("2026-03-08 12:00") - at("2026-03-07 12:00")).toBe(23 * H); // spring forward
 });

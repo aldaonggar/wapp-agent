@@ -2,6 +2,7 @@ import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { reasoningFor } from "../models";
 import { blobToVec, formatLocal, vecToBlob } from "./db";
+import { rezoneReminders } from "./reminders";
 import type { Db, Deps, MemoryHit } from "./types";
 
 export const KINDS = ["identity", "person", "preference", "plan", "routine", "work", "place", "other"] as const;
@@ -213,6 +214,8 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
   if (value.timezone) {
     try {
       const zone = new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }).resolvedOptions().timeZone;
+      const old = tzOf(db);
+      if (zone !== old) rezoneReminders(db, old, zone); // a reminder confirmed in the guessed zone keeps its wall time in the real one
       db.run("UPDATE contact SET timezone=?, timezone_confirmed=1", zone);
     } catch { /* not an IANA zone: keep the current one */ }
   }
