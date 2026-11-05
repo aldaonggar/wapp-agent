@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
+import { FALLBACK } from "../src/core/contact";
 import type { Llm, StreamCall } from "../src/core/types";
 import { JOBS } from "../src/models";
 import { cosineRerank, evalConfig, evalEmbedders, hashEmbed, loadScenarios, parseAt, runScenario, stubLlm, type EvalConfig, type Scenario } from "./harness";
@@ -120,7 +121,7 @@ test("a turn that fails twice shows up in the transcript and leaves ttfb undefin
     "[2026-11-04 15:00:03] bot → a: (turn_failed: provider down)",
     "[2026-11-04 15:00:33] bot → a: (turn_failed: provider down)",
   ]);
-  expect(r.probes[0]).toMatchObject({ answer: "", label: "wrong", ttfbMs: undefined });
+  expect(r.probes[0]).toMatchObject({ answer: FALLBACK, label: "wrong", reason: "the turn failed: only the fallback line went out", ttfbMs: undefined }); // "broke" contains "ok": a string check alone would pass it
   expect(r.probes[0].totalMs).toBeTypeOf("number");
 });
 

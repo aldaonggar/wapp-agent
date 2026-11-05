@@ -1,5 +1,6 @@
 export type ReplyEvent =
   | { type: "react"; target: string; emoji: string } // target "" = their newest message
+  | { type: "voice" } // the model asked for this reply to go out as a voice note
   | { type: "bubble"; text: string; quote?: string };
 
 const LIMIT = 4096;
@@ -61,6 +62,12 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
   }
 
   function* line(l: string): Generator<ReplyEvent> {
+    // "voice: yes" is a header only before any bubble text; anywhere it is never bubble text, and any other value is no request.
+    const voice = /^\s*voice:\s*(\S*)\s*$/i.exec(l);
+    if (voice) {
+      if (emitted === 0 && !cur.some((x) => x.trim()) && /^(yes|y|true)$/i.test(voice[1].replace(/[.,!;:]+$/, ""))) yield { type: "voice" };
+      return;
+    }
     const isHeader = /^\s*react:/i.test(l);
     // A tool step makes the model write its header again: a react line before any bubble text is still the header.
     if (!started || (isHeader && emitted === 0 && !cur.some((x) => x.trim()))) {

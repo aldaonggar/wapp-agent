@@ -9,7 +9,7 @@ import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
-import { addReminder, cancelReminder, pendingReminders, scheduleReminder } from "./reminders";
+import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
 import { tzFromPhone } from "./timezone";
 import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
@@ -26,6 +26,7 @@ const DAY = 86_400_000; // Meta's free-form window after their last message; app
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
+export const FALLBACK = "sorry, something broke on my side. can you send that again in a bit?";
 const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
@@ -166,7 +167,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false;
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false;
     const outIds: string[] = [];
 
     try {
@@ -218,14 +219,6 @@ export class ContactCore {
           nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db),
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
-        const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
-        const tools = { set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
-        this.abort = new AbortController();
-        const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
-          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
-          sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
-        });
 
         const deliver = async (text: string, quote?: string) => {
           if (bubbles > 0) {
@@ -243,6 +236,37 @@ export class ContactCore {
           db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
           outIds.push(rowId);
         };
+
+        const { search } = this.deps;
+        const searchTool = search && tool({
+          description: "Look something up on the web: current or outside information you do not have. Sends `say` to them first, then returns the top results' main pages.",
+          inputSchema: z.object({
+            say: z.string().min(1).describe("one short sentence in your own voice telling them you are checking (\"sec, let me look that up\")"),
+            query: z.string().min(1).describe("what to search for"),
+          }),
+          execute: async ({ say, query }) => {
+            if (searched) return { error: "one search per turn" };
+            searched = true;
+            await deliver(say); // before the search starts: they see it at the usual first-bubble time
+            wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
+            const t = performance.now(), results = (await search(query)).slice(0, 3).map((r) => ({ ...r, text: r.text.slice(0, 3000) }));
+            this.deps.log({ event: "search", results: results.length, ms: ms(performance.now() - t) }); // never the query
+            return results.length ? { results } : { results: [], note: "nothing found" };
+          },
+        });
+        const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
+        const tools = {
+          set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}),
+          ...(hasUrl || searchTool ? { view_page: this.viewPageTool } : {}), ...(searchTool ? { search_web: searchTool } : {}),
+        };
+        this.abort = new AbortController();
+        const { text, done } = llm.stream({
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
+          // view_page opens up once a search ran; search results are untrusted text, so the tools that delete close then.
+          activeTools: () => Object.keys(tools).filter((k) => (k === "view_page" ? hasUrl || searched : !(searched && (k === "forget" || k === "cancel_reminder")))),
+          maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
+          sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
+        });
 
         let restart = false;
         try {
@@ -266,6 +290,10 @@ export class ContactCore {
               }
               continue;
             }
+            if (ev.type === "voice") { // asked for in text: the same held voice reply as for a voice note in, only before the first bubble
+              if (bubbles === 0 && this.deps.tts && wa.sendAudio) voiceReply = true;
+              continue;
+            }
             const quote = ev.quote ? resolve(ev.quote) : undefined;
             if (voiceReply && !SPEAKABLE.test(ev.text)) { // from here on the reply streams as text, starting with what was held
               voiceReply = false;
@@ -284,7 +312,7 @@ export class ContactCore {
           const wamid = await this.sendVoice(to, joined, quote);
           if (wamid) {
             sends++;
-            bubbles = held.length;
+            bubbles += held.length; // a search's say line may have gone out as text before
             ttfb ??= performance.now() - t0;
             db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, voice, status) VALUES (?, 'out', 'audio', ?, ?, ?, 1, 'sent')", wamid, joined, clock.now(), quote ?? null);
             outIds.push(wamid);
@@ -311,6 +339,18 @@ export class ContactCore {
     const keys = Object.keys(row);
     const turnId = db.all<{ id: number }>(`INSERT INTO turns(${keys}) VALUES (${keys.map(() => "?")}) RETURNING id`, ...Object.values(row))[0].id;
     db.run("UPDATE messages SET status='handled', turn_id=? WHERE id IN (SELECT value FROM json_each(?))", turnId, JSON.stringify(pending.map((r) => r.id)));
+    // A failed turn that showed them no text and has no retry left: one fixed line instead of a typing indicator and silence.
+    // After the rows are handled, so it can never go out twice for the same burst.
+    if (error !== null && bubbles === 0 && to) {
+      try {
+        const wamid = await this.sendBubble(to, FALLBACK), rowId = wamid || `local.${crypto.randomUUID()}`;
+        db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", rowId, FALLBACK, clock.now(), wamid === null ? "failed" : "sent");
+        outIds.push(rowId);
+        this.deps.log({ event: "fallback_sent", contact: this.deps.contactKey, ok: wamid !== null });
+      } catch (e) {
+        this.error("fallback_failed", e);
+      }
+    }
     db.run("UPDATE messages SET turn_id=? WHERE id IN (SELECT value FROM json_each(?))", turnId, JSON.stringify(outIds));
     const next = this.pending().at(-1);
     const now = clock.now();
@@ -398,18 +438,25 @@ export class ContactCore {
     }
   }
 
-  // Timer 4 (reminder_due is already NULL). Each due reminder is marked before its send: never twice, never retried.
+  // Timer 4 (reminder_due is already NULL). At least once: 'sending' before the send, 'sent' after it. A row a reset left in
+  // 'sending' is sent once more after a minute, marked 'sent' first, so a reset costs one duplicate at worst and never loops.
   private async reminderTimer(now: number): Promise<void> {
     const { db, clock } = this.deps;
     try {
       const c = db.all<{ wa_id: string; last_inbound_ts: number | null }>("SELECT wa_id, last_inbound_ts FROM contact")[0];
       const windowed = this.window24h();
-      for (const r of pendingReminders(db).filter((r) => r.due_ts <= now)) {
+      for (const r of dueReminders(db, now)) {
         const inWindow = !windowed || now - (c?.last_inbound_ts ?? 0) <= DAY;
-        db.run("UPDATE reminders SET status=? WHERE id=?", inWindow ? "sent" : "skipped", r.id);
-        if (!inWindow) { this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id }); continue; }
+        if (!inWindow) {
+          db.run("UPDATE reminders SET status='skipped' WHERE id=?", r.id);
+          this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id });
+          continue;
+        }
+        db.run("UPDATE reminders SET status=?, attempted_at=? WHERE id=?", r.status === "sending" ? "sent" : "sending", clock.now(), r.id);
         const text = `Reminder: ${r.text}`;
         const wamid = await this.sendBubble(c.wa_id, text);
+        db.run("UPDATE reminders SET status=? WHERE id=?", wamid ? "sent" : "skipped", r.id);
+        if (!wamid) this.deps.log({ event: "reminder_skipped", reason: "send", id: r.id }); // the send error itself is logged by sendBubble
         db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, text, clock.now(), wamid === null ? "failed" : "sent");
       }
     } catch (e) {
@@ -436,7 +483,7 @@ export class ContactCore {
     });
     let bubbles = 0;
     for await (const ev of parseReply(text, 1)) {
-      if (ev.type === "react") continue;
+      if (ev.type !== "bubble") continue;
       bubbles++;
       const wamid = await this.sendBubble(contact.wa_id, ev.text);
       db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, ev.text, clock.now(), wamid === null ? "failed" : "sent");

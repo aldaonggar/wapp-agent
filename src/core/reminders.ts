@@ -6,8 +6,15 @@ export interface Reminder { id: number; text: string; due_ts: number }
 const YEAR = 366 * 86_400_000, MAX_TEXT = 200;
 const AT = /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?$/; // a zone designator or AM/PM would be read as the wrong local digits, so it is refused
 
-// The earliest pending reminder arms the timer (state.reminder_due); NULL when there is none.
-export const scheduleReminder = (db: Db): void => db.run("UPDATE state SET reminder_due = (SELECT min(due_ts) FROM reminders WHERE status = 'pending')");
+const RESEND_MS = 60_000; // a row still 'sending' this long after its attempt was cut off by a reset: it is sent once more
+
+// The earliest pending reminder, or a cut-off send's retry time, arms the timer (state.reminder_due); NULL when there is none.
+export const scheduleReminder = (db: Db): void =>
+  db.run(`UPDATE state SET reminder_due = (SELECT min(CASE status WHEN 'sending' THEN attempted_at + ${RESEND_MS} ELSE due_ts END) FROM reminders WHERE status IN ('pending', 'sending'))`);
+
+// What the timer sends now: pending rows past their time, and sends cut off at least RESEND_MS ago.
+export const dueReminders = (db: Db, now: number): (Reminder & { status: string })[] =>
+  db.all("SELECT id, text, due_ts, status FROM reminders WHERE (status = 'pending' AND due_ts <= ?) OR (status = 'sending' AND attempted_at <= ?) ORDER BY due_ts, id", now, now - RESEND_MS);
 
 export const pendingReminders = (db: Db): Reminder[] => db.all<Reminder>("SELECT id, text, due_ts FROM reminders WHERE status = 'pending' ORDER BY due_ts, id");
 

@@ -18,6 +18,8 @@ Everything here happens in web dashboards and cannot be scripted. Do the section
 
 Where a button label below might differ from what you see, the text says what to look for.
 
+Web search (`search_web`) needs nothing here: it fetches DuckDuckGo's public HTML results page, with no account or key.
+
 ## 1. Meta app and test number (about 15 minutes)
 
 1. Go to https://developers.facebook.com, click **Get Started**, log in with a Facebook account, accept the terms, verify your email.

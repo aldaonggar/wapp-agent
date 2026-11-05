@@ -28,6 +28,13 @@ test("migrate adds facts.followup_due to a database created before it existed", 
   expect(db.all("SELECT followup_due FROM facts")).toEqual([{ followup_due: 5 }]);
 });
 
+test("migrate adds reminders.attempted_at to a database created before it existed", () => {
+  db.batch("CREATE TABLE reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, due_ts INTEGER, created_at INTEGER, source_message_id TEXT, status TEXT DEFAULT 'pending', relative INTEGER DEFAULT 0)");
+  migrate(db); migrate(db);
+  db.run("INSERT INTO reminders(text, status, attempted_at) VALUES ('a', 'sending', 5)");
+  expect(db.all("SELECT status, attempted_at FROM reminders")).toEqual([{ status: "sending", attempted_at: 5 }]);
+});
+
 test("blob round trip keeps float32 values", () => {
   migrate(db);
   db.run("INSERT INTO facts(text, embedding) VALUES ('a', ?)", vecToBlob(new Float32Array([0.1, -2, 3.5])));

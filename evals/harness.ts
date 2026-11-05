@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { parse } from "yaml";
 import { makeSnapshot } from "../src/browser";
 import { MAX_WAIT_MS } from "../src/core/cadence";
-import { ContactCore } from "../src/core/contact";
+import { ContactCore, FALLBACK } from "../src/core/contact";
 import { fromNode, migrate, vecToBlob } from "../src/core/db";
 import type { Clock, Deps, Features, Inbound, Llm, ModelChoice, ObjectCall, StreamCall, Usage, WaClient } from "../src/core/types";
 import { MODELS, pickModels } from "../src/models";
@@ -139,7 +139,7 @@ export async function cosineRerank(query: string, docs: string[]): Promise<numbe
 
 export function makeEvalDeps(o: {
   clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>;
-  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; tts?: Deps["tts"]; snapshot?: Deps["snapshot"]; contactKey?: string; log?: Deps["log"];
+  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; tts?: Deps["tts"]; snapshot?: Deps["snapshot"]; search?: Deps["search"]; contactKey?: string; log?: Deps["log"];
 }): Deps {
   const db = fromNode(new DatabaseSync(":memory:"));
   migrate(db);
@@ -165,6 +165,7 @@ export function makeEvalDeps(o: {
     transcribe: o.transcribe ?? (async () => "(voice)"),
     tts: o.tts ?? (async () => ({ bytes: new Uint8Array([0x4f, 0x67, 0x67, 0x53]), mime: "audio/ogg" })), // "OggS"
     snapshot: o.snapshot ?? (async () => null),
+    search: o.search ?? (async () => []), // never the network, even on real-model runs; a test passes its own results
     models: { ...pickModels({}), ...o.models },
     features: { memory: false, retrieval: "hybrid", ...o.features },
     contactKey: o.contactKey ?? "test",
@@ -389,7 +390,8 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
         // The answer must come from recall, not from the always-present profile: some hit shown to the reply names each term.
         const recalled = (JSON.parse(turn?.recalled ?? "[]") as string[]).map((t) => t.toLowerCase());
         const missing = (step.expect_recalled ?? []).filter((x) => !recalled.some((t) => t.includes(x.toLowerCase())));
-        const { usage, ...verdict }: Verdict = step.max_turns !== undefined && turns > step.max_turns
+        const { usage, ...verdict }: Verdict = answer === FALLBACK ? { label: "wrong" as const, reason: "the turn failed: only the fallback line went out" }
+          : step.max_turns !== undefined && turns > step.max_turns
           ? { label: "wrong" as const, reason: `turns=${turns} > max_turns=${step.max_turns}` }
           : missing.length ? { label: "wrong" as const, reason: missing.map((x) => `not recalled: "${x}"`).join("; ") }
           : await score(realLlm, step, answer, context);

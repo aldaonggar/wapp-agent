@@ -3,7 +3,7 @@ import { FakeClock, FakeWa, drain, hashEmbed, makeEvalDeps, stubLlm } from "../.
 import { routeTransports } from "../telegram";
 import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
-import { ContactCore } from "./contact";
+import { ContactCore, FALLBACK } from "./contact";
 import { vecToBlob } from "./db";
 import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
 
@@ -11,12 +11,12 @@ const FROM = "15550000001";
 type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
-function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"] } = {}) {
+function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"]; search?: Deps["search"] } = {}) {
   const clock = new FakeClock();
   const view = clock.forContact(FROM);
   const wa = new FakeWa(clock);
   const llm = stubLlm({ reply: o.reply, object: o.object });
-  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot });
+  const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot, search: o.search });
   const core = new ContactCore(deps);
   const { db } = deps;
   let n = 0;
@@ -77,7 +77,8 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
-  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder", "view_page", "search_web"]); // memory off: no forget tool
+  expect(t.llm.calls[0].activeTools!()).toEqual(["set_reminder", "cancel_reminder", "search_web"]); // view_page waits for a link or a search
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget tool"); // memory off: no control sentences (the first-contact line may say "forget")
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
@@ -171,7 +172,7 @@ test("an llm error ends the turn cleanly", async () => {
   expect(t.turns()[0].error).toContain("upstream 500");
   expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
   expect(t.view.alarmAt).toBeNull();
-  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "typing"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "typing", "text"]); // the fallback line after the second failure
 });
 
 test("timers are consumed with memory off", async () => {
@@ -239,6 +240,45 @@ test("an early failure on both attempts still marks the pending rows handled", a
   await t.core.afterTurn;
   expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000); // only the insights timer is left
   expect(t.llm.objectCalls.map((c) => c.job)).toEqual(["extract"]); // what they said is remembered even though the reply failed
+});
+
+test("two failures in a row send exactly one fallback, after the second alarm, stored as an outbound row; the pending rows are handled", async () => {
+  const t = setup({ reply: () => { throw new Error("upstream 500"); } });
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("the movie was great");
+  await t.fire();
+  expect(t.wa.sent.filter((s) => s.kind === "text")).toEqual([]);
+  await t.fire();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual([FALLBACK]);
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([[FALLBACK, "sent"]]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(log).toHaveBeenCalledWith({ event: "fallback_sent", contact: "test", ok: true });
+  expect(t.view.alarmAt).toBeNull();
+  await t.run(t.clock.t + 3_600_000);
+  expect(t.wa.sent.filter((s) => s.kind === "text")).toHaveLength(1);
+});
+
+test("a reaction-only turn that then fails gets the fallback (no retry: something already went out)", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n"], error: new Error("stream cut") }) });
+  await t.say("the movie was great");
+  await t.fire();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "reaction", "text"]);
+  expect(t.wa.sent.at(-1)!.body).toBe(FALLBACK);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
+});
+
+test("a fallback that cannot be sent is stored failed and logged; the alarm still completes", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n"], error: new Error("stream cut") }) });
+  const log = vi.fn();
+  t.deps.log = log;
+  t.wa.failNext = new WaError(0, 502, "bad gateway");
+  await t.say("the movie was great");
+  await expect(t.fire()).resolves.toBeUndefined();
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([[FALLBACK, "failed"]]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(log).toHaveBeenCalledWith({ event: "fallback_sent", contact: "test", ok: false });
 });
 
 test("a failing recall still gets a reply, with no memories and a recall_failed log", async () => {
@@ -406,6 +446,36 @@ test("a mid-stream error on a voice note still sends the complete bubble as text
   expect(t.turns()).toMatchObject([{ error: expect.stringContaining("stream cut"), bubbles: 1 }]);
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.view.alarmAt).toBeNull();
+});
+
+// Voice asked for in text: the model writes a "voice: yes" header and the reply takes the voice-note path.
+test("a text message whose reply carries voice: yes gets one voice note and no text bubbles", async () => {
+  const t = setup({ reply: () => "react: none\nvoice: yes\nsure, here it is\n---\nhave a good one" });
+  const spoken: string[] = [];
+  t.deps.tts = async (text) => { spoken.push(text); return { bytes: new Uint8Array([7]), mime: "audio/ogg" }; };
+  await t.say("say it out loud please");
+  await t.run();
+  expect(spoken).toEqual(["sure, here it is\n\nhave a good one"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
+  expect(t.db.all("SELECT kind, voice, text FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", voice: 1, text: "sure, here it is\n\nhave a good one" }]);
+  expect(t.turns()[0]).toMatchObject({ bubbles: 2, error: null });
+});
+
+test("voice: yes after the first bubble is ignored: the reply stays text", async () => {
+  const t = setup({ reply: () => "react: none\nsure\n---\nvoice: yes\nhere it is" });
+  await t.say("say it out loud please");
+  await t.run();
+  expect(t.wa.sent.map((s) => [s.kind, s.body])).toEqual([["typing", undefined], ["text", "sure"], ["typing", undefined], ["text", "here it is"]]);
+});
+
+test("voice: yes on a client that cannot send audio, or with no text-to-speech, stays text", async () => {
+  for (const arrange of [(t: ReturnType<typeof setup>) => { Object.assign(t.wa, { sendAudio: undefined }); }, (t: ReturnType<typeof setup>) => { t.deps.tts = undefined; }]) {
+    const t = setup({ reply: () => "react: none\nvoice: yes\nsure, here it is" });
+    arrange(t);
+    await t.say("say it out loud please");
+    await t.run();
+    expect(t.wa.sent.map((s) => [s.kind, s.body])).toEqual([["typing", undefined], ["text", "sure, here it is"]]);
+  }
 });
 
 test("when the extractor learns the real timezone, a clock-time reminder keeps the wall time the person was told and a duration keeps its instant", async () => {
@@ -644,10 +714,10 @@ test("view_page tool is attached only when the thread has a URL", async () => {
   const t = setup({ snapshot });
   await t.say("no link here");
   await t.run();
-  expect(t.llm.calls[0].tools?.view_page).toBeUndefined();
+  expect(t.llm.calls[0].activeTools!()).not.toContain("view_page");
   await t.say("https://a.com/x");
   await t.run();
-  expect(t.llm.calls[1].tools?.view_page).toBeDefined();
+  expect(t.llm.calls[1].activeTools!()).toContain("view_page");
   const out = await t.llm.calls[1].tools!.view_page.execute!({ url: "https://a.com/x" }, { toolCallId: "t", messages: [] } as never);
   expect(out).toEqual({ title: "A page", status: 200, finalUrl: "https://a.com/x", markdown: "# Hello page" });
 });
@@ -677,8 +747,78 @@ test("view_page is attached when the URL is in one of the last 5 handled rows, n
     t.clock.t += 60_000;
     await t.say("and now?");
     await t.run();
-    expect(!!t.llm.calls.at(-1)!.tools?.view_page).toBe(attached);
+    expect(t.llm.calls.at(-1)!.activeTools!().includes("view_page")).toBe(attached);
   }
+});
+
+// search_web: the say line goes out first through the usual bubble path, then the results come back to the model.
+const searchCall = (c: StreamCall, input = { say: "sec, let me look that up", query: "louvre hours" }) => c.tools!.search_web.execute!(input, { toolCallId: "s", messages: [] } as never);
+
+test("search_web sends `say` first, then searches and returns at most 3 results capped at 3,000 characters; logged without the query", async () => {
+  const order: string[] = [];
+  const hits = [1, 2, 3, 4].map((i) => ({ title: `T${i}`, url: `https://${i}.example/`, text: "x".repeat(5000) }));
+  const t = setup({
+    search: async (q) => { order.push(`search:${q}`); return hits; },
+    reply: async (c) => {
+      const out = (await searchCall(c)) as { results: { text: string }[] };
+      order.push("result");
+      expect(out.results.map((r) => r.text.length)).toEqual([3000, 3000, 3000]);
+      return "react: none\nopen 9 to 6 today";
+    },
+  });
+  const log = vi.fn();
+  t.deps.log = log;
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = async (...a) => { order.push(`send:${a[1]}`); return send(...a); };
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(order).toEqual(["send:sec, let me look that up", "search:louvre hours", "result", "send:open 9 to 6 today"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text", "typing", "typing", "text"]); // typing again after the say line, and before the next bubble
+  expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["sec, let me look that up", "sent"], ["open 9 to 6 today", "sent"]]);
+  expect(t.turns()[0].bubbles).toBe(2);
+  expect(log).toHaveBeenCalledWith({ event: "search", results: 3, ms: expect.any(Number) });
+  expect(JSON.stringify(log.mock.calls)).not.toContain("louvre");
+});
+
+test("search_web runs once per turn: a second call returns an error without a second say line or search", async () => {
+  const search = vi.fn(async () => [{ title: "T", url: "https://t.example/", text: "hours" }]);
+  const t = setup({ search, reply: async (c) => `react: none\n${JSON.stringify([await searchCall(c), await searchCall(c, { say: "one more sec", query: "again" })].map((r) => Object.keys(r as object)))}\n${JSON.stringify(await searchCall(c, { say: "x", query: "y" }))}` });
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(search).toHaveBeenCalledTimes(1);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", '[["results"],["error"]]\n{"error":"one search per turn"}']);
+});
+
+test("search_web with nothing found returns an empty list and a note (the harness default never touches the network)", async () => {
+  const t = setup({ reply: async (c) => `react: none\n${JSON.stringify(await searchCall(c))}` });
+  await t.say("what's the weather in almaty");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", '{"results":[],"note":"nothing found"}']);
+});
+
+test("view_page is offered from the step after a search, so the model can open a result; forget and cancel_reminder are not", async () => {
+  let before: string[] = [], after: string[] = [];
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }), reply: async (c) => { before = c.activeTools!(); await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
+  await t.say("no link here");
+  await t.run();
+  expect(before).toEqual(["set_reminder", "cancel_reminder", "forget", "search_web"]);
+  expect(after).toEqual(["set_reminder", "view_page", "search_web"]); // a fetched page must not be able to talk the model into deleting anything
+});
+
+test("without a search dependency there is no search_web tool and view_page keeps its link-only rule", async () => {
+  const t = setup();
+  t.deps.search = undefined;
+  await t.say("no link here");
+  await t.run();
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]);
+});
+
+test("a stream that dies after the say line gets no fallback: a bubble already went out", async () => {
+  const t = setup({ reply: async (c) => { await searchCall(c); return { chunks: ["react: none\n"], error: new Error("stream cut") }; } });
+  await t.say("is the louvre open today?");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up"]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
 });
 
 // Follow-ups: the plan is stored by remember() from a real turn; times below are New York (EST) local.
@@ -825,7 +965,7 @@ test("set_reminder stores the reminder and arms the alarm; the timer sends it on
   expect(t.llm.calls).toHaveLength(1);
 });
 
-test("a reset during one reminder's send does not lose the next: the redelivered alarm re-arms it from the table", async () => {
+test("a reset during one reminder's send loses neither it nor the next: the cut-off one is sent again a minute later", async () => {
   const t = setup({ reply: async (c) => { await c.tools!.set_reminder.execute!({ text: "a", at: "2026-11-05 09:00" }, { toolCallId: "t", messages: [] } as never); return remind("b", "2026-11-05 10:00")(c); } });
   t.clock.t = ny("2026-11-04 10:00");
   await t.say("two reminders tomorrow");
@@ -836,15 +976,72 @@ test("a reset during one reminder's send does not lose the next: the redelivered
   t.clock.t = ny("2026-11-05 09:00");
   t.view.alarmAt = null;
   void t.core.alarm();
-  await vi.waitFor(() => expect(t.db.all("SELECT status FROM reminders WHERE id = 1")).toEqual([{ status: "sent" }]));
+  await vi.waitFor(() => expect(t.db.all("SELECT status, attempted_at FROM reminders WHERE id = 1")).toEqual([{ status: "sending", attempted_at: ny("2026-11-05 09:00") }]));
   expect(t.state().reminder_due).toBeNull();
   t.wa.sendText = send;
   const fresh = new ContactCore(t.deps); // same storage, new instance; alarms are at-least-once, so it is delivered again
   await fresh.alarm();
-  expect(t.view.alarmAt).toBe(ny("2026-11-05 10:00"));
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 09:01")); // the cut-off send's retry comes before the next reminder
   await drain(fresh, t.view, t.clock, ny("2026-11-05 10:00"));
-  expect(texts(t).map((s) => s.body)).toEqual([expect.stringContaining('"id":2'), "Reminder: b"]);
+  expect(texts(t).map((s) => [s.body, s.at])).toEqual([[expect.stringContaining('"id":2'), ny("2026-11-04 10:00") + 3000], ["Reminder: a", ny("2026-11-05 09:01")], ["Reminder: b", ny("2026-11-05 10:00")]]);
   expect(t.db.all("SELECT id, status FROM reminders ORDER BY id")).toEqual([{ id: 1, status: "sent" }, { id: 2, status: "sent" }]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+// A contact row and a reminder already in 'sending', as a reset mid-send leaves it.
+const stuck = async (attemptedAgo: number) => {
+  const t = setup();
+  await t.say("hi");
+  await t.run();
+  const now = t.clock.t;
+  t.db.run("INSERT INTO reminders(text, due_ts, created_at, status, attempted_at) VALUES ('call mum', ?, ?, 'sending', ?)", now - attemptedAgo, now - 3_600_000, now - attemptedAgo);
+  await t.core.alarm(); // nothing due yet: the alarm only re-arms from the table
+  return { t, now };
+};
+
+test("a reminder left in 'sending' for 61 s is sent on the next alarm and ends sent; the alarm was armed for its retry time", async () => {
+  const { t, now } = await stuck(61_000);
+  expect(t.view.alarmAt).toBe(now - 1000); // attempted_at + 60 s, already past: fires at once
+  await t.fire();
+  expect(texts(t).map((s) => s.body)).toEqual(["ok", "Reminder: call mum"]);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reminder in 'sending' for 10 s is not touched; the alarm is armed for attempted_at + 60 s", async () => {
+  const { t, now } = await stuck(10_000);
+  expect(t.state().reminder_due).toBe(now + 50_000);
+  expect(t.view.alarmAt).toBe(now + 50_000);
+  t.db.run("UPDATE state SET reminder_due=?", now); // an alarm that fires now anyway (another timer) leaves it alone
+  await t.core.alarm();
+  expect(texts(t)).toHaveLength(1);
+  expect(t.db.all("SELECT status, attempted_at FROM reminders")).toEqual([{ status: "sending", attempted_at: now - 10_000 }]);
+  expect(t.view.alarmAt).toBe(now + 50_000);
+});
+
+test("the retry of a cut-off send is marked sent before it goes out: a second reset cannot make it loop", async () => {
+  const { t } = await stuck(61_000);
+  t.wa.sendText = () => new Promise(() => {});
+  t.view.alarmAt = null;
+  void t.core.alarm();
+  await vi.waitFor(() => expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]));
+  expect(t.state().reminder_due).toBeNull();
+});
+
+test("a reminder whose send fails ends skipped, logged without the text; the outbound row is failed", async () => {
+  const t = setup({ reply: remind("call the dentist", "2026-11-04 10:30") });
+  t.clock.t = ny("2026-11-04 10:00");
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("remind me at 10:30 to call the dentist");
+  await t.run();
+  t.wa.failNext = new WaError(0, 502, "bad gateway");
+  await t.run(ny("2026-11-04 10:30"));
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "skipped" }]);
+  expect(outs(t).at(-1)).toMatchObject({ text: "Reminder: call the dentist", status: "failed" });
+  expect(log).toHaveBeenCalledWith({ event: "reminder_skipped", reason: "send", id: 1 });
+  expect(JSON.stringify(log.mock.calls)).not.toContain("dentist");
+  expect(t.view.alarmAt).toBeNull();
 });
 
 test("set_reminder refuses a time already past with an error the model can relay; nothing is stored or armed", async () => {

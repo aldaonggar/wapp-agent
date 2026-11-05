@@ -43,3 +43,54 @@ export function makeSnapshot(cfg: { accountId: string; token: string; fetch?: ty
     }
   };
 }
+
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+const RESULTS = 3, PAGE_CHARS = 3000;
+const NAMED: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " };
+const decode = (s: string) => s.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (m, e: string) => {
+  if (e[0] !== "#") return NAMED[e.toLowerCase()] ?? m;
+  const n = Number("0" + e.slice(1)); // "0x27" and "039" both parse
+  return n <= 0x10ffff ? String.fromCodePoint(n) : m;
+});
+
+// DuckDuckGo's HTML results: organic anchors have class result__a and wrap the target in uddg= (ads link to y.js without it).
+export function parseResults(html: string): { title: string; url: string }[] {
+  const out: { title: string; url: string }[] = [];
+  for (const [a, inner] of html.matchAll(/<a\s[^>]*class="[^"]*\bresult__a\b[^"]*"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const href = /\shref="([^"]*)"/i.exec(a)?.[1];
+    const url = href ? URL.parse(decode(href), "https://duckduckgo.com")?.searchParams.get("uddg") : null;
+    if (url && /^https?:\/\//i.test(url) && !out.some((r) => r.url === url)) out.push({ title: decode(inner.replace(/<[^>]*>/g, "")).trim(), url });
+  }
+  return out;
+}
+
+// Readable text of a page: scripts, styles and comments dropped, tags to spaces, whitespace collapsed, the first 3,000 characters.
+export const pageText = (html: string): string =>
+  decode(html.replace(/<(script|style)\b[\s\S]*?<\/\1\s*>|<!--[\s\S]*?-->/gi, " ").replace(/<[^>]*>/g, " ")).replace(/\s+/g, " ").trim().slice(0, PAGE_CHARS);
+
+// The top 3 results and their main pages, no Browser Rendering. Never throws: a refusal is [], a page that fails has text "".
+export function makeSearch(cfg: { fetch?: typeof fetch; log?: (e: Record<string, unknown>) => void } = {}): NonNullable<Deps["search"]> {
+  const f = cfg.fetch ?? fetch, log = cfg.log ?? console.log;
+  const get = (url: string, ms: number) => f(url, { headers: { "User-Agent": UA, Accept: "text/html" }, signal: AbortSignal.timeout(ms) });
+  return async (query) => {
+    try {
+      const res = await get(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, 6000);
+      const hits = res.status === 200 ? parseResults(await res.text()).slice(0, RESULTS) : [];
+      if (!hits.length) {
+        log({ event: "search_failed", status: res.status }); // 202 is DuckDuckGo's bot challenge; 200 with nothing parsed is a challenge page or no results
+        return [];
+      }
+      return await Promise.all(hits.map(async (h) => {
+        try {
+          const r = await get(h.url, 5000);
+          return { ...h, text: r.ok && /text|html/i.test(r.headers.get("content-type") ?? "text/html") ? pageText(await r.text()) : "" };
+        } catch {
+          return { ...h, text: "" };
+        }
+      }));
+    } catch (e) {
+      log({ event: "search_failed", error: e instanceof Error ? e.message : String(e) });
+      return [];
+    }
+  };
+}

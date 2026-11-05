@@ -51,7 +51,7 @@ test("buildPrompt adds the first-contact introduction line only while the histor
   const base = { profile: "", memories: [], nowLocal: "2026-11-04 14:05", tz: "UTC", tzConfirmed: false, snapshots: [], pending: [{ id: "a", direction: "in" as const, text: "Hi, I just pressed Start.", ts: T, kind: "text", alias: "#1" }] };
   const first = buildPrompt({ ...base, history: [] }).system[1].content;
   expect(first).toContain("first contact: nothing has been said before. Before anything else, introduce yourself in one short bubble");
-  expect(first).toContain("set reminders at a time they name, read photos, listen to voice notes, read links they send, and forget anything on request");
+  expect(first).toContain("set reminders at a time they name, read photos, listen to voice notes, read links they send, look things up on the web when you need current information, and forget anything on request");
   expect(first).toContain("Two short bubbles at most.");
   expect(buildPrompt({ ...base, history: [row(0)] }).system[1].content).not.toContain("first contact:");
 });
@@ -109,4 +109,12 @@ test("buildPrompt lists pending reminders in local time with their ids; the syst
   expect(SYSTEM_PROMPT).not.toMatch(/on WhatsApp|only rarely/);
   expect(SYSTEM_PROMPT).toContain("never write a timestamp, a bracketed time or a date prefix");
   expect(SYSTEM_PROMPT).toContain("Never an em dash or en dash");
+});
+
+test("the system prompt offers search and a voice note on request, and says how to ask for each", () => {
+  expect(SYSTEM_PROMPT).toContain("- Look things up on the web when you need current information.");
+  expect(SYSTEM_PROMPT).toContain("browsing beyond a quick web search and links they send");
+  expect(SYSTEM_PROMPT).toContain("search_web is only for current or outside information");
+  expect(SYSTEM_PROMPT).toContain("- Voice notes: when they send you one, or whenever they ask for one, your reply goes out as a voice note (you can say so when asked). A plain text message still gets a text reply.");
+  expect(SYSTEM_PROMPT).toContain('- If they ask you to say it out loud, speak, or send a voice note, put "voice: yes" as a header line right after the react line and write the reply the way you would say it; it goes out as one voice note.');
 });

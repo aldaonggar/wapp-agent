@@ -4,7 +4,10 @@ import type { z } from "zod";
 import { CHINA_HOSTS, costUsd, needsHostFilter, type ReasoningSetting } from "./models";
 
 export interface Usage { job: string; model: string; provider?: string; input: number; output: number; cached: number; reasoning: number; costTable: number; costReported?: number; ms: number }
-export interface StreamCall { job: "reply" | "followup"; modelId: string; system: SystemModelMessage[]; messages: ModelMessage[]; tools?: ToolSet; maxOutputTokens: number; reasoning: ReasoningSetting; sessionId: string; abortSignal?: AbortSignal }
+export interface StreamCall {
+  job: "reply" | "followup"; modelId: string; system: SystemModelMessage[]; messages: ModelMessage[]; tools?: ToolSet; maxOutputTokens: number; reasoning: ReasoningSetting; sessionId: string; abortSignal?: AbortSignal;
+  activeTools?: () => string[]; // asked before every step: which of `tools` the model is offered (one can open up after another ran)
+}
 export interface ObjectCall<T> { job: "extract" | "derive" | "judge"; modelId: string; system: string; messages: ModelMessage[]; schema: z.ZodType<T>; reasoning?: ReasoningSetting; sessionId: string }
 export interface Llm {
   // On a stream error `text` throws after the last delta and `done` rejects (pre-handled, but `await done` still throws).
@@ -46,6 +49,7 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
         messages: call.messages,
         tools: call.tools,
         stopWhen: call.tools ? isStepCount(3) : undefined,
+        prepareStep: call.activeTools && (() => ({ activeTools: call.activeTools!() })),
         maxOutputTokens: call.maxOutputTokens,
         maxRetries: 1,
         timeout: { firstChunkMs: 15000, totalMs: 60000 },
