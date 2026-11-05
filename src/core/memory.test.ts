@@ -176,7 +176,7 @@ test("recall cosine scores cos + 0.05 x recency, labels insights and keeps the t
   expect(hits[1].date).toBe("2025-11-04");
 });
 
-test("forget removes by substring and returns the count", async () => {
+test("forget removes by substring and returns the count and the deleted texts", async () => {
   const t = setup();
   t.embed.mockImplementation(async (texts) => texts.map((_, i) => (i ? vec(0, 0, 1) : vec(0, 1)))); // orthogonal to everything: substring only
   await t.addFact("Sister Aru lives in Almaty", { v: vec(1) });
@@ -184,13 +184,13 @@ test("forget removes by substring and returns the count", async () => {
   await t.addFact("Has a dog named Biscuit", { v: vec(1) });
   t.addInsight("Visits ALMATY often", [1]);
   t.db.run("INSERT INTO profile(id, text, updated_at) VALUES (1, ?, 0)", "Name: Nur\nSister: Aru, lives in Almaty");
-  expect(await forget(t.deps, "almaty")).toBe(2);
+  expect(await forget(t.deps, "almaty")).toEqual({ deleted: 2, texts: ["Sister Aru lives in Almaty", "Sister Aru lived in Almaty before Astana"] });
   expect(t.facts().map((f) => f.text)).toEqual(["Has a dog named Biscuit"]);
   expect(t.fts().map((r) => r.text)).toEqual(["Has a dog named Biscuit"]);
   expect(t.insights()).toEqual([]);
   expect(profileText(t.db)).toBe("Name: Nur");
   t.embed.mockClear();
-  expect(await forget(t.deps, "  ")).toBe(0);
+  expect((await forget(t.deps, "  ")).deleted).toBe(0);
   expect(t.embed).not.toHaveBeenCalled();
 });
 
@@ -200,9 +200,9 @@ test("forget by similarity deletes the best match and near ties above 0.68 only"
   await t.addFact("Has a dog named Biscuit", { v: vec(1) }); // 1.00
   await t.addFact("Walks the dog every morning", { v: vec(0.97, Math.sqrt(1 - 0.97 ** 2)) }); // 0.97: within 0.05 of the best
   await t.addFact("Uses a standing desk", { v: vec(0.66, Math.sqrt(1 - 0.66 ** 2)) }); // 0.66: below the floor, far from the best
-  expect(await forget(t.deps, "the pup")).toBe(2);
+  expect((await forget(t.deps, "the pup")).deleted).toBe(2);
   expect(t.facts().map((f) => f.text)).toEqual(["Uses a standing desk"]);
-  expect(await forget(t.deps, "the pup")).toBe(0); // a regeneration re-run: the next best is not a match
+  expect((await forget(t.deps, "the pup")).deleted).toBe(0); // a regeneration re-run: the next best is not a match
   expect(t.facts().map((f) => f.text)).toEqual(["Uses a standing desk"]);
 });
 
@@ -212,7 +212,7 @@ test("forget never deletes a lone fact at bge-m3 noise level (0.62)", async () =
   t.deps.embed = async (texts) => texts.map((_, i) => (i ? noise : vec(1))); // the query, then the profile line
   await t.addFact("Grew up near the sea", { v: noise });
   t.db.run("INSERT INTO profile(id, text, updated_at) VALUES (1, 'Grew up near the sea', 0)");
-  expect(await forget(t.deps, "where I live")).toBe(0);
+  expect((await forget(t.deps, "where I live")).deleted).toBe(0);
   expect(t.facts()).toHaveLength(1);
   expect(profileText(t.db)).toBe("Grew up near the sea");
 });
@@ -223,11 +223,11 @@ test("forget's substring path needs 4+ characters and whole words", async () => 
   await t.addFact("Has a dog named Biscuit", { v: vec(1) });
   await t.addFact("Works at Monzo", { v: vec(1) });
   t.db.run("INSERT INTO profile(id, text, updated_at) VALUES (1, ?, 0)", "Dog: Biscuit\nWorks at Monzo");
-  expect(await forget(t.deps, "dog")).toBe(0); // 3 characters
-  expect(await forget(t.deps, "work")).toBe(0); // "Works" is another word
+  expect((await forget(t.deps, "dog")).deleted).toBe(0); // 3 characters
+  expect((await forget(t.deps, "work")).deleted).toBe(0); // "Works" is another word
   expect(t.facts()).toHaveLength(2);
   expect(profileText(t.db)).toBe("Dog: Biscuit\nWorks at Monzo");
-  expect(await forget(t.deps, "biscuit")).toBe(1);
+  expect((await forget(t.deps, "biscuit")).deleted).toBe(1);
   expect(t.facts().map((f) => f.text)).toEqual(["Works at Monzo"]);
   expect(profileText(t.db)).toBe("Works at Monzo");
 });

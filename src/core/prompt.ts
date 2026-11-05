@@ -57,7 +57,8 @@ function line(r: HistoryRow, tz: string): string {
 }
 
 const CONTROLS = `If they ask what you know about them, answer with a short plain summary of the profile and the most relevant memories.
-If they ask you to forget something, call the forget tool before writing anything, then confirm in one line without repeating what was forgotten.`;
+If they ask you to forget something, call the forget tool before writing anything, then confirm in one line without repeating what was forgotten.
+Something they asked you to forget may still appear in the conversation above; never use or mention it again.`;
 
 const memoryLine = (m: MemoryHit) =>
   `- ${m.text} (${m.kind === "insight" ? `derived, confidence ${m.confidence ?? 0}` : m.status === "superseded" ? `superseded on ${m.date}` : `said ${m.date}`})`;

@@ -1,8 +1,15 @@
 export type ReplyEvent =
-  | { type: "react"; target: string; emoji: string }
+  | { type: "react"; target: string; emoji: string } // target "" = their newest message
   | { type: "bubble"; text: string; quote?: string };
 
 const LIMIT = 4096;
+
+// Lenient: "react: #n <emoji>", "react: #n<emoji>", "react: <emoji>"; "none" or anything without an emoji is no reaction.
+function header(l: string): ReplyEvent | null {
+  const m = /^\s*react:\s*(#\d+|\d+(?=\s))?\s*(\S*)/i.exec(l)!;
+  const emoji = m[2].replace(/[.,!;:]+$/, "");
+  return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(emoji) ? { type: "react", target: m[1] ?? "", emoji } : null;
+}
 
 // Split at the last paragraph, else sentence, boundary before the limit.
 function splitLong(text: string): string[] {
@@ -45,13 +52,14 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
   }
 
   function* line(l: string): Generator<ReplyEvent> {
-    const m = l.match(/^react:\s*(none|(\S+)\s+(\S+))\s*$/i);
+    const isHeader = /^\s*react:/i.test(l);
     // A tool step makes the model write its header again: a react line before any bubble text is still the header.
-    if (!started || (m && emitted === 0 && !cur.some((x) => x.trim()))) {
+    if (!started || (isHeader && emitted === 0 && !cur.some((x) => x.trim()))) {
       if (!l.trim()) return;
       started = true;
-      if (m) {
-        if (m[2]) yield { type: "react", target: m[2], emoji: m[3] };
+      if (isHeader) {
+        const r = header(l);
+        if (r) yield r;
         return;
       }
     }

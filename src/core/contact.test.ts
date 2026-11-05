@@ -97,6 +97,16 @@ test("only the first reaction of a turn is sent (a tool step can repeat the head
   expect(JSON.parse(t.rows("id = 'wamid.in.1'")[0].reactions!)).toEqual({ me: "👍" });
 });
 
+test("react: 👍 without a target reacts to the newest inbound message", async () => {
+  const t = setup({ reply: () => "react: 👍\nok" });
+  await t.say("first");
+  t.clock.t += 1000;
+  await t.say("second");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "reaction")).toMatchObject([{ target: "wamid.in.2", emoji: "👍" }]);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok"]);
+});
+
 test("quote: #1 becomes opts.quote with the real wamid", async () => {
   const t = setup({ reply: () => "react: none\nquote: #1\nyes, that one" });
   await t.say("option one");
@@ -339,7 +349,7 @@ test("memory on: recall feeds the prompt, the reply carries forget, and the turn
   expect(turns.map((r) => JSON.parse(r.recalled))).toEqual([[], [SISTER]]); // what each reply was shown
 });
 
-test("the forget tool deletes matching facts and returns the count", async () => {
+test("the forget tool deletes matching facts and returns the count and the texts", async () => {
   const t = setup({
     features: { memory: true }, object: () => ({ ops: [] }),
     reply: async (c) => `react: none\n${JSON.stringify(await c.tools!.forget.execute!({ query: "Almaty" }, { toolCallId: "t1", messages: [] } as never))}`,
@@ -347,7 +357,7 @@ test("the forget tool deletes matching facts and returns the count", async () =>
   await addFact(t.db, SISTER);
   await t.say("forget my sister's city please");
   await t.run();
-  expect(t.wa.sent.find((s) => s.kind === "text")?.body).toBe('{"deleted":1}');
+  expect(t.wa.sent.find((s) => s.kind === "text")?.body).toBe('{"deleted":1,"texts":["Sister Aru lives in Almaty"]}');
   expect(t.db.all("SELECT * FROM facts")).toEqual([]);
 });
 

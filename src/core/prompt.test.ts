@@ -81,5 +81,6 @@ test("buildPrompt renders every memory status and adds the control sentences onl
   expect(on).toContain("If they ask what you know about them, answer with a short plain summary of the profile and the most relevant memories.");
   expect(on).toContain("call the forget tool");
   expect(on).toMatch(/confirm in one line/);
+  expect(on).toContain("Something they asked you to forget may still appear in the conversation above; never use or mention it again.");
   expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget|know about them/);
 });

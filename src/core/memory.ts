@@ -256,9 +256,9 @@ export async function recall(deps: Deps, query: string, k = 12): Promise<{ hits:
   }
 }
 
-export async function forget(deps: Deps, query: string): Promise<number> {
+export async function forget(deps: Deps, query: string): Promise<{ deleted: number; texts: string[] }> {
   const q = query.trim(), lq = q.toLowerCase();
-  if (!q) return 0;
+  if (!q) return { deleted: 0, texts: [] };
   // Whole words only ("work" never hits "works"), and only for queries long enough to mean something.
   const words = q.length >= FORGET_MIN_CHARS ? new RegExp(`(?<![\\p{L}\\p{N}])${lq.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u") : null;
   const mentions = (text: string) => !!words && words.test(text.toLowerCase());
@@ -270,12 +270,13 @@ export async function forget(deps: Deps, query: string): Promise<number> {
   const scored = cosineTopN(db, v, Infinity, "facts");
   const close = near(scored.map((s) => s.score));
   const ids = new Set(scored.filter((_, i) => close[i]).map((s) => s.id));
-  for (const f of db.all<{ id: number; text: string }>("SELECT id, text FROM facts")) if (mentions(f.text)) ids.add(f.id);
+  const facts = db.all<{ id: number; text: string }>("SELECT id, text FROM facts ORDER BY id");
+  for (const f of facts) if (mentions(f.text)) ids.add(f.id);
   dropFacts(db, [...ids]);
 
   // The profile is rewritten only by extraction; drop its matching lines now so the forgotten thing is gone from the next reply.
   const hit = near(lineVecs.map((u) => dot(u, v)));
   const kept = lines.filter((l, i) => !hit[i] && !mentions(l));
   if (kept.length < lines.length) setProfile(db, kept.join("\n"), deps.clock.now());
-  return ids.size;
+  return { deleted: ids.size, texts: facts.filter((f) => ids.has(f.id)).map((f) => f.text) }; // the texts tell the reply model what is now off limits
 }

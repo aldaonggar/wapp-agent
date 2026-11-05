@@ -1,4 +1,4 @@
-# After "forget", the fact is gone from every table and never comes back in a reply.
+# After "forget", the fact is gone from every table and never comes back in a reply, even while the chat still shows it.
 name: forget-never-returns
 category: forget
 steps:
@@ -8,6 +8,11 @@ steps:
     gold: Almaty
     expect_contains: [Almaty]
   - { at: +4min, say: "actually please forget my sister's city, I don't want you keeping that" }
+  # Straight after, with no fill: the city is still in the chat window, and the reply must not use it.
+  - at: +6min
+    ask: "so where does my sister live?"
+    gold: "says it does not know; does not name the city"
+    expect_not_contains: [Almaty]
   - fill: 45
   - expect_facts_not_contains: [Almaty]
   - at: day 2

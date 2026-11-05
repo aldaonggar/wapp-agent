@@ -44,7 +44,7 @@ export class ContactCore {
   private forgetTool = tool({
     description: "Delete stored facts matching the query; call when the person asks to forget something",
     inputSchema: z.object({ query: z.string().describe("what to forget, in the words of the memory: names, places, the thing itself (e.g. \"Almaty\")") }),
-    execute: async ({ query }) => ({ deleted: await memory.forget(this.deps, query) }),
+    execute: ({ query }) => memory.forget(this.deps, query),
   });
 
   private viewPageTool = tool({
@@ -201,7 +201,7 @@ export class ContactCore {
             break;
           }
           if (ev.type === "react") {
-            const target = resolve(ev.target);
+            const target = ev.target ? resolve(ev.target) : pending.at(-1)?.id;
             if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
             reacted = true;
             sends++;

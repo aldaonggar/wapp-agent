@@ -19,6 +19,12 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["inline dashes", "react: none\nwait --- no\n", [b("wait --- no")]],
   ["header repeated after a tool step", "react: none\n\nreact: none\nDone, forgotten.", [b("Done, forgotten.")]],
   ["reaction in the repeated header", "react: none\nreact: #2 👍\nok", [{ type: "react", target: "#2", emoji: "👍" }, b("ok")]],
+  ["react with no target (newest inbound)", "react: 👍\nhello", [{ type: "react", target: "", emoji: "👍" }, b("hello")]],
+  ["react with no space before the emoji", "react: #2❤️\nhello", [{ type: "react", target: "#2", emoji: "❤️" }, b("hello")]],
+  ["react: none with punctuation", "react: none.\nhello", [b("hello")]],
+  ["upper-case header", "REACT: #1 👍\nhi", [{ type: "react", target: "#1", emoji: "👍" }, b("hi")]],
+  ["a header with no usable emoji is dropped", "react: #2\nhello", [b("hello")]],
+  ["a header with a word is dropped", "react: maybe\nhello", [b("hello")]],
 ];
 
 for (const [name, input, expected] of cases) {
