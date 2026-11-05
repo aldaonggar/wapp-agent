@@ -1,0 +1,158 @@
+{
+  "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=cosine",
+  "config": {
+    "memory": true,
+    "retrieval": "cosine",
+    "filter": "long-recall|long-work",
+    "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=cosine",
+    "models": {
+      "reply": "deepseek/deepseek-v4.1-flash",
+      "extract": "anthropic/claude-haiku-5.5",
+      "derive": "openai/gpt-6.1-sol"
+    }
+  },
+  "at": "2026-11-05T20:11:01.085Z",
+  "scenarios": [
+    {
+      "name": "long-recall-sister-city",
+      "category": "long-term",
+      "probes": [
+        {
+          "ask": "what's my sister's clinic called again? want to send her flowers at work",
+          "gold": "Paws & Co",
+          "answer": "Paws & Co, in Almaty 🐾\n\nThat's a sweet idea.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 1138,
+          "ttfbMs": 1670,
+          "totalMs": 1670
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
+        "[2026-11-04 15:00:00] a: my sister Aru lives in Almaty, she runs a little vet clinic there called Paws & Co",
+        "[2026-11-04 15:00:03] bot → a: nice, a vet clinic in Almaty — that's a long way from you. does she take in strays too or just pets?",
+        "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
+        "[2026-11-07 15:00:00] a: what's my sister's clinic called again? want to send her flowers at work",
+        "[2026-11-07 15:00:03] bot → a: Paws & Co, in Almaty 🐾\n\nThat's a sweet idea."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 216,
+          "ttft_ms": 796,
+          "ttfb_ms": 1457,
+          "total_ms": 1457,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1288,\"output\":34,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007496000000000001,\"costReported\":0.0004272,\"ms\":1240.0778340000002,\"ttftMs\":796.2667499999999,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Has a dog named Biscuit\",\"Brother Tom is a nurse\",\"Likes spicy ramen\",\"Colleague Dana works in sales\",\"Cousin Mira just had a baby\",\"Gym is around the corner from home\",\"Lives in a flat on the fourth floor\",\"Best friend Priya lives in Toronto\",\"Likes espresso\",\"Allergic to cats\",\"Owns a green Vespa\",\"Supports Arsenal\"]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1794063603000,
+          "wait_ms": 3000,
+          "retrieval_ms": 369,
+          "ttft_ms": 1138,
+          "ttfb_ms": 1670,
+          "total_ms": 1670,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":2005,\"output\":24,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010222499999999999,\"costReported\":0.0006303,\"ms\":1299.6759999999995,\"ttftMs\":1137.7846659999996,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Your sister Aru’s vet clinic in Almaty could be a useful family contact for advice about Biscuit’s care.\",\"Brother Tom is a nurse\",\"Sister Aru runs a vet clinic called Paws & Co in Almaty\",\"Colleague Dana works in sales\",\"Manager is called Oliver\",\"Sister Aru lives in Almaty\",\"Cousin Mira just had a baby\",\"Uses a standing desk\",\"Gym is around the corner from home\",\"Works as a product designer\",\"Likes espresso\",\"Has a dog named Biscuit\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000177185,
+        "extract": 0.0008729,
+        "derive": 0.0049
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.005950085,
+      "passed": true,
+      "at": "2026-11-05T20:10:49.084Z"
+    },
+    {
+      "name": "long-work",
+      "category": "long-term",
+      "probes": [
+        {
+          "ask": "ugh who's the client on that payments project again?",
+          "gold": "Fernhill Bakeries",
+          "answer": "[2026-11-07 10:00] Fernhill Bakeries",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 955,
+          "ttfbMs": 1527,
+          "totalMs": 1527
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
+        "[2026-11-04 15:00:00] a: starting a new project at work today, codenamed Bluebird: a payments dashboard for our client Fernhill Bakeries",
+        "[2026-11-04 15:00:03] bot → a: (reacted 🎉)",
+        "[2026-11-04 15:00:03] bot → a: Bluebird, nice. A payments dashboard for a bakery client — is this the fun kind of project or the \"three spreadsheets and a prayer\" kind?",
+        "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
+        "[2026-11-07 15:00:00] a: ugh who's the client on that payments project again?",
+        "[2026-11-07 15:00:03] bot → a: [2026-11-07 10:00] Fernhill Bakeries"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 336,
+          "ttft_ms": 1110,
+          "ttfb_ms": 2435,
+          "total_ms": 2435,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1289,\"output\":40,\"cached\":0,\"reasoning\":0,\"costTable\":0.000078005,\"costReported\":0.0004347,\"ms\":2097.519167000002,\"ttftMs\":1110.1842090000027,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Works as a product designer\",\"Colleague Dana works in sales\",\"Uses a standing desk\",\"Likes espresso\",\"Manager is called Oliver\",\"Has a dog named Biscuit\",\"Prefers tea in the afternoon\",\"Favourite band is Radiohead\",\"Reads before bed every night\",\"Bikes to work when it is dry\",\"Gym is around the corner from home\",\"Likes spicy ramen\"]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1794063603000,
+          "wait_ms": 3000,
+          "retrieval_ms": 361,
+          "ttft_ms": 955,
+          "ttfb_ms": 1527,
+          "total_ms": 1527,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Google",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1985,\"output\":17,\"cached\":768,\"reasoning\":0,\"costTable\":0.000077089,\"costReported\":0.00040854,\"ms\":1163.0405830000018,\"ttftMs\":954.9991250000021,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Working on a new project codenamed Bluebird: a payments dashboard for client Fernhill Bakeries\",\"Colleague Dana works in sales\",\"Works as a product designer\",\"Manager is called Oliver\",\"Plays chess online most evenings\",\"Likes spicy ramen\",\"Is saving for a sailing trip\",\"Uses a standing desk\",\"Owns a green Vespa\",\"Lives in a flat on the fourth floor\",\"Has a dog named Biscuit\",\"Team ships a release every two weeks\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000155094,
+        "extract": 0.0008576,
+        "derive": 0.002864
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.003876694,
+      "passed": true,
+      "at": "2026-11-05T20:11:01.081Z"
+    }
+  ]
+}

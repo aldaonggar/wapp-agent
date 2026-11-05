@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { Llm, StreamCall } from "../src/core/types";
+import { JOBS } from "../src/models";
 import { cosineRerank, evalConfig, evalEmbedders, hashEmbed, loadScenarios, parseAt, runScenario, stubLlm, type EvalConfig, type Scenario } from "./harness";
 
 const cfg: EvalConfig = { memory: false, retrieval: "hybrid", tag: "test" };
@@ -115,7 +116,10 @@ test("max_turns fails the probe when the contact took more turns", async () => {
 
 test("a turn that fails twice shows up in the transcript and leaves ttfb undefined", async () => {
   const r = await run([{ at: "+0s", ask: "you there?", gold: "ok", expect_contains: ["ok"] }], stubLlm({ reply: () => ({ chunks: [], error: new Error("provider down") }) }));
-  expect(r.transcript).toContain("[2026-11-04 15:00:33] bot → a: (turn error: provider down)");
+  expect(r.transcript.filter((l) => l.includes("provider down"))).toEqual([ // both attempts, once each: the first leaves no turn row
+    "[2026-11-04 15:00:03] bot → a: (turn_failed: provider down)",
+    "[2026-11-04 15:00:33] bot → a: (turn_failed: provider down)",
+  ]);
   expect(r.probes[0]).toMatchObject({ answer: "", label: "wrong", ttfbMs: undefined });
   expect(r.probes[0].totalMs).toBeTypeOf("number");
 });
@@ -184,6 +188,13 @@ test("ask at +10 s does not derive insights (they are 30 min out)", async () => 
   expect(r.transcript).toContain("[2026-11-04 15:01:00] a: still here"); // a drain past insights_due would have jumped to 15:30
 });
 
+test("a failed background call shows up in the transcript instead of vanishing", async () => {
+  const llm = stubLlm({ object: (c) => { if (c.job === "derive") throw new Error("no host"); return { ops: [{ op: "ADD", text: "Likes tea", kind: "preference", signal: 4 }] }; } });
+  const r = await run([{ at: "+0s", say: "I like tea" }, { at: "+31min", say: "still here" }], llm, { ...cfg, memory: true });
+  expect(llm.objectCalls.map((c) => c.job)).toContain("derive");
+  expect(r.transcript).toContain("[2026-11-04 15:30:00] bot → a: (insights_failed: no host)");
+});
+
 test("a counting embed passed to runScenario is called for a say step (memory on)", async () => {
   const embed = vi.fn(hashEmbed);
   await run([{ at: "+0s", say: "my sister lives in Almaty" }], stubLlm(), { ...cfg, memory: true }, { embed, rerank: cosineRerank });
@@ -216,6 +227,15 @@ test("seed_facts embeds through the passed embed and the checks read the tables"
   expect(r.passed).toBe(false);
 });
 
+test("expect_insights counts an insight that cites more facts than evidence_count", async () => {
+  const facts = [["Flies to Almaty on 2026-12-10", "plan"], ["Sister Aru's birthday is on 2026-12-12", "person"], ["Sister Aru lives in Almaty", "person"]];
+  const llm = stubLlm({ object: (c) => c.job === "derive"
+    ? { insights: [{ text: "Lands two days before Aru's birthday", confidence: 0.9, evidence_fact_ids: [1, 2, 3] }] }
+    : { ops: facts.map(([text, kind]) => ({ op: "ADD", text, kind, signal: 4 })) } });
+  const r = await run([{ at: "+0s", say: "land in Almaty on the 10th; Aru's birthday is the 12th, she lives there" }, { at: "+31min", say: "night" }, { expect_insights: { min: 1, evidence_count: 2 } }], llm, { ...cfg, memory: true });
+  expect(r.checks).toMatchObject([{ name: "expect_insights", passed: true, detail: expect.stringContaining("1 active insights citing ≥ 2 facts") }]);
+});
+
 test("expect_facts_not_contains also reads the profile", async () => {
   const llm = stubLlm({ object: () => ({ ops: [{ op: "ADD", text: "Has a sister", kind: "person", signal: 5 }], profile: "Sister: lives in Almaty" }) });
   const r = await run([{ at: "+0s", say: "my sister lives in Almaty" }, { expect_facts_not_contains: ["Almaty"] }], llm, { ...cfg, memory: true });
@@ -234,9 +254,10 @@ test("judge calls are summed into judgeCostUsd, apart from costUsd", async () =>
 
 test("costUsd sums the calls ledger", async () => {
   const stub = stubLlm();
-  const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25 })) }; } };
+  const llm: Llm = { ...stub, stream: (c) => { const s = stub.stream(c); return { text: s.text, done: s.done.then((u) => ({ ...u, costTable: 0.25, input: 1000, cached: 400 })) }; } };
   const r = await run([{ at: "+0s", say: "hi" }, { at: "+1min", ask: "there?", gold: "ok", expect_contains: ["ok"] }], llm);
   expect(r.costUsd).toBe(0.5);
+  expect(r.tokensByJob).toEqual({ reply: { input: 2000, cached: 800 } });
 });
 
 test("expect_sent checks the bot's messages since the previous step: a reminder fired by the clock jump passes, a later empty window fails", async () => {
@@ -274,7 +295,10 @@ test("evalConfig() builds the tag from the EVAL_* env", () => {
   expect(evalConfig()).toEqual({
     reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: undefined, effort: "medium", memory: false, retrieval: "cosine", filter: "short",
     tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,extract=openai_gpt-6-luna,effort=medium",
+    models: { reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: JOBS.derive.default },
   });
+  vi.stubEnv("EVAL_EXTRACT", JOBS.extract.default); // explicitly the default: no override, same tag and file as the default run
+  expect(evalConfig()).toMatchObject({ extract: undefined, tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,effort=medium", models: { extract: JOBS.extract.default } });
   vi.stubEnv("EVAL_EFFORT", "max");
   expect(() => evalConfig()).toThrow(/EVAL_EFFORT/);
 });

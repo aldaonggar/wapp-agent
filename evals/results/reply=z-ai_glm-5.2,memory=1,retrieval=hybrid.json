@@ -1,0 +1,581 @@
+{
+  "tag": "reply=z-ai_glm-5.2,memory=1,retrieval=hybrid",
+  "config": {
+    "reply": "z-ai/glm-5.2",
+    "memory": true,
+    "retrieval": "hybrid",
+    "filter": "short",
+    "tag": "reply=z-ai_glm-5.2,memory=1,retrieval=hybrid",
+    "models": {
+      "reply": "z-ai/glm-5.2",
+      "extract": "anthropic/claude-haiku-5.5",
+      "derive": "openai/gpt-6.1-sol"
+    }
+  },
+  "at": "2026-11-05T20:41:30.949Z",
+  "scenarios": [
+    {
+      "name": "short-burst-of-three",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "and milk. can you send me that list back so I don't forget",
+          "gold": "eggs, flour and milk",
+          "answer": "Eggs, flour, milk — for pancakes tonight! 🥞\nYou've got this, happy flipping later!",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 813,
+          "ttfbMs": 1315,
+          "totalMs": 1447
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: making pancakes tonight, need to grab eggs",
+        "[2026-11-04 15:00:01] a: flour",
+        "[2026-11-04 15:00:02] a: and milk. can you send me that list back so I don't forget",
+        "[2026-11-04 15:00:05] bot → a: (reacted 👍)",
+        "[2026-11-04 15:00:05] bot → a: Eggs, flour, milk — for pancakes tonight! 🥞",
+        "[2026-11-04 15:00:06] bot → a: You've got this, happy flipping later!"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 372,
+          "ttft_ms": 813,
+          "ttfb_ms": 1315,
+          "total_ms": 1447,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":997,\"output\":34,\"cached\":0,\"reasoning\":0,\"costTable\":0.00023718199999999998,\"costReported\":0.00070042,\"ms\":1063.9347910000001,\"ttftMs\":812.538916,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00023718199999999998,
+        "extract": 0.00038930000000000003
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.000626482,
+      "passed": true,
+      "at": "2026-11-05T20:40:41.541Z"
+    },
+    {
+      "name": "short-correction",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "wait when am I meeting Sam again?",
+          "gold": "7 (it was moved from 6 to 7)",
+          "answer": "[2026-11-04 10:10] tomorrow at 7pm",
+          "label": "correct",
+          "reason": "Reply gives the updated time of 7 tomorrow, which matches the gold; the 'pm' is a reasonable reading of the coffee plan.",
+          "ttftMs": 704,
+          "ttfbMs": 1486,
+          "totalMs": 1486
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: meeting Sam for coffee tomorrow at 6",
+        "[2026-11-04 15:00:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:00:03] bot → a: nice, have fun with Sam! ☕",
+        "[2026-11-04 15:02:00] a: actually make it 7, he's stuck at work",
+        "[2026-11-04 15:02:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:02:03] bot → a: got it, 7 it is!",
+        "[2026-11-04 15:10:00] a: wait when am I meeting Sam again?",
+        "[2026-11-04 15:10:03] bot → a: [2026-11-04 10:10] tomorrow at 7pm"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 294,
+          "ttft_ms": 490,
+          "ttfb_ms": 846,
+          "total_ms": 846,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":951,\"output\":17,\"cached\":832,\"reasoning\":0,\"costTable\":0.00012047399999999999,\"costReported\":0.0002314,\"ms\":551.112459,\"ttftMs\":490.2424589999996,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 533,
+          "ttft_ms": 635,
+          "ttfb_ms": 2863,
+          "total_ms": 2863,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1048,\"output\":16,\"cached\":704,\"reasoning\":0,\"costTable\":0.000114384,\"costReported\":0.00035056,\"ms\":2329.1556659999997,\"ttftMs\":634.9526660000001,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 709,
+          "ttft_ms": 704,
+          "ttfb_ms": 1486,
+          "total_ms": 1486,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1129,\"output\":18,\"cached\":0,\"reasoning\":0,\"costTable\":0.00012917399999999997,\"costReported\":0.00074354,\"ms\":775.0209999999988,\"ttftMs\":704.1264579999988,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\",\"Coffee with Sam on 2026-11-05 19:00\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.0003640319999999999,
+        "extract": 0.0012602
+      },
+      "judgeCostUsd": 0.004504,
+      "costUsd": 0.0016242319999999998,
+      "passed": true,
+      "at": "2026-11-05T20:40:53.028Z"
+    },
+    {
+      "name": "short-like-i-said",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ok so like I said, which colour am I going with? need to tell the shop",
+          "gold": "teal",
+          "answer": "[2026-11-04 10:10] teal! 🎨",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 656,
+          "ttfbMs": 1180,
+          "totalMs": 1180
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: repainting the bedroom this weekend, going with teal",
+        "[2026-11-04 15:00:03] bot → a: (reacted 🎨)",
+        "[2026-11-04 15:00:03] bot → a: ooh teal is gonna look so good! are we talking like deep jewel teal or more of a soft muted vibe?",
+        "[2026-11-04 15:01:00] a: the landlord said it's fine as long as I paint it back before I move out",
+        "[2026-11-04 15:01:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:01:03] bot → a: nice, good that they're chill about it. bet it's gonna transform the whole room 🎨",
+        "[2026-11-04 15:03:00] a: also need new curtains",
+        "[2026-11-04 15:03:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:03:03] bot → a: [2026-11-04 10:03] oh for sure, gotta match the new vibe. are you thinking curtains to go with the teal or something contrasting?",
+        "[2026-11-04 15:05:00] a: something light, linen maybe",
+        "[2026-11-04 15:05:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:05:03] bot → a: [2026-11-04 10:05] linen would look gorgeous against teal. are you going sheer or more of a heavier weave for light blocking?",
+        "[2026-11-04 15:07:00] a: and the hardware store closes at 5 on saturday which is annoying",
+        "[2026-11-04 15:07:03] bot → a: (reacted 😕)",
+        "[2026-11-04 15:07:03] bot → a: [2026-11-04 10:07]\nugh that's tight with a whole room to paint. maybe grab everything friday night so you're ready to go first thing saturday?",
+        "[2026-11-04 15:10:00] a: ok so like I said, which colour am I going with? need to tell the shop",
+        "[2026-11-04 15:10:03] bot → a: [2026-11-04 10:10] teal! 🎨"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 243,
+          "ttft_ms": 619,
+          "ttfb_ms": 1151,
+          "total_ms": 1151,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":953,\"output\":33,\"cached\":0,\"reasoning\":0,\"costTable\":0.000230118,\"costReported\":0.00067072,\"ms\":907.0305410000001,\"ttftMs\":618.9202909999985,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 522,
+          "ttft_ms": 555,
+          "ttfb_ms": 1324,
+          "total_ms": 1324,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1080,\"output\":30,\"cached\":0,\"reasoning\":0,\"costTable\":0.00021047999999999998,\"costReported\":0.0007422,\"ms\":800.7665410000009,\"ttftMs\":554.9271249999983,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07), color teal\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 383,
+          "ttft_ms": 565,
+          "ttfb_ms": 1235,
+          "total_ms": 1236,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1184,\"output\":44,\"cached\":768,\"reasoning\":0,\"costTable\":0.000305536,\"costReported\":0.00047192,\"ms\":851.5750000000007,\"ttftMs\":565.4101250000022,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Landlord allows the bedroom repaint on condition the walls are painted back before moving out\",\"Repainting the bedroom this weekend (2026-11-07), color teal\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793804703000,
+          "wait_ms": 3000,
+          "retrieval_ms": 459,
+          "ttft_ms": 540,
+          "ttfb_ms": 1272,
+          "total_ms": 1272,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1260,\"output\":41,\"cached\":0,\"reasoning\":0,\"costTable\":0.00028636,\"costReported\":0.00088042,\"ms\":810.9434999999976,\"ttftMs\":539.6220829999984,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07), color teal\",\"Landlord allows the bedroom repaint on condition the walls are painted back before moving out\"]"
+        },
+        {
+          "contact": "a",
+          "id": 5,
+          "started_at": 1793804823000,
+          "wait_ms": 3000,
+          "retrieval_ms": 553,
+          "ttft_ms": 678,
+          "ttfb_ms": 1543,
+          "total_ms": 1543,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1343,\"output\":47,\"cached\":768,\"reasoning\":0,\"costTable\":0.00032689,\"costReported\":0.00057776,\"ms\":988.1204589999979,\"ttftMs\":678.0977920000005,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07), color teal\",\"Landlord allows the bedroom repaint on condition the walls are painted back before moving out\"]"
+        },
+        {
+          "contact": "a",
+          "id": 6,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 488,
+          "ttft_ms": 656,
+          "ttfb_ms": 1180,
+          "total_ms": 1180,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1436,\"output\":18,\"cached\":896,\"reasoning\":0,\"costTable\":0.00013012,\"costReported\":0.0005038,\"ms\":691.4730419999978,\"ttftMs\":655.8512919999994,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07), color teal\",\"Landlord allows the bedroom repaint on condition the walls are painted back before moving out\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.001489504,
+        "extract": 0.0024972
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.003986704000000001,
+      "passed": true,
+      "at": "2026-11-05T20:41:08.262Z"
+    },
+    {
+      "name": "short-photo-then-question",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "what colour is it?",
+          "gold": "red",
+          "answer": "red!",
+          "label": "correct",
+          "reason": "The reply says red, which matches the gold.",
+          "ttftMs": 1375,
+          "ttfbMs": 1892,
+          "totalMs": 1892
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: [photo photo.jpg] look",
+        "[2026-11-04 15:00:01] a: what colour is it?",
+        "[2026-11-04 15:00:04] bot → a: red!"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804404000,
+          "wait_ms": 3000,
+          "retrieval_ms": 282,
+          "ttft_ms": 1375,
+          "ttfb_ms": 1892,
+          "total_ms": 1892,
+          "model": "openai/gpt-6.1-terra",
+          "provider": "OpenAI",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"openai/gpt-6.1-terra\",\"provider\":\"OpenAI\",\"input\":956,\"output\":10,\"cached\":0,\"reasoning\":0,\"costTable\":0.001006,\"costReported\":0.001006,\"ms\":1609.8361670000013,\"ttftMs\":1375.3072920000013,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.001006,
+        "extract": 0.0003847
+      },
+      "judgeCostUsd": 0.003008,
+      "costUsd": 0.0013907,
+      "passed": true,
+      "at": "2026-11-05T20:41:13.018Z"
+    },
+    {
+      "name": "short-quoted-reply",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "how about this one?",
+          "gold": "pizza: the option the person quoted (step 1), not sushi; the reply treats pizza as the one being asked about",
+          "answer": "[2026-11-04 10:01]\n\nquote: #3\n\npizza it is then 🎉",
+          "label": "correct",
+          "reason": "The reply treats pizza as the option being asked about, which matches the gold.",
+          "ttftMs": 547,
+          "ttfbMs": 918,
+          "totalMs": 918
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: dinner options tonight. A: pizza",
+        "[2026-11-04 15:00:02] a: B: sushi",
+        "[2026-11-04 15:00:05] bot → a: ooh tough call 🍕 or 🍣 what are you leaning toward?",
+        "[2026-11-04 15:01:00] a: (replying to step 1) how about this one?",
+        "[2026-11-04 15:01:03] bot → a: (reacted 🍕)",
+        "[2026-11-04 15:01:03] bot → a: [2026-11-04 10:01]\n\nquote: #3\n\npizza it is then 🎉"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 221,
+          "ttft_ms": 481,
+          "ttfb_ms": 923,
+          "total_ms": 923,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":968,\"output\":22,\"cached\":832,\"reasoning\":0,\"costTable\":0.000154576,\"costReported\":0.00025404,\"ms\":701.2708330000023,\"ttftMs\":481.1073329999999,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 218,
+          "ttft_ms": 547,
+          "ttfb_ms": 918,
+          "total_ms": 918,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1037,\"output\":33,\"cached\":704,\"reasoning\":0,\"costTable\":0.00022991800000000002,\"costReported\":0.00038488,\"ms\":700.6730000000025,\"ttftMs\":546.6072080000013,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000384494,
+        "extract": 0.0007503
+      },
+      "judgeCostUsd": 0.003732,
+      "costUsd": 0.001134794,
+      "passed": true,
+      "at": "2026-11-05T20:41:18.392Z"
+    },
+    {
+      "name": "short-second-one",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ooh the second one. would that suit a girl?",
+          "gold": "talks about the second of the three names the assistant suggested in its previous reply (by name)",
+          "answer": "[2026-11-04 10:02] Ash works great for a girl! It's got a soft sound but still feels cool and a little different. I think it suits her 😊",
+          "label": "correct",
+          "reason": "The reply names Ash, the second suggestion, and answers whether it suits a girl.",
+          "ttftMs": 608,
+          "ttfbMs": 1680,
+          "totalMs": 1680
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: give me 3 name ideas for my new grey kitten",
+        "[2026-11-04 15:00:03] bot → a: Congrats on the new kitten! 🩻 Here are three:\n\nSmokey — classic and cute\nAsh — short, cool, a little edgy\nPebble — sweet and matches the grey perfectly\n\nWhat's the little one's personality like so far?",
+        "[2026-11-04 15:02:00] a: ooh the second one. would that suit a girl?",
+        "[2026-11-04 15:02:03] bot → a: (reacted 🩻)",
+        "[2026-11-04 15:02:03] bot → a: [2026-11-04 10:02] Ash works great for a girl! It's got a soft sound but still feels cool and a little different. I think it suits her 😊"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 205,
+          "ttft_ms": 898,
+          "ttfb_ms": 1401,
+          "total_ms": 1401,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":954,\"output\":60,\"cached\":832,\"reasoning\":0,\"costTable\":0.000412892,\"costReported\":0.00033732,\"ms\":1195.1245839999974,\"ttftMs\":897.5513749999955,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 549,
+          "ttft_ms": 608,
+          "ttfb_ms": 1680,
+          "total_ms": 1680,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1070,\"output\":50,\"cached\":704,\"reasoning\":0,\"costTable\":0.000345716,\"costReported\":0.00044648,\"ms\":1130.856375000003,\"ttftMs\":608.2089160000032,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Has a new grey kitten\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000758608,
+        "extract": 0.0008068000000000001
+      },
+      "judgeCostUsd": 0.004036,
+      "costUsd": 0.0015654080000000001,
+      "passed": true,
+      "at": "2026-11-05T20:41:25.423Z"
+    },
+    {
+      "name": "short-that-place",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "my sister wants to go, remind me where that place is so I can text her",
+          "gold": "the cafe on Abay street (green door)",
+          "answer": "it's on Abay street, the one with the green door ☕",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 489,
+          "ttfbMs": 828,
+          "totalMs": 828
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: found a great little cafe on Abay street yesterday, the one with the green door",
+        "[2026-11-04 15:00:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:00:03] bot → a: oh nice! what's it like inside?",
+        "[2026-11-04 15:01:00] a: their flat white is unreal",
+        "[2026-11-04 15:01:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:01:03] bot → a: gonna have to check it out next time I'm around that area",
+        "[2026-11-04 15:03:00] a: my sister wants to go, remind me where that place is so I can text her",
+        "[2026-11-04 15:03:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:03:03] bot → a: it's on Abay street, the one with the green door ☕"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 168,
+          "ttft_ms": 351,
+          "ttfb_ms": 684,
+          "total_ms": 684,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":960,\"output\":18,\"cached\":832,\"reasoning\":0,\"costTable\":0.00012732799999999998,\"costReported\":0.0002394,\"ms\":515.9372500000027,\"ttftMs\":351.07020799999736,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 207,
+          "ttft_ms": 464,
+          "ttfb_ms": 827,
+          "total_ms": 827,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1010,\"output\":22,\"cached\":832,\"reasoning\":0,\"costTable\":0.000154828,\"costReported\":0.00028008,\"ms\":619.7406670000055,\"ttftMs\":464.26229199999943,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 183,
+          "ttft_ms": 489,
+          "ttfb_ms": 828,
+          "total_ms": 828,
+          "model": "z-ai/glm-5.2",
+          "provider": "CoreWeave",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"z-ai/glm-5.2\",\"provider\":\"CoreWeave\",\"input\":1076,\"output\":28,\"cached\":832,\"reasoning\":0,\"costTable\":0.000196024,\"costReported\":0.00033552,\"ms\":644.1157909999965,\"ttftMs\":489.25229099999706,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00047818,
+        "extract": 0.0011484
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.0016265799999999999,
+      "passed": true,
+      "at": "2026-11-05T20:41:30.946Z"
+    }
+  ]
+}

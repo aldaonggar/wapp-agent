@@ -78,6 +78,7 @@ curl "https://api.cloudflare.com/client/v4/user/tokens/verify" -H "Authorization
 2. https://openrouter.ai/settings/credits → **Add credits**. $10 covers the eval runs (under $5 with the default candidates) and demo traffic.
 3. https://openrouter.ai/settings/keys → **Create Key** → name `wapp-agent`, set a credit limit (for example $25) → copy (starts with `sk-or-v1-`) into `.dev.vars` as `OPENROUTER_API_KEY`.
 4. https://openrouter.ai/settings/privacy: leave "allow providers that may train on your data" **off** for both paid and free models. Leave ZDR enforcement **off** (it would route the Chinese-lab models to their own hosts in China and Singapore, which is the opposite of what we want; the code excludes those hosts itself).
+5. Same page, **Allowed providers**: leave it empty (every provider) unless you want a restriction; the code already excludes China- and Singapore-hosted providers on every call. Troubleshooting: a restricted list blocks every model with no host on it, and each call then fails with "No allowed providers are available for the selected model ... your account's allowed-providers setting permits only: ..." (for insights this shows up only as `insights_failed` in the logs). The first eval key of 2026-11-05 allowed only `google-vertex`, `openai` and `anthropic`, which blocked `deepseek-v4-pro`, `kimi-k2.6` and `glm-5.2` until a dedicated key replaced it.
 
 ## 6. Webhook (after Claude's first deploy; 3 minutes)
 

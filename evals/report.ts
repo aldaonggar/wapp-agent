@@ -12,31 +12,43 @@ const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget",
 const JOB_CATEGORIES: Record<Job, string[]> = { reply: ["short-term"], extract: ["long-term", "judgement"], derive: ["derived"] };
 const NOT_RUN = "not run";
 
-const model = (r: Run, job: Job) => r.config[job] || JOBS[job].default;
-// Default configuration, optionally with one job swapped and memory or retrieval changed.
+const model = (r: Run, job: Job) => r.config.models?.[job] ?? r.config[job] ?? JOBS[job].default; // files from before models were recorded fall back to the current defaults (only their reply model is read today)
+// Base configuration (no job overridden, memory on, hybrid, lowest effort), optionally with one job swapped, memory off or cosine retrieval.
 const isDefault = (r: Run, o: { memory?: boolean; retrieval?: string; except?: Job } = {}) =>
   r.config.memory === (o.memory ?? true) && r.config.retrieval === (o.retrieval ?? "hybrid") && !r.config.effort &&
-  (["reply", "extract", "derive"] as const).every((j) => j === o.except || model(r, j) === JOBS[j].default);
+  (["reply", "extract", "derive"] as const).every((j) => j === o.except || !r.config[j]);
 const agent = runs.find((r) => isDefault(r));
 const baseline = runs.find((r) => isDefault(r, { memory: false }));
 const cosine = runs.find((r) => isDefault(r, { retrieval: "cosine" }));
-const runFor = (job: Job, id: string) => (id === JOBS[job].default ? agent : runs.find((r) => isDefault(r, { except: job }) && model(r, job) === id));
+const base = (job: Job) => (agent ? model(agent, job) : JOBS[job].default);
+const runFor = (job: Job, id: string) => (id === base(job) ? agent : runs.find((r) => isDefault(r, { except: job }) && model(r, job) === id));
 
 const score = (xs: ScenarioResult[]) => xs.length ? `${xs.filter((s) => s.passed).length}/${xs.length} (${Math.round((100 * xs.filter((s) => s.passed).length) / xs.length)}%)` : NOT_RUN;
 const inCats = (r: Run | undefined, cats: string[]) => r?.scenarios.filter((s) => cats.includes(s.category)) ?? [];
 const pct = (xs: number[], p: number) => [...xs].sort((a, b) => a - b)[Math.max(0, Math.ceil((p / 100) * xs.length) - 1)];
-const lat = (scs: ScenarioResult[], key: string) => {
-  const xs = scs.flatMap((s) => s.turns.map((t) => t[key])).filter((x): x is number => typeof x === "number");
-  return xs.length ? `${pct(xs, 50)} / ${pct(xs, 95)}` : "–";
-};
+const series = (scs: ScenarioResult[], key: string) => scs.flatMap((s) => s.turns.map((t) => t[key])).filter((x): x is number => typeof x === "number");
+const lat = (scs: ScenarioResult[], key: string) => { const xs = series(scs, key); return xs.length ? `${pct(xs, 50)} / ${pct(xs, 95)}` : "–"; };
+const p50 = (scs: ScenarioResult[], key: string) => { const xs = series(scs, key); return xs.length ? String(pct(xs, 50)) : "–"; };
 const turnsOf = (scs: ScenarioResult[]) => scs.reduce((n, s) => n + s.turns.length, 0);
 const per1000 = (scs: ScenarioResult[], job: string) => {
   const cost = scs.reduce((c, s) => c + (s.costByJob?.[job] ?? 0), 0), n = turnsOf(scs);
   return n ? `$${((cost / n) * 1000).toFixed(2)}` : "–";
 };
+const cachedShare = (scs: ScenarioResult[], job: string) => { // of that job's input tokens; "–" for files from before tokens were recorded
+  const input = scs.reduce((a, s) => a + (s.tokensByJob?.[job]?.input ?? 0), 0), cached = scs.reduce((a, s) => a + (s.tokensByJob?.[job]?.cached ?? 0), 0);
+  return input ? `${Math.round((100 * cached) / input)}%` : "–";
+};
 const table = (head: string[], rows: string[][]) => [`| ${head.join(" | ")} |`, `|${head.map(() => "---").join("|")}|`, ...rows.map((r) => `| ${r.join(" | ")} |`)].join("\n");
 const latencyCols = ["ttft p50 / p95 ms", "first bubble p50 / p95 ms", "total p50 / p95 ms"];
 const latency = (scs: ScenarioResult[]) => [lat(scs, "ttft_ms"), lat(scs, "ttfb_ms"), lat(scs, "total_ms")];
+
+const resultsTable = table(["Category", "Baseline (no memory)", "This agent"], [
+  ...CATEGORIES.map((c) => [c, score(inCats(baseline, [c])), score(inCats(agent, [c]))]),
+  ["all", score(baseline?.scenarios ?? []), score(agent?.scenarios ?? [])],
+]);
+// README verdicts: the default; a candidate that answered and passed something; one that passed nothing; one whose calls never got through.
+const verdict = (job: Job, id: string, scs: ScenarioResult[]) =>
+  id === JOBS[job].default ? "default" : !scs.some((s) => s.costByJob?.[job]) ? "blocked" : scs.some((s) => s.passed) ? "runner-up" : "failed";
 
 const out: string[] = [
   "# Evals",
@@ -45,22 +57,24 @@ const out: string[] = [
   "",
   "## Results",
   "",
-  table(["Category", "Baseline (no memory)", "This agent"], [
-    ...CATEGORIES.map((c) => [c, score(inCats(baseline, [c])), score(inCats(agent, [c]))]),
-    ["all", score(baseline?.scenarios ?? []), score(agent?.scenarios ?? [])],
-  ]),
+  resultsTable,
+  "",
+  `The agent column is the base configuration: reply \`${base("reply")}\`, extract \`${base("extract")}\`, derive \`${base("derive")}\`${agent ? ` (run at ${agent.at})` : ""}.`,
   "",
   "## Model comparison per job",
   "",
-  "Each candidate runs with the other jobs at their defaults, on the categories its job affects. Cost is that job's model calls per 1,000 reply turns.",
+  "Each candidate runs with the other jobs at the base configuration's models, on the categories its job affects. Cost is that job's model calls per 1,000 reply turns.",
 ];
+const compact: Record<string, string> = {}; // the same rows for README, p50 only, with a verdict
 for (const job of ["reply", "extract", "derive"] as const) {
   const cats = JOB_CATEGORIES[job];
-  const rows = JOBS[job].candidates.flatMap((id) => {
-    const scs = inCats(runFor(job, id), cats);
-    return scs.length ? [[id + (id === JOBS[job].default ? " (default)" : ""), score(scs), ...latency(scs), per1000(scs, job)]] : [];
-  });
-  out.push("", `### ${job} (${cats.join(", ")})`, "", rows.length ? table(["Model", "Passed", ...latencyCols, `${job} cost / 1,000 replies`], rows) : `${NOT_RUN}.`);
+  const measured = JOBS[job].candidates.map((id) => [id, inCats(runFor(job, id), cats)] as const).filter(([, scs]) => scs.length);
+  out.push("", `### ${job} (${cats.join(", ")})`, "", measured.length
+    ? table(["Model", "Passed", ...latencyCols, `${job} cost / 1,000 replies`, "cached input"], measured.map(([id, scs]) => [id + (id === JOBS[job].default ? " (default)" : ""), score(scs), ...latency(scs), per1000(scs, job), cachedShare(scs, job)]))
+    : `${NOT_RUN}.`);
+  compact[job] = measured.length
+    ? table(["Model", `Passed (${cats.join(", ")})`, "ttft p50 ms", "first bubble p50 ms", "total p50 ms", `${job} cost / 1,000 turns`, "Verdict"], measured.map(([id, scs]) => [`\`${id}\``, score(scs), p50(scs, "ttft_ms"), p50(scs, "ttfb_ms"), p50(scs, "total_ms"), per1000(scs, job), verdict(job, id, scs)]))
+    : `${NOT_RUN}.`;
 }
 
 const groups = new Map<string, ScenarioResult[]>();
@@ -101,3 +115,12 @@ for (const r of [agent, baseline, ...runs.filter((x) => x !== agent && x !== bas
 
 writeFileSync("EVALS.md", out.join("\n") + "\n");
 console.log(`EVALS.md written from ${runs.length} result file(s)`);
+
+// README.md carries the same tables between <!-- evals:NAME --> and <!-- /evals:NAME --> markers, so its numbers come from the same files.
+if (existsSync("README.md")) {
+  let md = readFileSync("README.md", "utf8");
+  for (const [name, body] of Object.entries({ results: resultsTable, ...compact }))
+    md = md.replace(new RegExp(`(<!-- evals:${name} -->)[\\s\\S]*?(<!-- /evals:${name} -->)`), (_, open: string, close: string) => `${open}\n${body}\n${close}`); // a function: "$0.05" in a table is not a back-reference
+  writeFileSync("README.md", md);
+  console.log("README.md eval tables updated");
+}

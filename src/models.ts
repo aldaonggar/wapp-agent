@@ -6,7 +6,7 @@ const m = (id: string, i: number, out: number, cachedIn: number, vision: boolean
 
 // USD per 1M tokens, OpenRouter list prices 2026-11-04 (design §4.1).
 export const MODELS: Record<string, ModelSpec> = Object.fromEntries([
-  m("deepseek/deepseek-v4.1-flash", 0.045, 0.5, 0.018, true, { effort: "none" }),
+  m("deepseek/deepseek-v4.1-flash", 0.045, 0.5, 0.018, false, { effort: "none" }), // accepts images, but under the production prompt it calls them blank (EVALS.md 2026-11-05): photos go to the vision default
   m("openai/gpt-6.1-terra", 1, 5, 0.05, true, { effort: "none" }),
   m("openai/gpt-6.1-sol", 2, 10, 0.1, true, { effort: "low" }, true),
   m("anthropic/claude-sonnet-5.5", 2, 10, 0.1, true, { effort: "low" }, true),
@@ -25,7 +25,8 @@ export const JOBS = {
     compareByDefault: ["deepseek/deepseek-v4.1-flash", "moonshotai/kimi-k2.6", "z-ai/glm-5.2"],
   },
   vision: { default: "openai/gpt-6.1-terra", candidates: ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5.5"] },
-  extract: { default: "deepseek/deepseek-v4.1-flash", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
+  // Measured 2026-11-05 (EVALS.md): haiku for extraction on reliability (flash's calls time out); v4-pro the cheapest of three insight models that tie.
+  extract: { default: "anthropic/claude-haiku-5.5", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
   derive: { default: "deepseek/deepseek-v4-pro", candidates: ["deepseek/deepseek-v4-pro", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5"] },
   judge: { default: "anthropic/claude-opus-5.5" as const },
 };
