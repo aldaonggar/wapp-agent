@@ -7,11 +7,11 @@
     "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=cosine",
     "models": {
       "reply": "deepseek/deepseek-v4.1-flash",
-      "extract": "anthropic/claude-haiku-5.5",
+      "extract": "openai/gpt-6-luna",
       "derive": "openai/gpt-6.1-sol"
     }
   },
-  "at": "2026-11-05T20:11:01.085Z",
+  "at": "2026-11-05T23:14:32.551Z",
   "scenarios": [
     {
       "name": "long-recall-sister-city",
@@ -20,22 +20,22 @@
         {
           "ask": "what's my sister's clinic called again? want to send her flowers at work",
           "gold": "Paws & Co",
-          "answer": "Paws & Co, in Almaty 🐾\n\nThat's a sweet idea.",
+          "answer": "Paws & Co, in Almaty. Flowers for a vet clinic, that's a sweet idea",
           "label": "correct",
           "reason": "string checks passed",
-          "ttftMs": 1138,
-          "ttfbMs": 1670,
-          "totalMs": 1670
+          "ttftMs": 757,
+          "ttfbMs": 1000,
+          "totalMs": 1001
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
         "[2026-11-04 15:00:00] a: my sister Aru lives in Almaty, she runs a little vet clinic there called Paws & Co",
-        "[2026-11-04 15:00:03] bot → a: nice, a vet clinic in Almaty — that's a long way from you. does she take in strays too or just pets?",
+        "[2026-11-04 15:00:03] bot → a: hey, I'm your assistant. I remember the things you tell me across days, set reminders at a time you name, read photos, listen to voice notes and links you send, look things up online when it matters, and forget anything you ask me to.\n\nnoted about Aru in Almaty and Paws & Co. What should I call you?",
         "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
         "[2026-11-07 15:00:00] a: what's my sister's clinic called again? want to send her flowers at work",
-        "[2026-11-07 15:00:03] bot → a: Paws & Co, in Almaty 🐾\n\nThat's a sweet idea."
+        "[2026-11-07 15:00:03] bot → a: Paws & Co, in Almaty. Flowers for a vet clinic, that's a sweet idea"
       ],
       "turns": [
         {
@@ -43,16 +43,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 216,
-          "ttft_ms": 796,
-          "ttfb_ms": 1457,
-          "total_ms": 1457,
+          "retrieval_ms": 132,
+          "ttft_ms": 698,
+          "ttfb_ms": 1088,
+          "total_ms": 1088,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1288,\"output\":34,\"cached\":0,\"reasoning\":0,\"costTable\":0.00007496000000000001,\"costReported\":0.0004272,\"ms\":1240.0778340000002,\"ttftMs\":796.2667499999999,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2635,\"output\":131,\"cached\":2560,\"reasoning\":52,\"costTable\":0.000114955,\"costReported\":0.00013012,\"ms\":955.3866670000002,\"ttftMs\":698.4422500000001,\"finishReason\":\"stop\"}",
           "recalled": "[\"Has a dog named Biscuit\",\"Brother Tom is a nurse\",\"Likes spicy ramen\",\"Colleague Dana works in sales\",\"Cousin Mira just had a baby\",\"Gym is around the corner from home\",\"Lives in a flat on the fourth floor\",\"Best friend Priya lives in Toronto\",\"Likes espresso\",\"Allergic to cats\",\"Owns a green Vespa\",\"Supports Arsenal\"]"
         },
         {
@@ -60,28 +60,42 @@
           "id": 2,
           "started_at": 1794063603000,
           "wait_ms": 3000,
-          "retrieval_ms": 369,
-          "ttft_ms": 1138,
-          "ttfb_ms": 1670,
-          "total_ms": 1670,
+          "retrieval_ms": 157,
+          "ttft_ms": 757,
+          "ttfb_ms": 1000,
+          "total_ms": 1001,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":2005,\"output\":24,\"cached\":0,\"reasoning\":0,\"costTable\":0.00010222499999999999,\"costReported\":0.0006303,\"ms\":1299.6759999999995,\"ttftMs\":1137.7846659999996,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Your sister Aru’s vet clinic in Almaty could be a useful family contact for advice about Biscuit’s care.\",\"Brother Tom is a nurse\",\"Sister Aru runs a vet clinic called Paws & Co in Almaty\",\"Colleague Dana works in sales\",\"Manager is called Oliver\",\"Sister Aru lives in Almaty\",\"Cousin Mira just had a baby\",\"Uses a standing desk\",\"Gym is around the corner from home\",\"Works as a product designer\",\"Likes espresso\",\"Has a dog named Biscuit\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":3271,\"output\":54,\"cached\":1280,\"reasoning\":25,\"costTable\":0.000139635,\"costReported\":0.00042875,\"ms\":841.092666999999,\"ttftMs\":756.5229170000002,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Brother Tom is a nurse\",\"Sister Aru runs a veterinary clinic in Almaty called Paws & Co\",\"Colleague Dana works in sales\",\"Manager is called Oliver\",\"Sister Aru lives in Almaty\",\"Cousin Mira just had a baby\",\"Uses a standing desk\",\"Gym is around the corner from home\",\"Works as a product designer\",\"Likes espresso\",\"Has a dog named Biscuit\",\"Likes spicy ramen\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.000177185,
-        "extract": 0.0008729,
-        "derive": 0.0049
+        "reply": 0.00025458999999999996,
+        "extract": 0.00036209999999999997,
+        "derive": 0.00348
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 5906,
+          "cached": 3840
+        },
+        "extract": {
+          "input": 5170,
+          "cached": 4260
+        },
+        "derive": {
+          "input": 955,
+          "cached": 0
+        }
       },
       "judgeCostUsd": 0,
-      "costUsd": 0.005950085,
+      "costUsd": 0.00409669,
       "passed": true,
-      "at": "2026-11-05T20:10:49.084Z"
+      "at": "2026-11-05T23:14:16.323Z"
     },
     {
       "name": "long-work",
@@ -90,23 +104,23 @@
         {
           "ask": "ugh who's the client on that payments project again?",
           "gold": "Fernhill Bakeries",
-          "answer": "[2026-11-07 10:00] Fernhill Bakeries",
+          "answer": "Fernhill Bakeries",
           "label": "correct",
           "reason": "string checks passed",
-          "ttftMs": 955,
-          "ttfbMs": 1527,
-          "totalMs": 1527
+          "ttftMs": 525,
+          "ttfbMs": 698,
+          "totalMs": 699
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] (30 unrelated facts seeded into a's memory)",
         "[2026-11-04 15:00:00] a: starting a new project at work today, codenamed Bluebird: a payments dashboard for our client Fernhill Bakeries",
-        "[2026-11-04 15:00:03] bot → a: (reacted 🎉)",
-        "[2026-11-04 15:00:03] bot → a: Bluebird, nice. A payments dashboard for a bakery client — is this the fun kind of project or the \"three spreadsheets and a prayer\" kind?",
-        "[2026-11-04 15:00:03] (45 canned message pairs, one a minute, until 2026-11-04 16:30:03)",
+        "[2026-11-04 15:00:03] bot → a: hey, i'm your assistant. i remember what you tell me across days, set reminders when you name a time, read photos, listen to voice notes, read links, look things up on the web, and forget anything on request.",
+        "[2026-11-04 15:00:05] bot → a: a payments dashboard for Fernhill Bakeries, that's a nice one to start the week on. what should i call you?",
+        "[2026-11-04 15:00:05] (45 canned message pairs, one a minute, until 2026-11-04 16:30:05)",
         "[2026-11-07 15:00:00] a: ugh who's the client on that payments project again?",
-        "[2026-11-07 15:00:03] bot → a: [2026-11-07 10:00] Fernhill Bakeries"
+        "[2026-11-07 15:00:03] bot → a: Fernhill Bakeries"
       ],
       "turns": [
         {
@@ -114,16 +128,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 336,
-          "ttft_ms": 1110,
-          "ttfb_ms": 2435,
-          "total_ms": 2435,
+          "retrieval_ms": 112,
+          "ttft_ms": 1888,
+          "ttfb_ms": 2288,
+          "total_ms": 2441,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
-          "bubbles": 1,
+          "provider": "Wafer",
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1289,\"output\":40,\"cached\":0,\"reasoning\":0,\"costTable\":0.000078005,\"costReported\":0.0004347,\"ms\":2097.519167000002,\"ttftMs\":1110.1842090000027,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2636,\"output\":366,\"cached\":1280,\"reasoning\":283,\"costTable\":0.00026706,\"costReported\":0.0005109,\"ms\":2328.3207089999996,\"ttftMs\":1888.2960419999981,\"finishReason\":\"stop\"}",
           "recalled": "[\"Works as a product designer\",\"Colleague Dana works in sales\",\"Uses a standing desk\",\"Likes espresso\",\"Manager is called Oliver\",\"Has a dog named Biscuit\",\"Prefers tea in the afternoon\",\"Favourite band is Radiohead\",\"Reads before bed every night\",\"Bikes to work when it is dry\",\"Gym is around the corner from home\",\"Likes spicy ramen\"]"
         },
         {
@@ -131,28 +145,42 @@
           "id": 2,
           "started_at": 1794063603000,
           "wait_ms": 3000,
-          "retrieval_ms": 361,
-          "ttft_ms": 955,
-          "ttfb_ms": 1527,
-          "total_ms": 1527,
+          "retrieval_ms": 139,
+          "ttft_ms": 525,
+          "ttfb_ms": 698,
+          "total_ms": 699,
           "model": "deepseek/deepseek-v4.1-flash",
-          "provider": "Google",
+          "provider": "Wafer",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Google\",\"input\":1985,\"output\":17,\"cached\":768,\"reasoning\":0,\"costTable\":0.000077089,\"costReported\":0.00040854,\"ms\":1163.0405830000018,\"ttftMs\":954.9991250000021,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Working on a new project codenamed Bluebird: a payments dashboard for client Fernhill Bakeries\",\"Colleague Dana works in sales\",\"Works as a product designer\",\"Manager is called Oliver\",\"Plays chess online most evenings\",\"Likes spicy ramen\",\"Is saving for a sailing trip\",\"Uses a standing desk\",\"Owns a green Vespa\",\"Lives in a flat on the fourth floor\",\"Has a dog named Biscuit\",\"Team ships a release every two weeks\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":3268,\"output\":39,\"cached\":1280,\"reasoning\":23,\"costTable\":0.000132,\"costReported\":0.00041843,\"ms\":555.6596250000002,\"ttftMs\":525.1396670000031,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Started a work project codenamed Bluebird: a payments dashboard for client Fernhill Bakeries\",\"Colleague Dana works in sales\",\"Works as a product designer\",\"Manager is called Oliver\",\"Plays chess online most evenings\",\"Likes spicy ramen\",\"Is saving for a sailing trip\",\"Uses a standing desk\",\"Owns a green Vespa\",\"Lives in a flat on the fourth floor\",\"Has a dog named Biscuit\",\"Team ships a release every two weeks\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.000155094,
-        "extract": 0.0008576,
-        "derive": 0.002864
+        "reply": 0.00039906,
+        "extract": 0.0003363,
+        "derive": 0.002662
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 5904,
+          "cached": 2560
+        },
+        "extract": {
+          "input": 5142,
+          "cached": 4260
+        },
+        "derive": {
+          "input": 936,
+          "cached": 0
+        }
       },
       "judgeCostUsd": 0,
-      "costUsd": 0.003876694,
+      "costUsd": 0.00339736,
       "passed": true,
-      "at": "2026-11-05T20:11:01.081Z"
+      "at": "2026-11-05T23:14:32.546Z"
     }
   ]
 }

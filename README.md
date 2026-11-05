@@ -126,70 +126,72 @@ Docs and config
 
 ## Evals
 
-A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. Run on 2026-11-05 with the defaults in [src/models.ts](src/models.ts): **the agent passes 21/21 scenarios, the same agent with memory off 9/21.** Read 21 as 20 to 21: `derived-almaty-birthday` failed its probe in three earlier runs of the day (the reply asked for a landing date it had in memory) and passed in the final one. Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. The tables below are written by `npm run eval:report` from the same result files as [EVALS.md](EVALS.md), which adds p95 latencies, the cached-token share and every transcript. A full 21-scenario run takes 7 to 15 minutes and about $0.13 at table prices ($0.07 agent calls, $0.05 judge); the key is charged about 1.6x table prices.
+A harness replays scripted conversations through the real `ContactCore` on a fake clock, with real models (OpenRouter) and real embeddings (Workers AI bge-m3); an Opus judge scores the probes that string checks cannot. **The figures below are from 2026-11-05, late evening, with thinking on: reply medium, extraction medium, insights medium, judge medium** (the set in [src/models.ts](src/models.ts); the earlier figures, taken with the reply model and extractor at no thinking, are replaced). With the defaults: **the agent passes 21/22 scenarios, the same agent with memory off 11/22** (the earlier matrix, 21 scenarios without thinking: 21/21 against 9/21). The one miss is `short-quoted-reply`: "how about this one?" quoting "A: pizza" got a reply that weighed pizza and sushi and ended "it depends"; the first full run of the same evening, with the previous base models, missed `long-dont-know` instead, where the judge wrongly called "your app launch, which is today" a hallucination (2026-11-06 is the Friday of that launch). Cosine-only retrieval tied hybrid (2/2) on the two recall scenarios. The tables below are written by `npm run eval:report` from the same result files as [EVALS.md](EVALS.md), which adds p95 latencies, the cached-token share and every transcript. A full 22-scenario run takes about 10 minutes and about $0.10 at table prices ($0.05 agent calls, $0.05 judge).
 
-The matrix ran on 21 scenarios: short-term 7, long-term 6, derived 4, judgement 2, forget 1, isolation 1. The 22nd scenario below was added after the matrix ran and is not in these numbers. Baseline (memory off) against the agent:
+The matrix ran on 22 scenarios: short-term 8, long-term 6, derived 4, judgement 2, forget 1, isolation 1. Baseline (memory off) against the agent:
 
 What each category tests:
 
-- **short-term** (7): the conversation window and cadence. Three messages a second apart get one reply that covers all three; "that place", "the second one" and a quoted reply resolve to the right earlier message; a later correction wins; a colour stated ten messages earlier is still known; a photo and a question sent together are one turn and the model sees the image.
+- **short-term** (8): the conversation window and cadence. Three messages a second apart get one reply that covers all three; "that place", "the second one" and a quoted reply resolve to the right earlier message; a later correction wins; a colour stated ten messages earlier is still known; a photo and a question sent together are one turn and the model sees the image.
 - **long-term** (6): facts that have left the window. "Thursday next week" said on a Tuesday is stored and recalled as an absolute date; a detail from day 1 is recalled on day 4 among thirty unrelated facts, with `expect_recalled` proving retrieval found it rather than the model guessing; a move supersedes the old city but the old one stays as history; a standing preference shapes advice days later unprompted; a pet never mentioned gets "I don't know", not an invention.
 - **derived** (4): insights that exist only across facts. A peanut allergy plus a Thai dinner plan; trip dates plus a birthday two days later; a 6 am flight against a 7 am run; a vegetarian diet plus a city trip. Each needs two or more facts combined after the quiet period.
 - **judgement** (2): what not to store. Fifty lines of small talk two minutes apart must yield exactly the three real facts buried at lines 10, 25 and 41; restaurants the assistant itself suggested must not become facts about the person.
 - **forget** (1): after "forget ...", the fact is gone from every table and never reappears in a reply, even while the chat window still shows it.
 - **isolation** (1): one person's secret word is recalled for them (the control) and never reaches a second contact.
-- A 22nd scenario, `reminder-exact-time` (short-term), covers "remind me in 2 hours": the tool sets an exact local time, the reply confirms it, and after the clock jumps the reminder message arrives.
+- The eighth short-term scenario, `reminder-exact-time`, covers "remind me in 2 hours": the tool sets an exact local time, the reply confirms it, and after the clock jumps the reminder message arrives.
 
 
 <!-- evals:results -->
 | Category | Baseline (no memory) | This agent |
 |---|---|---|
-| short-term | 5/7 (71%) | 7/7 (100%) |
+| short-term | 7/8 (88%) | 7/8 (88%) |
 | long-term | 2/6 (33%) | 6/6 (100%) |
 | derived | 0/4 (0%) | 4/4 (100%) |
 | judgement | 0/2 (0%) | 2/2 (100%) |
 | forget | 1/1 (100%) | 1/1 (100%) |
 | isolation | 1/1 (100%) | 1/1 (100%) |
-| all | 9/21 (43%) | 21/21 (100%) |
+| all | 11/22 (50%) | 21/22 (95%) |
 <!-- /evals:results -->
 
-Model comparison per job: each candidate ran once with the other jobs at the defaults, on the categories its job affects; one scenario of difference is within run-to-run variance. Verdicts: default; runner-up (answered and passed, not chosen); failed (passed nothing); blocked (its calls never got through).
+Model comparison per job: each candidate ran once or twice with the other jobs at the defaults, on the categories its job affects (the reply default's row counts all 8 short-term scenarios, the candidates' rows the 7 `short-*` ones); one scenario of difference is within run-to-run variance. Verdicts: default; runner-up (answered and passed, not chosen); failed (passed nothing); blocked (its calls never got through).
 
 ### Reply (short-term)
 
 <!-- evals:reply -->
 | Model | Passed (short-term) | ttft p50 ms | first bubble p50 ms | total p50 ms | reply cost / 1,000 turns | Verdict |
 |---|---|---|---|---|---|---|
-| `deepseek/deepseek-v4.1-flash` | 7/7 (100%) | 908 | 1715 | 1715 | $0.11 | default |
-| `moonshotai/kimi-k2.6` | 7/7 (100%) | 541 | 1383 | 1373 | $0.44 | runner-up |
-| `z-ai/glm-5.2` | 7/7 (100%) | 565 | 1235 | 1236 | $0.26 | runner-up |
+| `deepseek/deepseek-v4.1-flash` | 7/8 (88%) | 1328 | 1860 | 1943 | $0.19 | default |
+| `moonshotai/kimi-k2.6` | 7/7 (100%) | 2104 | 2443 | 2444 | $2.68 | runner-up |
+| `z-ai/glm-5.2` | 7/7 (100%) | 2710 | 4367 | 4367 | $0.88 | runner-up |
 <!-- /evals:reply -->
 
-Why `deepseek-v4.1-flash`: the three candidates tie on pass rate (kimi and GLM ran in round 2, once the key's provider list allowed them), and the tie goes to the cheapest per 1,000 turns, which is flash; kimi and GLM answer faster (first token about 0.55 s against 0.9 s), which is the trade the owner would make by switching. Photo turns go to the vision default (`gpt-6.1-terra`) because flash calls images blank under the production prompt; that terra call is included in flash's and GLM's cost. `gpt-6.1-terra`, `gpt-6.1-sol` and `claude-sonnet-5.5` were not run as reply models (the design keeps them out of the default comparison).
+Why `deepseek-v4.1-flash`: kimi and GLM pass the 7 `short-*` scenarios (7/7) where flash passes 6 of the same 7 (the quoted-reply miss), a one-scenario gap that is within variance; flash costs a fifth to a fourteenth as much per 1,000 turns ($0.19 against $0.88 and $2.68) and is the fastest under thinking (first bubble p50 1.9 s on those scenarios against 2.4 s for kimi and 4.4 s for GLM; p95 2.9 s against 8.0 s and 12.7 s). With thinking on, kimi and GLM got much slower (first token p50 0.54 s and 0.57 s without thinking, 2.1 s and 2.7 s now) while flash did not (0.82 s then, 0.75 s over all turns now). Photo turns go to the vision default (`gpt-6.1-terra`) because flash calls images blank under the production prompt; that terra call is included in flash's and GLM's cost. `gpt-6.1-terra`, `gpt-6.1-sol` and `claude-sonnet-5.5` were not run as reply models (the design keeps them out of the default comparison).
+
+Medium against low effort for the reply model, on the 7 `short-*` scenarios (one run each): medium 6/7, low 7/7; first token p50 1.26 s against 0.81 s, first bubble p50 1.86 s against 1.18 s, p95 first bubble 2.9 s against 4.1 s. So medium bought nothing measurable in pass rate here and cost about 0.5 to 0.7 s at the median; the two runs' ordering at p95 is the other way round, and with 18 turns each the latency gap is indicative only.
 
 ### Extract (long-term, judgement)
 
 <!-- evals:extract -->
 | Model | Passed (long-term, judgement) | ttft p50 ms | first bubble p50 ms | total p50 ms | extract cost / 1,000 turns | Verdict |
 |---|---|---|---|---|---|---|
-| `deepseek/deepseek-v4.1-flash` | 8/8 (100%) | 905 | 1913 | 1877 | $0.10 | runner-up |
-| `openai/gpt-6-luna` | 8/8 (100%) | 949 | 1897 | 1855 | $0.06 | runner-up |
-| `anthropic/claude-haiku-5.5` | 8/8 (100%) | 530 | 1338 | 1336 | $0.11 | default |
+| `deepseek/deepseek-v4.1-flash` | 8/8 (100%) | 771 | 1318 | 1318 | $0.16 | runner-up |
+| `openai/gpt-6-luna` | 8/8 (100%) | 642 | 1027 | 1027 | $0.08 | default |
+| `anthropic/claude-haiku-5.5` | 8/8 (100%) | 605 | 973 | 973 | $0.11 | runner-up |
 <!-- /evals:extract -->
 
-Why `claude-haiku-5.5`: a three-way tie on pass rate, broken by reliability rather than cost: flash's extraction call timed out (60 s, that turn's facts lost) seven times across the day's runs, haiku's and luna's never, and haiku passed every one of its 24 scenario runs today where luna missed one of 16. A strict cheapest-on-tie rule would pick `gpt-6-luna`; it is the equal-score alternative at about half the cost. Haiku's cost in the table is measured with the Anthropic cache marker on the extraction prompt (added in round 2), which cut it from $0.39 to the figure shown.
+Why `gpt-6-luna`: all three candidates pass 8/8 in the final matrix, so the cheapest wins, which is luna ($0.08 per 1,000 turns against $0.11 for haiku and $0.16 for flash). Over the evening's two runs per model luna passed 16/16, haiku 15/16 (its one miss was the judge's `long-dont-know` slip above, not an extraction fault) and flash 8/8 once. No extraction call failed or timed out in any of these runs (the previous matrix saw flash time out seven times at no thinking). Haiku, the default until now, is the runner-up and a one-line change back.
 
 ### Derive insights (derived)
 
 <!-- evals:derive -->
 | Model | Passed (derived) | ttft p50 ms | first bubble p50 ms | total p50 ms | derive cost / 1,000 turns | Verdict |
 |---|---|---|---|---|---|---|
-| `deepseek/deepseek-v4-pro` | 4/4 (100%) | 500 | 1113 | 1113 | $0.21 | default |
-| `openai/gpt-6.1-sol` | 4/4 (100%) | 451 | 1128 | 1128 | $0.44 | runner-up |
-| `anthropic/claude-sonnet-5.5` | 3/4 (75%) | 914 | 1798 | 1798 | $0.87 | runner-up |
+| `deepseek/deepseek-v4-pro` | 4/4 (100%) | 900 | 1432 | 1432 | $0.53 | default |
+| `openai/gpt-6.1-sol` | 4/4 (100%) | 866 | 1313 | 1313 | $0.45 | runner-up |
+| `anthropic/claude-sonnet-5.5` | 4/4 (100%) | 761 | 1350 | 1351 | $0.40 | runner-up |
 <!-- /evals:derive -->
 
-Why `deepseek-v4-pro`: it ties `gpt-6.1-sol` at the top of the table and is the cheaper of the two per 1,000 turns (sonnet's one miss is the reply, not the insight). v4-pro scored 0/4 in round 1 only because the first key's provider list had no host for it; `gpt-6.1-sol` was the default in between.
+Why `deepseek-v4-pro`: it stays. Over two runs it passed 8/8, `gpt-6.1-sol` 7/8 (one miss in the full run, 4/4 on the two reruns) and `claude-sonnet-5.5` 4/4 in one run; by the rule (beat on pass rate, ties to the cheaper) v4-pro is not beaten, and sonnet's cheaper $0.40 against $0.53 is a tie on one run, not a measurement. v4-pro's insight calls are uncached (0%), which is why its cost rose from $0.21 to $0.53 with medium thinking.
 
 ```bash
 npm run eval                                   # all scenarios, default models
@@ -209,15 +211,15 @@ Tests that run today (offline): `npm test` is 265 tests in 17 files; `npx vitest
 
 ## Model picks
 
-Measured on 2026-11-05 (tables in [Evals](#evals); [EVALS.md](EVALS.md) for p95 latencies, cached-token share and transcripts; each candidate ran once or twice, so a one-scenario gap is within run-to-run variance). Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. Thinking per job is set in the same file (`EFFORT`: reply medium, extraction medium, insights medium, eval judge medium, chosen 2026-11-05 evening after the no-thinking reply model proved careless about tools and about what it had itself just done); `REPLY_EFFORT` (`low`, `medium`, `high`) overrides the reply setting per deployment. Round 1 ran on a key whose account-level provider list blocked three of the candidates; round 2, on a dedicated key, measured them.
+Measured on 2026-11-05 late evening with thinking on (tables in [Evals](#evals); [EVALS.md](EVALS.md) for p95 latencies, cached-token share and transcripts; each candidate ran once or twice, so a one-scenario gap is within run-to-run variance). Defaults and candidates are in [src/models.ts](src/models.ts); override with `MODEL_REPLY`, `MODEL_VISION`, `MODEL_EXTRACT`, `MODEL_DERIVE`. Thinking per job is set in the same file (`EFFORT`: reply medium, extraction medium, insights medium, eval judge medium, chosen 2026-11-05 evening after the no-thinking reply model proved careless about tools and about what it had itself just done; every figure in this README is measured with that set); `REPLY_EFFORT` (`low`, `medium`, `high`) overrides the reply setting per deployment. Round 1 ran on a key whose account-level provider list blocked three of the candidates; round 2, on a dedicated key, measured them.
 
 | Job | Default | Input / output per 1M tokens | Measured |
 |---|---|---|---|
-| Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | Ties kimi-k2.6 and GLM-5.2 on short-term and is the cheapest per 1,000 turns; both of them are faster to first token. Medium effort (measured under the 2026-11-04 defaults): 5/7, slower (first token p50 1.65 s against 0.95 s), no gain |
+| Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | Passes 6 of the 7 `short-*` scenarios where kimi-k2.6 and GLM-5.2 pass 7 (within variance); a fifth to a fourteenth of their cost per 1,000 turns and the fastest under thinking (kimi and GLM first token 2.1 s and 2.7 s, flash 0.75 s). Medium against low effort: 6/7 against 7/7, first bubble p50 1.9 s against 1.2 s, so medium has not earned its latency in pass rate yet |
 | Vision (photos) | `openai/gpt-6.1-terra` for every photo turn (the default reply model is marked `vision: false`; a reply model that reads images well, such as kimi-k2.6, would answer photos itself) | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. Flash calls a plain red JPEG blank under the production prompt (0/4 in round 1); routed to `gpt-6.1-terra` the photo scenario passes (1/1, "red"), about $0.001 per photo turn |
-| Extract | `anthropic/claude-haiku-5.5` (was `deepseek/deepseek-v4.1-flash`) | $0.10 / $0.50 | Ties flash and gpt-6-luna on pass rate; chosen on reliability: flash's extraction call timed out (60 s, fact lost) seven times across the day's runs (three inside its best run, on turns that carried no fact), haiku's and luna's never. Round 2 added the Anthropic cache marker to `llm.object()`; the table shows the cost and cached share measured with it |
-| Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | Ties gpt-6.1-sol at the top of the derive table and is the cheaper per 1,000 turns, with the lowest latency; claude-sonnet-5.5 one scenario behind. 0/4 in round 1 only because the first key's provider list had no host for it (gpt-6.1-sol was the default in between) |
-| Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 | about $0.05 of table cost per full run |
+| Extract | `openai/gpt-6-luna` (was `anthropic/claude-haiku-5.5`) | $0.10 / $0.50 | Three-way 8/8 tie, the cheapest wins ($0.08 per 1,000 turns against $0.11 and $0.16); luna 16/16 over two runs, haiku 15/16 (a judge slip), no timeouts at medium thinking |
+| Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | 8/8 over two runs against 7/8 for gpt-6.1-sol and 4/4 (one run) for claude-sonnet-5.5, which is cheaper ($0.40 against $0.53 per 1,000 turns) and a candidate for a second look; uncached |
+| Eval judge | `anthropic/claude-opus-5.5` at medium effort | $4 / $20 | about $0.05 of table cost per full run; one false negative seen (`long-dont-know`, the weekday of the launch) |
 | Web search | `openai/gpt-6-luna` with OpenRouter's web plugin (Exa engine), 3 results, no thinking | $0.10 / $0.50 plus the search fee | about $0.007 per search measured; only the search query and the results pass through it |
 
 Calls to DeepSeek, Moonshot and Z.ai models exclude China- and Singapore-hosted providers (`CHINA_HOSTS` in `src/models.ts`). The host that served each call is logged.

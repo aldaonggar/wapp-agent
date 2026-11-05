@@ -1,6 +1,6 @@
 // npm run eval:report — evals/results/*.json → EVALS.md. Plain Node (type stripping); works with any number of result files.
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { JOBS } from "../src/models.ts";
+import { EFFORT, JOBS } from "../src/models.ts";
 import type { EvalConfig, ScenarioResult } from "./harness";
 
 interface Run { tag: string; config: EvalConfig; at: string; scenarios: ScenarioResult[] }
@@ -13,7 +13,7 @@ const JOB_CATEGORIES: Record<Job, string[]> = { reply: ["short-term"], extract: 
 const NOT_RUN = "not run";
 
 const model = (r: Run, job: Job) => r.config.models?.[job] ?? r.config[job] ?? JOBS[job].default; // files from before models were recorded fall back to the current defaults (only their reply model is read today)
-// Base configuration (no job overridden, memory on, hybrid, lowest effort), optionally with one job swapped, memory off or cosine retrieval.
+// Base configuration (no job overridden, memory on, hybrid, the default reply effort), optionally with one job swapped, memory off or cosine retrieval.
 const isDefault = (r: Run, o: { memory?: boolean; retrieval?: string; except?: Job } = {}) =>
   r.config.memory === (o.memory ?? true) && r.config.retrieval === (o.retrieval ?? "hybrid") && !r.config.effort &&
   (["reply", "extract", "derive"] as const).every((j) => j === o.except || !r.config[j]);
@@ -79,7 +79,7 @@ for (const job of ["reply", "extract", "derive"] as const) {
 
 const groups = new Map<string, ScenarioResult[]>();
 for (const r of runs) {
-  const key = `${model(r, "reply")} | ${r.config.effort ?? "lowest"} | ${r.config.memory ? "on" : "off"}`;
+  const key = `${model(r, "reply")} | ${r.config.effort ?? EFFORT.reply} | ${r.config.memory ? "on" : "off"}`;
   groups.set(key, [...(groups.get(key) ?? []), ...r.scenarios]);
 }
 out.push("", "## Latency per reply model and effort", "",
