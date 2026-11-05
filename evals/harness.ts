@@ -40,6 +40,7 @@ export class FakeWa implements WaClient {
   sent: Sent[] = [];
   media = new Map<string, { bytes: Uint8Array; mime: string }>();
   failNext?: WaError;
+  window24h?: (to: string) => boolean; // unset: the WhatsApp rule applies; a test's Telegram fake sets () => false
   private clock: FakeClock;
   private n = 0;
   constructor(clock: FakeClock) { this.clock = clock; }

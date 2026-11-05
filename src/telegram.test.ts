@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { FakeClock, FakeWa, drain, makeEvalDeps, stubLlm } from "../evals/harness";
+import { ContactCore } from "./core/contact";
 import type { Inbound, WaClient } from "./core/types";
 import worker from "./index";
 import { TG, makeTgClient, parseUpdate, routeTransports } from "./telegram";
-import { WaError } from "./whatsapp";
+import { WaError, makeWaClient } from "./whatsapp";
 
 const USER = { id: 123456789, is_bot: false, first_name: "Ann", username: "AnnK" };
 const CHAT = { id: 123456789, type: "private" };
@@ -86,6 +88,23 @@ test("sendText posts chat id, reply params and preview flag; returns tg:<chat>:<
   await expect(tg.sendText("tg:123456789", "x")).rejects.toMatchObject({ code: 0, status: 502 }); // no message_id in the result: the core stores a failed row
 });
 
+test("sendAudio posts multipart sendVoice: chat id, the bytes as voice.ogg with the mime, reply params; returns tg:<chat>:<message_id>", async () => {
+  const s = stub(ok({ message_id: 45 }), ok({ message_id: 46 }), ok({}));
+  const tg = makeTgClient({ token: "TOK", fetch: s.f });
+  const bytes = new Uint8Array([0x4f, 0x67, 0x67, 0x53]);
+  expect(await tg.sendAudio!("tg:123456789", bytes, "audio/ogg", { quote: "tg:123456789:40" })).toEqual({ id: "tg:123456789:45" });
+  expect(s.calls[0].url).toBe(`${TG}/botTOK/sendVoice`);
+  expect(s.calls[0].init?.headers).toBeUndefined(); // fetch writes the multipart boundary
+  const form = s.calls[0].init?.body as FormData;
+  expect(form.get("chat_id")).toBe("123456789");
+  expect(JSON.parse(form.get("reply_parameters") as string)).toEqual({ message_id: 40, allow_sending_without_reply: true });
+  const voice = form.get("voice") as File;
+  expect([voice.name, voice.type, new Uint8Array(await voice.arrayBuffer())]).toEqual(["voice.ogg", "audio/ogg", bytes]);
+  expect(await tg.sendAudio!("tg:123456789", bytes, "audio/ogg")).toEqual({ id: "tg:123456789:46" });
+  expect((s.calls[1].init?.body as FormData).has("reply_parameters")).toBe(false);
+  await expect(tg.sendAudio!("tg:123456789", bytes, "audio/ogg")).rejects.toMatchObject({ code: 0, status: 502 });
+});
+
 test("sendReaction (variation selector stripped) and markReadTyping send the documented bodies", async () => {
   const s = stub(ok(true), ok(true));
   const tg = makeTgClient({ token: "TOK", fetch: s.f });
@@ -141,15 +160,16 @@ test("an API error becomes WaError(error_code, http status, description); a hung
   await expect(makeTgClient({ token: "T", fetch: hanging, timeoutMs: 5 }).markReadTyping("tg:1:2")).rejects.toMatchObject({ code: 0, status: 0 });
 });
 
-test("routeTransports sends tg: ids to Telegram and everything else to WhatsApp", async () => {
+test("routeTransports sends tg: ids to Telegram and everything else to WhatsApp; sendAudio and window24h dispatch the same way", async () => {
   const log: string[] = [];
-  const fake = (name: string): WaClient => ({
+  const fake = (name: string, audio = false): WaClient => ({
     async sendText(to) { log.push(`${name}.sendText ${to}`); return { id: "" }; },
     async sendReaction(to) { log.push(`${name}.sendReaction ${to}`); },
     async markReadTyping(id) { log.push(`${name}.typing ${id}`); },
     async fetchMedia(id) { log.push(`${name}.media ${id}`); return { bytes: new Uint8Array(), mime: "" }; },
+    ...(audio ? { sendAudio: async (to: string) => { log.push(`${name}.sendAudio ${to}`); return { id: "" }; }, window24h: () => false } : {}),
   });
-  const r = routeTransports(fake("wa"), fake("tg"));
+  const r = routeTransports(fake("wa"), fake("tg", true));
   await r.sendText("tg:1", "x");
   await r.sendText("15550000001", "x");
   await r.sendReaction("tg:1", "tg:1:2", "👍");
@@ -157,7 +177,27 @@ test("routeTransports sends tg: ids to Telegram and everything else to WhatsApp"
   await r.markReadTyping("wamid.X");
   await r.fetchMedia("tg:F");
   await r.fetchMedia("1003383421387256");
-  expect(log).toEqual(["tg.sendText tg:1", "wa.sendText 15550000001", "tg.sendReaction tg:1", "tg.typing tg:1:2", "wa.typing wamid.X", "tg.media tg:F", "wa.media 1003383421387256"]);
+  await r.sendAudio!("tg:1", new Uint8Array(), "audio/ogg");
+  await expect(r.sendAudio!("15550000001", new Uint8Array(), "audio/ogg")).rejects.toMatchObject({ code: 0, status: 0 }); // this fake cannot: the core falls back to text
+  expect(log).toEqual(["tg.sendText tg:1", "wa.sendText 15550000001", "tg.sendReaction tg:1", "tg.typing tg:1:2", "wa.typing wamid.X", "tg.media tg:F", "wa.media 1003383421387256", "tg.sendAudio tg:1"]);
+  expect([r.window24h!("tg:1"), r.window24h!("15550000001")]).toEqual([false, true]); // a client without window24h keeps Meta's rule
+  expect(routeTransports(fake("wa"), fake("tg")).sendAudio).toBeUndefined();
+  const real = routeTransports(makeWaClient({ token: "t", phoneNumberId: "p" }), makeTgClient({ token: "t" }));
+  expect([real.sendAudio !== undefined, real.window24h!("15550000001"), real.window24h!("tg:1")]).toEqual([true, true, false]);
+});
+
+test("end to end: a voice note from a Telegram contact is answered with one sendAudio on the Telegram client", async () => {
+  const clock = new FakeClock(), view = clock.forContact("tg"), wa = new FakeWa(clock), tg = new FakeWa(clock);
+  const deps = makeEvalDeps({ clock: view, wa, llm: stubLlm({ reply: () => "react: none\nall good here" }) });
+  deps.wa = routeTransports(wa, tg);
+  tg.media.set("tg:V", { bytes: new Uint8Array([1]), mime: "audio/ogg" });
+  const core = new ContactCore(deps);
+  await core.ingest({ id: "tg:123456789:42", from: "tg:123456789", ts: clock.t, kind: "audio", mediaId: "tg:V", mime: "audio/ogg", voice: true });
+  await drain(core, view, clock, clock.t + 60_000);
+  expect(tg.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
+  expect(tg.sent[1]).toMatchObject({ to: "tg:123456789", mime: "audio/ogg", bytes: new Uint8Array([0x4f, 0x67, 0x67, 0x53]) });
+  expect(wa.sent).toEqual([]);
+  expect(deps.db.all("SELECT kind, text, status FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", text: "all good here", status: "sent" }]);
 });
 
 // ---- POST /telegram ----

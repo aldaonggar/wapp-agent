@@ -7,6 +7,7 @@ export interface WaClient {
   markReadTyping(messageId: string): Promise<void>;
   fetchMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string }>;
   sendAudio?(to: string, bytes: Uint8Array, mime: string, opts?: { quote?: string }): Promise<{ id: string }>; // optional: a transport without it gets text replies
+  window24h?(to: string): boolean; // optional: Meta's 24-hour reply window applies unless the transport answers false (Telegram has none)
 }
 export type { Usage, Llm, StreamCall, ObjectCall } from "../llm";
 export type { ReasoningSetting, ModelChoice } from "../models";

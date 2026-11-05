@@ -48,19 +48,19 @@ export function scheduleFollowup(db: Db, now: number, tz: string): void {
   db.run("UPDATE state SET followup_due = ?, followup_fact_id = ?", best?.due ?? null, best?.id ?? null);
 }
 
-// `id` is the fact the alarm was armed for, read when the alarm started.
-export function followupDecision(db: Db, now: number, tz: string, id: number | null): FollowupDecision {
+// `id` is the fact the alarm was armed for, read when the alarm started; `window24h` is false on a transport without Meta's rule (Telegram).
+export function followupDecision(db: Db, now: number, tz: string, id: number | null, window24h: boolean): FollowupDecision {
   const fact = id === null ? undefined : db.all<{ text: string; event_date: string | null }>("SELECT text, event_date FROM facts WHERE id = ? AND status = 'active'", id)[0];
   const eventMs = fact?.event_date ? localToUtc(fact.event_date, tz) : null;
   if (!fact || eventMs === null) return { kind: "skip", reason: "no-fact" };
   const c = db.all<{ last_inbound_ts: number | null; last_proactive_date: string | null }>("SELECT last_inbound_ts, last_proactive_date FROM contact")[0];
   const lastIn = c?.last_inbound_ts ?? 0;
-  if (now - lastIn > DAY) return { kind: "skip", reason: "window" };
+  if (window24h && now - lastIn > DAY) return { kind: "skip", reason: "window" };
   if (db.all("SELECT 1 FROM messages WHERE direction='in' AND ts > ? LIMIT 1", eventMs).length) return { kind: "skip", reason: "messaged" };
   const [today, time] = formatLocal(now, tz).split(" ");
   const hour = +time.slice(0, 2);
   const quiet = hour < 9 || hour >= 22, sentToday = c?.last_proactive_date === today;
   if (!quiet && !sentToday) return { kind: "send", factId: id!, text: fact.text };
   const to = next9am(now, tz, sentToday);
-  return to <= lastIn + DAY ? { kind: "defer", to } : { kind: "skip", reason: "window" };
+  return !window24h || to <= lastIn + DAY ? { kind: "defer", to } : { kind: "skip", reason: "window" };
 }

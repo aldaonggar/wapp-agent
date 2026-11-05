@@ -96,4 +96,7 @@ test("buildPrompt lists pending reminders in local time with their ids; the syst
   expect(SYSTEM_PROMPT).toContain("call set_reminder");
   expect(SYSTEM_PROMPT).toContain("cancel_reminder");
   expect(SYSTEM_PROMPT).toContain("fix it and call again without mentioning it");
+  expect(SYSTEM_PROMPT).toContain("such as WhatsApp or Telegram"); // one prompt for both transports; markdown emphasis shows literally on Telegram
+  expect(SYSTEM_PROMPT).not.toMatch(/on WhatsApp|only rarely/);
+  expect(SYSTEM_PROMPT).toContain("never write a timestamp, a bracketed time or a date prefix");
 });

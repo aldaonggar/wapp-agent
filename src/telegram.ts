@@ -88,8 +88,9 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
   const doFetch = (url: string, init: RequestInit) => rawFetch(url, { ...init, signal: AbortSignal.timeout(cfg.timeoutMs ?? 15_000) }).catch(fail);
   const sleep = cfg.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
 
-  async function call(method: string, body: Obj, retried = false): Promise<unknown> {
-    const res = await doFetch(`${TG}/bot${cfg.token}/${method}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  async function call(method: string, body: Obj | FormData, retried = false): Promise<unknown> {
+    const init = body instanceof FormData ? { body } : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }; // multipart: fetch writes the boundary
+    const res = await doFetch(`${TG}/bot${cfg.token}/${method}`, { method: "POST", ...init });
     const json = obj(await res.json().catch(() => ({})));
     if (res.ok && json.ok === true) return json.result;
     const retryAfter = num(obj(json.parameters).retry_after);
@@ -111,6 +112,18 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
       if (mid === undefined) throw new WaError(0, 502, "sendMessage: no message_id"); // the core then stores a failed row
       return { id: `tg:${chat_id}:${mid}` };
     },
+    // sendVoice shows OGG/Opus (what Aura-1 produces) as a voice note; multipart because the bytes travel in the body.
+    async sendAudio(to, bytes, mime, opts) {
+      const chat_id = chatOf(to);
+      const form = new FormData();
+      form.set("chat_id", String(chat_id));
+      form.set("voice", new Blob([bytes as BlobPart], { type: mime }), "voice.ogg");
+      if (opts?.quote) form.set("reply_parameters", JSON.stringify({ message_id: messageOf(opts.quote), allow_sending_without_reply: true }));
+      const mid = num(obj(await call("sendVoice", form)).message_id);
+      if (mid === undefined) throw new WaError(0, 502, "sendVoice: no message_id");
+      return { id: `tg:${chat_id}:${mid}` };
+    },
+    window24h: () => false, // a bot may message a private chat at any time
     async sendReaction(to, messageId, emoji) {
       // Telegram's reaction set lists ❤ without the variation selector that models usually emit.
       await call("setMessageReaction", { chat_id: chatOf(to), message_id: messageOf(messageId), reaction: [{ type: "emoji", emoji: emoji.replace(/\uFE0F/g, "") }] });
@@ -133,10 +146,18 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
 /** One client for both transports: every id and recipient that starts with `tg:` goes to Telegram. */
 export function routeTransports(wa: WaClient, tg: WaClient): WaClient {
   const pick = (id: string) => (id.startsWith("tg:") ? tg : wa);
-  return {
+  const r: WaClient = {
     sendText: (to, body, opts) => pick(to).sendText(to, body, opts),
     sendReaction: (to, messageId, emoji) => pick(to).sendReaction(to, messageId, emoji),
     markReadTyping: (messageId) => pick(messageId).markReadTyping(messageId),
     fetchMedia: (mediaId) => pick(mediaId).fetchMedia(mediaId),
+    window24h: (to) => pick(to).window24h?.(to) ?? true,
   };
+  // Absent only when neither transport sends audio; one that cannot fails the voice send and the core falls back to text.
+  if (wa.sendAudio || tg.sendAudio) r.sendAudio = async (to, bytes, mime, opts) => {
+    const c = pick(to);
+    if (!c.sendAudio) throw new WaError(0, 0, "sendAudio: not supported by this transport");
+    return c.sendAudio(to, bytes, mime, opts);
+  };
+  return r;
 }
