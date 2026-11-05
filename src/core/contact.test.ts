@@ -761,6 +761,28 @@ test("set_reminder stores the reminder and arms the alarm; the timer sends it on
   expect(t.llm.calls).toHaveLength(1);
 });
 
+test("a reset during one reminder's send does not lose the next: the redelivered alarm re-arms it from the table", async () => {
+  const t = setup({ reply: async (c) => { await c.tools!.set_reminder.execute!({ text: "a", at: "2026-11-05 09:00" }, { toolCallId: "t", messages: [] } as never); return remind("b", "2026-11-05 10:00")(c); } });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("two reminders tomorrow");
+  await t.run();
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 09:00"));
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = () => new Promise(() => {}); // the send hangs and the object is reset mid-handler
+  t.clock.t = ny("2026-11-05 09:00");
+  t.view.alarmAt = null;
+  void t.core.alarm();
+  await vi.waitFor(() => expect(t.db.all("SELECT status FROM reminders WHERE id = 1")).toEqual([{ status: "sent" }]));
+  expect(t.state().reminder_due).toBeNull();
+  t.wa.sendText = send;
+  const fresh = new ContactCore(t.deps); // same storage, new instance; alarms are at-least-once, so it is delivered again
+  await fresh.alarm();
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 10:00"));
+  await drain(fresh, t.view, t.clock, ny("2026-11-05 10:00"));
+  expect(texts(t).map((s) => s.body)).toEqual([expect.stringContaining('"id":2'), "Reminder: b"]);
+  expect(t.db.all("SELECT id, status FROM reminders ORDER BY id")).toEqual([{ id: 1, status: "sent" }, { id: 2, status: "sent" }]);
+});
+
 test("set_reminder refuses a time already past with an error the model can relay; nothing is stored or armed", async () => {
   const t = setup({ reply: remind("x", "2026-11-04 09:59") });
   t.clock.t = ny("2026-11-04 10:00");

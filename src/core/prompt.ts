@@ -1,5 +1,6 @@
 import type { ModelMessage, SystemModelMessage, UserContent } from "ai";
 import { formatLocal } from "./db";
+import type { Reminder } from "./reminders";
 import type { MemoryHit, Snapshot } from "./types";
 
 export const SYSTEM_PROMPT = `You are texting with one person on WhatsApp. Write like a warm, attentive friend texting back, not like an assistant.
@@ -70,7 +71,7 @@ const memoryLine = (m: MemoryHit) =>
 export function buildPrompt(input: {
   profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
   nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[]; memory?: boolean;
-  reminders?: { id: number; text: string; due_ts: number }[];
+  reminders?: Reminder[];
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [

@@ -266,6 +266,7 @@ export class ContactCore {
           const joined = held.map((b) => b.text).join("\n\n");
           const wamid = SPEAKABLE.test(joined) ? await this.sendVoice(to, joined) : null;
           if (wamid) {
+            sends++;
             bubbles = held.length;
             ttfb ??= performance.now() - t0;
             db.run("INSERT INTO messages(id, direction, kind, text, ts, voice, status) VALUES (?, 'out', 'audio', ?, ?, 1, 'sent')", wamid, joined, clock.now());
@@ -350,7 +351,7 @@ export class ContactCore {
       db.run("UPDATE state SET followup_fact_id = NULL");
     };
     try {
-      tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
+      tz = this.tz();
       const d = followupDecision(db, now, tz, factId);
       if (d.kind === "defer") {
         db.run("UPDATE facts SET followup_due = ? WHERE id = ?", d.to, factId);
@@ -396,8 +397,6 @@ export class ContactCore {
     } catch (e) {
       this.error("reminder_failed", e);
       db.run("UPDATE reminders SET status='skipped' WHERE status='pending' AND due_ts <= ?", now); // never re-armed into an alarm storm
-    } finally {
-      scheduleReminder(db);
     }
   }
 
@@ -469,7 +468,7 @@ export class ContactCore {
     }).catch((e) => { this.error("media_failed", e); return null; });
     return file
       .then((f) => this.deps.transcribe(f.bytes, f.mime))
-      .then((t) => db.run("UPDATE messages SET text=?, voice=1 WHERE id=?", t, id), (e) => {
+      .then((t) => db.run("UPDATE messages SET text=? WHERE id=?", t, id), (e) => { // voice stays what the webhook said: a forwarded audio file is not a voice note
         this.error("voice_failed", e);
         db.run("UPDATE messages SET text=? WHERE id=?", VOICE_FAILED, id);
       })
@@ -495,6 +494,7 @@ export class ContactCore {
   }
 
   private async scheduleNext(): Promise<void> {
+    scheduleReminder(this.deps.db); // from the table, so a reset mid-send cannot lose the next reminder
     const s = this.state();
     const due = [s.turn_due, s.insights_due, s.followup_due, s.reminder_due].filter((x): x is number => x !== null);
     await this.deps.clock.setAlarm(due.length ? Math.min(...due) : null);

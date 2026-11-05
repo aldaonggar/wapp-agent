@@ -27,14 +27,16 @@ test("addReminder resolves the person's local time across DST and tolerates ISO 
   expect(dueOf(db, 8)).toBe(Date.UTC(2026, 1, 2, 5, 0));
 });
 
-test("addReminder refuses the past, more than a year ahead, and junk, storing nothing", () => {
+test("addReminder refuses the past, more than a year ahead, and junk, storing nothing; the current minute is accepted", () => {
   const db = fresh();
-  const now = at("2026-11-04 10:00");
-  expect(addReminder(db, now, TZ, "x", "2026-11-04 10:00", null)).toEqual({ error: expect.stringContaining("already past; it is 2026-11-04 10:00 now") });
+  const now = at("2026-11-04 10:00") + 30_000;
+  expect(addReminder(db, now, TZ, "x", "2026-11-04 09:59", null)).toEqual({ error: expect.stringContaining("already past; it is 2026-11-04 10:00 now") });
   expect(addReminder(db, now, TZ, "x", "2027-11-06 10:00", null)).toEqual({ error: expect.stringContaining("more than a year ahead") });
   expect(addReminder(db, now, TZ, "x", "tomorrow at 9", null)).toEqual({ error: expect.stringContaining('"YYYY-MM-DD HH:mm"') });
   expect(db.all("SELECT 1 FROM reminders")).toEqual([]);
   expect(due(db)).toBeNull();
+  expect(addReminder(db, now, TZ, "x", "2026-11-04 10:00", null)).toEqual({ id: 1, at: "2026-11-04 10:00" }); // fires at once
+  expect(due(db)).toBe(at("2026-11-04 10:00"));
 });
 
 test("the earliest pending reminder arms the timer; cancelReminder only cancels pending rows", () => {
@@ -44,6 +46,8 @@ test("the earliest pending reminder arms the timer; cancelReminder only cancels 
   addReminder(db, now, TZ, "sooner", "2026-11-05 09:00", null);
   expect(due(db)).toBe(at("2026-11-05 09:00"));
   expect(pendingReminders(db).map((r) => r.text)).toEqual(["sooner", "later"]);
+  expect(addReminder(db, now, TZ, "sooner", "2026-11-05 09:00", null)).toEqual({ id: 2, at: "2026-11-05 09:00" }); // the same reminder twice is one row
+  expect(pendingReminders(db)).toHaveLength(2);
   expect(cancelReminder(db, 2)).toEqual({ cancelled: true });
   expect(due(db)).toBe(at("2026-11-06 09:00"));
   expect(cancelReminder(db, 2)).toEqual({ cancelled: false });
