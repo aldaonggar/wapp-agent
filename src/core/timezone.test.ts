@@ -8,4 +8,5 @@ test("tzFromPhone picks the longest calling-code prefix, else UTC", () => {
   expect(tzFromPhone("447700900123")).toBe("Europe/London");
   expect(tzFromPhone("15551234567")).toBe("America/New_York");
   expect(tzFromPhone("99999")).toBe("UTC");
+  expect(tzFromPhone("tg:123456789")).toBe("UTC"); // Telegram contacts carry no calling code
 });

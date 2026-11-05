@@ -1,6 +1,13 @@
+import { parseUpdate } from "./telegram";
 import { parseWebhook, verifySignature } from "./whatsapp";
 
 let warnedRegular = false; // once per isolate
+
+// Empty ALLOWED_TELEGRAM admits anyone who finds the bot (the owner's choice); entries are @usernames or numeric user ids.
+function telegramAllowed(list: string | undefined, user: { id: number; username?: string }): boolean {
+  const allowed = new Set((list ?? "").split(",").map((s) => s.trim().replace(/^@/, "").toLowerCase()).filter(Boolean));
+  return allowed.size === 0 || allowed.has(String(user.id)) || (user.username !== undefined && allowed.has(user.username.toLowerCase()));
+}
 
 export default {
   async fetch(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
@@ -43,6 +50,19 @@ export default {
         }
         return new Response("ok");
       }
+    }
+
+    // Dark (404) until TELEGRAM_WEBHOOK_SECRET is set; Telegram sends the secret given to setWebhook in this header on every update.
+    if (url.pathname === "/telegram" && request.method === "POST" && env.TELEGRAM_WEBHOOK_SECRET) {
+      if (request.headers.get("x-telegram-bot-api-secret-token") !== env.TELEGRAM_WEBHOOK_SECRET) return new Response("forbidden", { status: 403 });
+      let body: unknown;
+      try { body = await request.json(); } catch { return new Response("bad json", { status: 400 }); }
+      const u = parseUpdate(body); // null: groups, bots, edits, other update kinds
+      if (u && telegramAllowed(env.ALLOWED_TELEGRAM, u.user)) {
+        // Unlike Meta, Telegram retries a failed update before delivering the next one, so a throw here would stall every chat.
+        try { await env.CONTACT.getByName(u.m.from).ingest(u.m); } catch (e) { console.log(JSON.stringify({ event: "ingest_failed", error: e instanceof Error ? e.message : String(e) })); }
+      } else if (u) console.log(JSON.stringify({ event: "dropped_sender", from: u.user.username ?? "…" + String(u.user.id).slice(-4) }));
+      return new Response("ok");
     }
 
     return new Response("not found", { status: 404 });

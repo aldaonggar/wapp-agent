@@ -1,6 +1,6 @@
 # wapp-agent
 
-A WhatsApp assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
+A WhatsApp and Telegram assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
 
 Repo: https://github.com/aldaonggar/wapp-agent (branch `feat/wapp-agent`). Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` returns `ok`).
 
@@ -16,6 +16,8 @@ Caveat: nothing has been exercised end to end from a phone yet (pending the owne
 - Checks in later about plans that have a date.
 
 To try it, the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
+
+On Telegram: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk; no number registration. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). The same agent and the same memory serve both apps; to it, a Telegram contact and a WhatsApp contact are two different people.
 
 Things to try:
 
@@ -34,12 +36,14 @@ Things to try:
 flowchart LR
   P[Phone] --> M[Meta Cloud API]
   M -->|webhook| W[Worker]
+  T[Telegram Bot API] -->|webhook| W
   W -->|verify, allowlist| D[ContactAgent DO]
   D --> C[ContactCore]
   C --> O[OpenRouter]
   C --> A[Workers AI]
   C --> B[Browser Rendering]
   C -->|send| M
+  C -->|send| T
   D -.->|alarm| L[Alarm loop]
   L --> C
 ```
@@ -58,12 +62,13 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 `src/`
 
 - [worker.ts](src/worker.ts): wrangler entry; re-exports the Worker and `ContactAgent`.
-- [index.ts](src/index.ts): `/webhook` GET and POST, allowlist, fan-out, `/health`.
+- [index.ts](src/index.ts): `/webhook` GET and POST, `/telegram` POST, allowlists, fan-out, `/health`.
 - [contact-agent.ts](src/contact-agent.ts): Durable Object shell and dependency wiring.
 - [env.d.ts](src/env.d.ts): `Env` augmentation (secret names, `CONTACT` binding).
 - [models.ts](src/models.ts): model table, per-job defaults and candidates, prices, cost, host filter.
 - [llm.ts](src/llm.ts): streaming and structured calls over the AI SDK and OpenRouter.
 - [whatsapp.ts](src/whatsapp.ts): webhook parsing, Graph API client, signature check.
+- [telegram.ts](src/telegram.ts): Bot API update parsing, client, and the transport router (`tg:` ids go to Telegram, everything else to WhatsApp).
 - [browser.ts](src/browser.ts): URL extraction and Browser Rendering snapshots.
 - [workers-ai.ts](src/workers-ai.ts): embeddings, rerank, transcription.
 - `*.test.ts` next to each file: unit tests.
@@ -121,7 +126,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 175 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 35 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 192 tests in 16 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 35 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -148,7 +153,7 @@ npm test
 npm run eval
 ```
 
-`.dev.vars` (git-ignored) holds eight names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`. Where each comes from is in [SETUP.md](SETUP.md).
+`.dev.vars` (git-ignored) holds eight names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md).
 
 ## Known limits
 
@@ -161,6 +166,7 @@ npm run eval
 - The model comparison has not run (see Evals).
 - Follow-ups never retry.
 - The extractor sees only the current turn.
+- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. The 24-hour follow-up window is applied as on WhatsApp although Telegram has no such rule. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. The system prompt still says "WhatsApp" and allows `*bold*`, which Telegram shows literally.
 
 ## What I would build next
 

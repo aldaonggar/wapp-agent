@@ -12,6 +12,9 @@ Everything here happens in web dashboards and cannot be scripted. Do the section
 | `CLOUDFLARE_ACCOUNT_ID` | already filled in |
 | `OPENROUTER_API_KEY` | section 5 |
 | `ALLOWED_PHONES` | your number now, reviewers' numbers later (section 7) |
+| `TELEGRAM_BOT_TOKEN` | section 9, BotFather (optional: only for Telegram) |
+| `TELEGRAM_WEBHOOK_SECRET` | section 9, generated with `openssl rand -hex 24` |
+| `ALLOWED_TELEGRAM` | section 9; empty means anyone who finds the bot can talk to it |
 
 Where a button label below might differ from what you see, the text says what to look for.
 
@@ -118,6 +121,50 @@ Only for the eval dashboard; the Worker never needs it, and `npm run eval -- --b
 2. In the app's settings, open **API keys** → create one → copy it.
 3. Put it in a new file `.env.braintrust` in the project root (git-ignored) as one line: `BRAINTRUST_API_KEY=<key>`. Do not add it to `.dev.vars`; it is not a Worker secret.
 4. `npm run eval -- --braintrust` → the run appears as an experiment under the project `wapp-agent`, named after the configuration (a rerun gets a derived name).
+
+## 9. Telegram bot (5 minutes)
+
+A second way to reach the same agent; it needs nothing from Meta. Three values and one webhook call.
+
+1. In Telegram open **@BotFather** → `/newbot` → a display name (for example `wapp agent`) → a username ending in `bot` (for example `wapp_agent_bot`). BotFather answers with the token (`123456789:AA...`). Put it in `.dev.vars` as `TELEGRAM_BOT_TOKEN`.
+2. Generate the webhook secret and put it in `.dev.vars` as `TELEGRAM_WEBHOOK_SECRET`:
+
+```bash
+openssl rand -hex 24
+```
+
+3. Decide who may talk to the bot and put it in `.dev.vars` as `ALLOWED_TELEGRAM`: comma-separated Telegram usernames (with or without `@`, any case) or numeric user ids, for example `@alda, 123456789`. **Empty means anyone who finds the bot can talk to it.** Someone without a username gets their id from `@userinfobot`. Anyone else is dropped and logged as `dropped_sender`.
+4. Upload the values to the Worker (each command prompts; paste the value). Skip the third one if the list is empty.
+
+```bash
+npx wrangler secret put TELEGRAM_BOT_TOKEN
+npx wrangler secret put TELEGRAM_WEBHOOK_SECRET
+npx wrangler secret put ALLOWED_TELEGRAM
+```
+
+Until `TELEGRAM_WEBHOOK_SECRET` is uploaded, `/telegram` answers 404.
+
+5. Register the webhook once, from the project root (the values are read from `.dev.vars` so they never land in your shell history):
+
+```bash
+TOKEN=$(grep '^TELEGRAM_BOT_TOKEN=' .dev.vars | cut -d= -f2-)
+SECRET=$(grep '^TELEGRAM_WEBHOOK_SECRET=' .dev.vars | cut -d= -f2-)
+curl -s "https://api.telegram.org/bot$TOKEN/setWebhook" \
+  -d url=https://wapp-agent.alda-onggar.workers.dev/telegram -d "secret_token=$SECRET" \
+  -d 'allowed_updates=["message","message_reaction"]' -d drop_pending_updates=true
+```
+
+Expected: `{"ok":true,"result":true,"description":"Webhook was set"}`. Check it:
+
+```bash
+curl -s "https://api.telegram.org/bot$TOKEN/getWebhookInfo"
+```
+
+`url` must be the Worker's and there must be no `last_error_message`. `allowed_updates` must include `message_reaction`, or reactions never arrive.
+
+6. Open `https://t.me/<bot username>`, press **Start**. The bot answers within a few seconds. To add a reviewer: send them that link; if `ALLOWED_TELEGRAM` is set, add their username or id to it first and re-run `npx wrangler secret put ALLOWED_TELEGRAM`.
+
+A bot has one webhook at a time: pointing it at a staging Worker takes it away from production until step 5 is run again. A new secret also means running step 5 again.
 
 ## Known limits
 

@@ -5,6 +5,7 @@ import { fromDO, migrate } from "./core/db";
 import type { Db, Deps, Inbound } from "./core/types";
 import { makeLlm } from "./llm";
 import { pickModels } from "./models";
+import { makeTgClient, routeTransports } from "./telegram";
 import { makeWaClient } from "./whatsapp";
 import { embedViaBinding, rerankViaBinding, transcribeViaBinding } from "./workers-ai";
 
@@ -13,7 +14,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   return {
     db,
     clock: { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), setAlarm: (at) => (at === null ? ctx.storage.deleteAlarm() : ctx.storage.setAlarm(at)) },
-    wa: makeWaClient({ token: env.WHATSAPP_TOKEN, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }),
+    wa: routeTransports(makeWaClient({ token: env.WHATSAPP_TOKEN, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }), makeTgClient({ token: env.TELEGRAM_BOT_TOKEN })),
     llm: makeLlm(env.OPENROUTER_API_KEY, {
       log: (u) => {
         log({ event: "call", ...u });
