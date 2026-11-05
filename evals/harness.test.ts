@@ -221,6 +221,15 @@ test("seed_facts embeds through the passed embed and the checks read the tables"
   expect(r.passed).toBe(false);
 });
 
+test("expect_insights counts an insight that cites more facts than evidence_count", async () => {
+  const facts = [["Flies to Almaty on 2026-12-10", "plan"], ["Sister Aru's birthday is on 2026-12-12", "person"], ["Sister Aru lives in Almaty", "person"]];
+  const llm = stubLlm({ object: (c) => c.job === "derive"
+    ? { insights: [{ text: "Lands two days before Aru's birthday", confidence: 0.9, evidence_fact_ids: [1, 2, 3] }] }
+    : { ops: facts.map(([text, kind]) => ({ op: "ADD", text, kind, signal: 4 })) } });
+  const r = await run([{ at: "+0s", say: "land in Almaty on the 10th; Aru's birthday is the 12th, she lives there" }, { at: "+31min", say: "night" }, { expect_insights: { min: 1, evidence_count: 2 } }], llm, { ...cfg, memory: true });
+  expect(r.checks).toMatchObject([{ name: "expect_insights", passed: true, detail: expect.stringContaining("1 active insights citing ≥ 2 facts") }]);
+});
+
 test("expect_facts_not_contains also reads the profile", async () => {
   const llm = stubLlm({ object: () => ({ ops: [{ op: "ADD", text: "Has a sister", kind: "person", signal: 5 }], profile: "Sister: lives in Almaty" }) });
   const r = await run([{ at: "+0s", say: "my sister lives in Almaty" }, { expect_facts_not_contains: ["Almaty"] }], llm, { ...cfg, memory: true });

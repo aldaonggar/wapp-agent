@@ -423,8 +423,9 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     } else if ("expect_insights" in step) {
       const { min, evidence_count } = step.expect_insights;
       const rows = db.all<{ text: string; evidence_fact_ids: string | null }>("SELECT text, evidence_fact_ids FROM insights WHERE status='active'");
-      const ok = rows.filter((r) => evidence_count === undefined || (JSON.parse(r.evidence_fact_ids ?? "[]") as unknown[]).length === evidence_count);
-      checks.push({ name: "expect_insights", passed: ok.length >= min, detail: `${ok.length} active insights${evidence_count === undefined ? "" : ` citing ${evidence_count} facts`} (want ≥ ${min}): ${rows.map((r) => r.text).join(" | ")}` });
+      // evidence_count is a minimum: a faithful extractor splits "Aru's birthday is the 12th, she lives there" into two facts, so a correct insight may cite three.
+      const ok = rows.filter((r) => evidence_count === undefined || (JSON.parse(r.evidence_fact_ids ?? "[]") as unknown[]).length >= evidence_count);
+      checks.push({ name: "expect_insights", passed: ok.length >= min, detail: `${ok.length} active insights${evidence_count === undefined ? "" : ` citing ≥ ${evidence_count} facts`} (want ≥ ${min}): ${rows.map((r) => r.text).join(" | ")}` });
     }
   }
   for (const c of contacts.values()) await drain(c.core, c.view, clock, clock.t + MAX_WAIT_MS + 1); // a trailing say still gets its turn
