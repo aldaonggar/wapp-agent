@@ -9,7 +9,7 @@ import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
-import { addReminder, cancelReminder, pendingReminders, scheduleReminder } from "./reminders";
+import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
 import { tzFromPhone } from "./timezone";
 import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
@@ -411,18 +411,25 @@ export class ContactCore {
     }
   }
 
-  // Timer 4 (reminder_due is already NULL). Each due reminder is marked before its send: never twice, never retried.
+  // Timer 4 (reminder_due is already NULL). At least once: 'sending' before the send, 'sent' after it. A row a reset left in
+  // 'sending' is sent once more after a minute, marked 'sent' first, so a reset costs one duplicate at worst and never loops.
   private async reminderTimer(now: number): Promise<void> {
     const { db, clock } = this.deps;
     try {
       const c = db.all<{ wa_id: string; last_inbound_ts: number | null }>("SELECT wa_id, last_inbound_ts FROM contact")[0];
       const windowed = this.window24h();
-      for (const r of pendingReminders(db).filter((r) => r.due_ts <= now)) {
+      for (const r of dueReminders(db, now)) {
         const inWindow = !windowed || now - (c?.last_inbound_ts ?? 0) <= DAY;
-        db.run("UPDATE reminders SET status=? WHERE id=?", inWindow ? "sent" : "skipped", r.id);
-        if (!inWindow) { this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id }); continue; }
+        if (!inWindow) {
+          db.run("UPDATE reminders SET status='skipped' WHERE id=?", r.id);
+          this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id });
+          continue;
+        }
+        db.run("UPDATE reminders SET status=?, attempted_at=? WHERE id=?", r.status === "sending" ? "sent" : "sending", clock.now(), r.id);
         const text = `Reminder: ${r.text}`;
         const wamid = await this.sendBubble(c.wa_id, text);
+        db.run("UPDATE reminders SET status=? WHERE id=?", wamid ? "sent" : "skipped", r.id);
+        if (!wamid) this.deps.log({ event: "reminder_skipped", reason: "send", id: r.id }); // the send error itself is logged by sendBubble
         db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, text, clock.now(), wamid === null ? "failed" : "sent");
       }
     } catch (e) {
