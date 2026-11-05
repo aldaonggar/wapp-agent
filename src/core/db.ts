@@ -27,8 +27,8 @@ export function fromDO(sql: SqlStorage): Db {
   const bind = (p: Param[]) => p.map((x) => (x instanceof Uint8Array ? x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength) : x));
   return {
     all: <T = Row>(q: string, ...p: Param[]) => sql.exec(q, ...bind(p)).toArray().map((r) => plain(r)) as T[],
-    run: (q, ...p) => { sql.exec(q, ...bind(p)); },
-    batch: (q) => { sql.exec(q); },
+    run: (q, ...p) => { sql.exec(q, ...bind(p)).toArray(); }, // consume the cursor so a lazy statement always runs
+    batch: (q) => { sql.exec(q).toArray(); },
   };
 }
 

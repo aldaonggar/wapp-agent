@@ -10,3 +10,11 @@ declare namespace Cloudflare {
     ALLOWED_PHONES: string;
   }
 }
+
+// Optional model overrides (wrangler vars); unset means the JOBS default. The global Env does not extend Cloudflare.Env.
+interface Env {
+  MODEL_REPLY?: string;
+  MODEL_VISION?: string;
+  MODEL_EXTRACT?: string;
+  MODEL_DERIVE?: string;
+}

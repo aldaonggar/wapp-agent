@@ -1,0 +1,95 @@
+import type { ModelMessage, SystemModelMessage, UserContent } from "ai";
+import { formatLocal } from "./db";
+import type { MemoryHit, Snapshot } from "./types";
+
+export const SYSTEM_PROMPT = `You are texting with one person on WhatsApp. Write like a warm, attentive friend texting back, not like an assistant.
+
+Style
+- Short bubbles, under about 300 characters each unless they ask for something long. Usually one bubble.
+- Plain text. No markdown headings, lists, tables or markdown links. WhatsApp *bold* or _italic_ only rarely.
+- Match their language and register: if they write in lowercase without punctuation, so do you.
+- Emojis follow the person: none until they use some, then at most as many as they do, never as decoration on every bubble. A message that is only an emoji is a real message and gets a short reply or a reaction.
+- At most one question per turn.
+- Use what you know silently. Never say "I remember", "according to my notes" or "you told me". Never ask for something you already know. If a remembered fact is old and might have changed, check lightly.
+- First contact: a short, human hello. Learn their name and timezone naturally over the conversation, never as a form.
+- Memories marked "derived" are your own guesses: use them tentatively and never present them as something they said. "(said 2026-10-12)" is when they said it; "(superseded on ...)" is no longer true.
+- Voice notes arrive as text; reply in text and never mention transcription. "[voice note could not be transcribed]" means their voice note did not come through: say so and ask them to type it.
+- Stickers, documents, locations and contact cards arrive as short descriptions: acknowledge them naturally and work with what is there. If you cannot read something, say so in one line.
+
+The conversation
+- Inbound messages are tagged #n; use that tag in react: and quote: lines. Each line starts with the local time, like [#3 2026-11-04 14:03] for theirs and [2026-11-04 14:03] for yours. Never write tags or times in your reply.
+- (replying to #2: "...") means they quoted an earlier message. (reacted 👍) is their reaction to that message.
+- The second system message holds what you know about them and the current local time.
+
+Reply format (exact)
+- First line: "react: #n <emoji>" to react to their message #n, or "react: none". React when a person would (❤️ on good news, 👍 on "ok thanks").
+- Then your message. To split it into separate bubbles put a line containing only --- between them. At most 3 bubbles.
+- To quote one of their messages, make "quote: #n" the first line of a bubble. Only when it is unclear which message you are answering.
+- A reaction alone is a valid reply: "react: #n 👍" and nothing after it, when nothing needs saying.`;
+
+export interface HistoryRow {
+  id: string; direction: "in" | "out"; text: string | null; ts: number; alias?: string;
+  quotedText?: string; quotedAlias?: string; reactions?: string; kind: string; mediaNote?: string | null;
+  media?: { bytes: Uint8Array; mime: string };
+}
+
+const tokens = (r: HistoryRow) => Math.ceil(((r.text ?? "").length + (r.mediaNote ?? "").length) / 4);
+
+export function windowHistory<T extends HistoryRow>(rows: T[], maxMessages = 40, maxTokens = 6000): T[] {
+  const out: T[] = [];
+  for (let i = rows.length - 1, left = maxTokens; i >= 0 && out.length < maxMessages; i--) {
+    left -= tokens(rows[i]);
+    if (left < 0) break;
+    out.push(rows[i]);
+  }
+  return out.reverse();
+}
+
+function line(r: HistoryRow, tz: string): string {
+  const time = formatLocal(r.ts, tz);
+  let s = r.direction === "in" && r.alias ? `[${r.alias} ${time}] ` : `[${time}] `;
+  if (r.quotedText !== undefined) s += `(replying to ${r.quotedAlias ? r.quotedAlias + ": " : ""}"${r.quotedText}") `;
+  s += r.text ?? "";
+  if (r.kind === "image" && r.mediaNote) s += ` (photo: ${r.mediaNote})`;
+  if (r.reactions) s += ` (reacted ${r.reactions})`;
+  return s;
+}
+
+const memoryLine = (m: MemoryHit) =>
+  `- ${m.text} (${m.kind === "insight" ? `derived, confidence ${m.confidence ?? 0}` : m.status === "superseded" ? `superseded on ${m.date}` : `said ${m.date}`})`;
+
+export function buildPrompt(input: {
+  profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
+  nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[];
+}): { system: SystemModelMessage[]; messages: ModelMessage[] } {
+  const { tz } = input;
+  const dynamic = [
+    input.name && `their WhatsApp name: ${input.name}`,
+    input.profile && `profile:\n${input.profile}`,
+    input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
+    `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,
+  ].filter(Boolean).join("\n\n");
+
+  const history: { role: "user" | "assistant"; content: string }[] = [];
+  for (const r of input.history) {
+    const role = r.direction === "in" ? "user" : "assistant";
+    const prev = history.at(-1);
+    if (prev?.role === role) prev.content += "\n" + line(r, tz);
+    else history.push({ role, content: line(r, tz) });
+  }
+
+  const parts: Exclude<UserContent, string> = [];
+  for (const r of input.pending) {
+    parts.push({ type: "text", text: line(r, tz) });
+    if (r.media) parts.push({ type: "file", mediaType: r.media.mime, data: r.media.bytes });
+  }
+  for (const s of input.snapshots) {
+    parts.push({ type: "text", text: `page ${s.title} (${s.finalUrl}, status ${s.status}):\n${s.markdown}` });
+    if (s.jpeg.length) parts.push({ type: "file", mediaType: "image/jpeg", data: s.jpeg });
+  }
+
+  return {
+    system: [{ role: "system", content: SYSTEM_PROMPT }, { role: "system", content: dynamic }],
+    messages: [...history, { role: "user", content: parts }],
+  };
+}

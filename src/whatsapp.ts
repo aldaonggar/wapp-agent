@@ -7,7 +7,7 @@ export async function verifySignature(
   header: string | null,
   appSecret: string,
 ): Promise<boolean> {
-  if (!header?.startsWith("sha256=")) return false;
+  if (!appSecret || !header?.startsWith("sha256=")) return false;
   const key = await crypto.subtle.importKey(
     "raw",
     enc.encode(appSecret),

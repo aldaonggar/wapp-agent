@@ -30,6 +30,10 @@ test("verifySignature rejects a wrong secret, a missing header and a re-serialis
   expect(await verifySignature(JSON.stringify(JSON.parse(body), null, 2), sig, "secret")).toBe(false);
 });
 
+test("verifySignature fails closed on an empty app secret", async () => {
+  expect(await verifySignature(body, "sha256=" + "0".repeat(64), "")).toBe(false);
+});
+
 test("GET /webhook echoes hub.challenge only with the right token", async () => {
   const url = "https://x/webhook?hub.mode=subscribe&hub.challenge=123&hub.verify_token=";
   const ok = await worker.fetch(new Request(url + "t"), env, ctx);

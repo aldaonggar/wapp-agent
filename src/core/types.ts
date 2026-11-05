@@ -12,3 +12,19 @@ export type { ReasoningSetting, ModelChoice } from "../models";
 export type Param = string | number | null | Uint8Array;
 export type Row = Record<string, string | number | null | Uint8Array>;
 export interface Db { all<T = Row>(sql: string, ...p: Param[]): T[]; run(sql: string, ...p: Param[]): void; batch(sql: string): void }
+
+import type { Llm } from "../llm";
+import type { ModelChoice } from "../models";
+export interface Clock { now(): number; sleep(ms: number): Promise<void>; setAlarm(at: number): Promise<void> | void }
+export interface Snapshot { url: string; finalUrl: string; title: string; status: number; markdown: string; jpeg: Uint8Array }
+export interface Features { memory: boolean; retrieval: "cosine" | "hybrid"; replyEffort?: "low" | "medium" | "high" }
+export interface MemoryHit { id: number; kind: "fact" | "insight"; text: string; date: string; score: number; confidence?: number; status: "active" | "superseded" }
+export interface Deps {
+  db: Db; clock: Clock; wa: WaClient; llm: Llm;
+  embed(texts: string[]): Promise<Float32Array[]>;
+  rerank(query: string, docs: string[]): Promise<number[]>;
+  transcribe(bytes: Uint8Array, mime: string): Promise<string>;
+  snapshot(url: string): Promise<Snapshot | null>;
+  models: ModelChoice; features: Features;
+  log(event: Record<string, unknown>): void;
+}
