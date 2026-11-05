@@ -17,6 +17,7 @@ const VOICE_FAILED = "[voice note could not be transcribed]";
 const INSIGHTS_AFTER_MS = 30 * 60_000;
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
+const WATCHDOG_MS = 60_000;
 
 const hash = (s: string) => {
   let h = 0x811c9dc5;
@@ -39,16 +40,7 @@ export class ContactCore {
 
   async ingest(m: Inbound): Promise<void> {
     const { db, clock, features } = this.deps;
-    if (m.kind === "reaction") {
-      const target = m.reaction?.messageId ?? "";
-      const row = db.all<{ reactions: string | null }>("SELECT reactions FROM messages WHERE id=?", target)[0];
-      if (!row) return;
-      const r = JSON.parse(row.reactions ?? "{}") as Record<string, string>;
-      if (m.reaction?.emoji) r[m.from] = m.reaction.emoji;
-      else delete r[m.from];
-      db.run("UPDATE messages SET reactions=? WHERE id=?", JSON.stringify(r), target);
-      return;
-    }
+    if (m.kind === "reaction") return this.setReaction(m.reaction?.messageId ?? "", m.from, m.reaction?.emoji);
     const fresh = db.all("INSERT OR IGNORE INTO messages(id, direction, kind, text, ts, quoted_id, media_id, mime, voice) VALUES (?, 'in', ?, ?, ?, ?, ?, ?, ?) RETURNING id",
       m.id, m.kind, m.text ?? null, m.ts, m.quotedId ?? null, m.mediaId ?? null, m.mime ?? null, m.voice ? 1 : 0);
     if (!fresh.length) return; // Meta redelivery
@@ -64,13 +56,17 @@ export class ContactCore {
     const generation = s.generation + 1;
     db.run("UPDATE state SET burst_started_at=?, generation=?, turn_due=?", burst, generation, turnDue(now, burst, m.text ?? ""));
     if (features.memory) db.run("UPDATE state SET insights_due=?", now + INSIGHTS_AFTER_MS);
-    await this.scheduleNext();
 
-    // Work during the wait, never awaited here.
-    if ((m.kind === "image" || m.kind === "audio") && m.mediaId) this.media.set(m.id, this.loadMedia(m.id, m.kind, m.mediaId));
+    // Work during the wait, started before the await below and never awaited here.
+    if ((m.kind === "image" || m.kind === "audio") && m.mediaId && !this.media.has(m.id)) this.media.set(m.id, this.loadMedia(m.id, m.kind, m.mediaId));
     const url = extractUrls(m.text ?? "")[0];
     if (url) void this.page(url);
-    if (features.memory) this.recallCache = { generation, promise: this.recall() };
+    if (features.memory) {
+      const promise = this.recall();
+      promise.catch(() => {}); // awaited (and its error surfaced) by the turn
+      this.recallCache = { generation, promise };
+    }
+    await this.scheduleNext();
   }
 
   async alarm(): Promise<void> {
@@ -112,22 +108,25 @@ export class ContactCore {
 
   private async turn(): Promise<void> {
     const { db, clock, wa, llm, models, features } = this.deps;
-    // First, before anything can throw or await: a message arriving from here on opens a fresh burst.
-    db.run("UPDATE state SET burst_started_at=NULL, turn_due=NULL");
     const t0 = performance.now();
     const startedAt = clock.now();
-    const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
-    const to = contact.wa_id;
-    let pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
+    let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
     const outIds: string[] = [];
 
     try {
       for (;;) {
+        // Before anything can throw, and in the same synchronous step as the snapshot: a message arriving
+        // from here on opens a fresh burst, and the turn timer becomes a watchdog so a reset mid-turn still replies.
+        db.run("UPDATE state SET burst_started_at=NULL, turn_due=?", clock.now() + WATCHDOG_MS);
         const gen = this.state().generation;
         const snap = this.pending();
+        pending = snap;
         const newest = snap.at(-1)!;
+        await this.scheduleNext();
+        const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
+        to = contact.wa_id;
         waitMs ??= startedAt - newest.ts;
         wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
 
@@ -176,7 +175,12 @@ export class ContactCore {
             const target = resolve(ev.target);
             if (!target) continue;
             sends++;
-            await wa.sendReaction(to, target, ev.emoji).catch((e) => this.error("send_failed", e, { kind: "reaction" }));
+            try {
+              await wa.sendReaction(to, target, ev.emoji);
+              this.setReaction(target, "me", ev.emoji);
+            } catch (e) {
+              this.error("send_failed", e, { kind: "reaction" });
+            }
             continue;
           }
           const quote = ev.quote ? resolve(ev.quote) : undefined;
@@ -200,10 +204,7 @@ export class ContactCore {
           db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, ev.text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
           outIds.push(rowId);
         }
-        if (restart) {
-          db.run("UPDATE state SET burst_started_at=NULL, turn_due=NULL"); // the next snapshot takes the new messages
-          continue;
-        }
+        if (restart) continue; // the next snapshot takes the new messages
         usage = await done;
         break;
       }
@@ -212,6 +213,7 @@ export class ContactCore {
       this.error("turn_failed", e);
       if (sends === 0 && this.state().turn_attempts === 0) {
         db.run("UPDATE state SET turn_attempts=1, turn_due=?", clock.now() + RETRY_MS);
+        this.recallCache = null; // the retry recomputes recall instead of reusing a failed promise
         return;
       }
     }
@@ -236,6 +238,16 @@ export class ContactCore {
     // Task 9: remember(pending + sent bubbles). Task 12: scheduleFollowup().
   }
 
+  // reactions JSON on a message row: { [sender]: emoji }; "me" is the agent; no emoji removes it.
+  private setReaction(id: string, who: string, emoji: string | undefined): void {
+    const row = this.deps.db.all<{ reactions: string | null }>("SELECT reactions FROM messages WHERE id=?", id)[0];
+    if (!row) return;
+    const r = JSON.parse(row.reactions ?? "{}") as Record<string, string>;
+    if (emoji) r[who] = emoji;
+    else delete r[who];
+    this.deps.db.run("UPDATE messages SET reactions=? WHERE id=?", JSON.stringify(r), id);
+  }
+
   private state(): State { return this.deps.db.all<State>("SELECT * FROM state")[0]; }
 
   private pending(): Msg[] {
@@ -248,8 +260,9 @@ export class ContactCore {
   }
 
   private row(m: Msg): HistoryRow & { quotedId: string | null } {
-    const reactions = m.reactions ? Object.values(JSON.parse(m.reactions) as Record<string, string>).join("") : "";
-    return { id: m.id, direction: m.direction, text: m.text, ts: m.ts, kind: m.kind, mediaNote: m.media_note, quotedId: m.quoted_id, ...(reactions ? { reactions } : {}) };
+    const { me, ...theirs } = m.reactions ? (JSON.parse(m.reactions) as Record<string, string>) : {};
+    const reactions = Object.values(theirs).join("");
+    return { id: m.id, direction: m.direction, text: m.text, ts: m.ts, kind: m.kind, mediaNote: m.media_note, quotedId: m.quoted_id, ...(reactions ? { reactions } : {}), ...(me ? { myReaction: me } : {}) };
   }
 
   private loadMedia(id: string, kind: string, mediaId: string): Promise<Media | null> {
@@ -283,7 +296,7 @@ export class ContactCore {
   private async scheduleNext(): Promise<void> {
     const s = this.state();
     const due = [s.turn_due, s.insights_due, s.followup_due].filter((x): x is number => x !== null);
-    if (due.length) await this.deps.clock.setAlarm(Math.min(...due));
+    await this.deps.clock.setAlarm(due.length ? Math.min(...due) : null);
   }
 
   private error(event: string, e: unknown, extra: Record<string, unknown> = {}): void {

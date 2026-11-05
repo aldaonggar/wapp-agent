@@ -8,7 +8,8 @@ import type { Features, Inbound, ObjectCall, StreamCall } from "./types";
 const FROM = "15550000001";
 type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
-function setup(o: { reply?: (c: StreamCall) => string | Promise<string>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features> } = {}) {
+type Reply = string | { chunks: string[]; error: Error };
+function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features> } = {}) {
   const clock = new FakeClock();
   const view = clock.forContact(FROM);
   const wa = new FakeWa(clock);
@@ -23,7 +24,7 @@ function setup(o: { reply?: (c: StreamCall) => string | Promise<string>; object?
   const rows = (where: string) => db.all<{ id: string; status: string; text: string; quoted_id: string | null; reactions: string | null }>(`SELECT * FROM messages WHERE ${where} ORDER BY ts, rowid`);
   const turns = () => db.all<{ ttfb_ms: number | null; total_ms: number; regenerated: number; error: string | null; bubbles: number }>("SELECT * FROM turns");
   const fire = async () => { clock.t = Math.max(clock.t, view.alarmAt!); view.alarmAt = null; await core.alarm(); };
-  return { clock, view, wa, llm, core, db, say, state, rows, turns, fire, run: (until = clock.t + 60_000) => drain(core, view, clock, until) };
+  return { clock, view, wa, llm, deps, core, db, say, state, rows, turns, fire, run: (until = clock.t + 60_000) => drain(core, view, clock, until) };
 }
 
 test("ingest same wamid twice stores one row and arms one alarm", async () => {
@@ -198,4 +199,55 @@ test("image at t, text at t+1 s: fetchMedia called once and the model gets one f
   expect(fetchMedia).toHaveBeenCalledTimes(1);
   const parts = t.llm.calls[0].messages.at(-1)!.content as { type: string }[];
   expect(parts.filter((p) => p.type === "file")).toEqual([{ type: "file", mediaType: "image/jpeg", data: jpeg }]);
+});
+
+test("an early failure on both attempts still marks the pending rows handled", async () => {
+  const t = setup({ features: { memory: true } });
+  (t.core as unknown as { recall: () => Promise<never> }).recall = () => Promise.reject(new Error("recall down"));
+  await t.say("the movie was great");
+  const lastInbound = t.clock.t;
+  await t.fire();
+  expect(t.state()).toMatchObject({ turn_attempts: 1, turn_due: t.clock.t + 30_000 });
+  await t.fire();
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.turns()).toHaveLength(1);
+  expect(t.turns()[0].error).toContain("recall down");
+  expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
+  expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000); // only the insights timer is left
+});
+
+test("a mid-stream llm error sends only the complete bubble", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: none\n", "first bubble\n", "---\n", "second is cut o"], error: new Error("stream cut") }) });
+  await t.say("the movie was great");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["first bubble"]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.turns()).toHaveLength(1);
+  expect(t.turns()[0].error).toContain("stream cut");
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reset mid-turn still gets a reply: the watchdog alarm fires on a fresh core", async () => {
+  const t = setup({ reply: () => new Promise<string>(() => {}) }); // the first instance never finishes
+  await t.say("the movie was great");
+  void t.fire();
+  await vi.waitFor(() => expect(t.llm.calls).toHaveLength(1));
+  expect(t.view.alarmAt).toBe(t.clock.t + 60_000);
+  const llm = stubLlm();
+  const fresh = new ContactCore({ ...t.deps, llm }); // a Durable Object reset: same storage, new instance
+  await drain(fresh, t.view, t.clock, t.clock.t + 120_000);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok"]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a sent reaction is stored under me and shown in the next prompt", async () => {
+  const t = setup({ reply: (c) => (t.llm.calls.length === 1 ? "react: #1 🎉" : "react: none\nthanks!") });
+  await t.say("I got the job");
+  await t.run();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "reaction"]);
+  expect(JSON.parse(t.rows("id = 'wamid.in.1'")[0].reactions!)).toEqual({ me: "🎉" });
+  await t.say("anyway, how are you");
+  await t.run();
+  expect(JSON.stringify(t.llm.calls[1].messages)).toContain("I got the job (you reacted 🎉)");
 });

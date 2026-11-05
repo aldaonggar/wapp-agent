@@ -1,6 +1,6 @@
 // Calling code → most populous IANA zone of that country (a guess until the person confirms).
 const ZONES: Record<string, string> = {
-  "1": "America/New_York", "7": "Europe/Moscow", "77": "Asia/Almaty",
+  "1": "America/New_York", "7": "Europe/Moscow", "76": "Asia/Almaty", "77": "Asia/Almaty",
   "20": "Africa/Cairo", "27": "Africa/Johannesburg", "30": "Europe/Athens", "31": "Europe/Amsterdam",
   "32": "Europe/Brussels", "33": "Europe/Paris", "34": "Europe/Madrid", "36": "Europe/Budapest",
   "39": "Europe/Rome", "40": "Europe/Bucharest", "41": "Europe/Zurich", "43": "Europe/Vienna",

@@ -46,6 +46,15 @@ test("buildPrompt orders system blocks, stamps history and attaches pending medi
   expect(parts.filter((p) => p.type === "file")).toEqual([{ type: "file", mediaType: "image/jpeg", data: jpeg }]);
 });
 
+test("buildPrompt renders the agent's own reaction as (you reacted …)", () => {
+  const { messages } = buildPrompt({
+    profile: "", memories: [], nowLocal: "2026-11-04 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [],
+    history: [{ id: "a", direction: "in", text: "got the job!", ts: T, kind: "text", alias: "#1", myReaction: "🎉" }],
+    pending: [{ id: "b", direction: "in", text: "thanks", ts: T, kind: "text", alias: "#2" }],
+  });
+  expect(messages[0]).toEqual({ role: "user", content: "[#1 2026-11-04 14:03] got the job! (you reacted 🎉)" });
+});
+
 test("buildPrompt drops the guess label once the timezone is confirmed and renders a page snapshot", () => {
   const jpeg = new Uint8Array([1]);
   const { system, messages } = buildPrompt({

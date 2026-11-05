@@ -93,10 +93,12 @@ describe("llm.stream", () => {
     expect(logged).toHaveLength(1);
   });
 
-  it("handles an in-stream error part: text ends, done rejects", async () => {
+  it("handles an in-stream error part: text yields the delta then throws, done rejects", async () => {
     const { f } = fake([() => sse([chunk({ role: "assistant", content: "par" }), { id: "gen-1", error: { code: 500, message: "boom" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }])]);
     const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });
-    expect(await drain(r.text)).toEqual(["par"]);
+    const got: string[] = [];
+    await expect((async () => { for await (const t of r.text) got.push(t); })()).rejects.toBeTruthy();
+    expect(got).toEqual(["par"]);
     await expect(r.done).rejects.toBeTruthy();
   });
 
@@ -111,7 +113,7 @@ describe("llm.stream", () => {
     const { f } = fake([() => new Response("nope", { status: 400 })]);
     const llm = makeLlm("k", { fetch: f });
     const r = llm.stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });
-    await drain(r.text);
+    await expect(drain(r.text)).rejects.toBeTruthy();
     await expect(r.done).rejects.toBeTruthy();
   });
 });

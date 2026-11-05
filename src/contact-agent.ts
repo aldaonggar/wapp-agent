@@ -13,7 +13,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
   return {
     db,
-    clock: { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), setAlarm: (at) => ctx.storage.setAlarm(at) },
+    clock: { now: () => Date.now(), sleep: (ms) => new Promise((r) => setTimeout(r, ms)), setAlarm: (at) => (at === null ? ctx.storage.deleteAlarm() : ctx.storage.setAlarm(at)) },
     wa: makeWaClient({ token: env.WHATSAPP_TOKEN, phoneNumberId: env.WHATSAPP_PHONE_NUMBER_ID }),
     llm: makeLlm(env.OPENROUTER_API_KEY, {
       log: (u) => {

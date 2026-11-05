@@ -15,7 +15,7 @@ export interface Db { all<T = Row>(sql: string, ...p: Param[]): T[]; run(sql: st
 
 import type { Llm } from "../llm";
 import type { ModelChoice } from "../models";
-export interface Clock { now(): number; sleep(ms: number): Promise<void>; setAlarm(at: number): Promise<void> | void }
+export interface Clock { now(): number; sleep(ms: number): Promise<void>; setAlarm(at: number | null): Promise<void> | void } // null deletes the alarm
 export interface Snapshot { url: string; finalUrl: string; title: string; status: number; markdown: string; jpeg: Uint8Array }
 export interface Features { memory: boolean; retrieval: "cosine" | "hybrid"; replyEffort?: "low" | "medium" | "high" }
 export interface MemoryHit { id: number; kind: "fact" | "insight"; text: string; date: string; score: number; confidence?: number; status: "active" | "superseded" }

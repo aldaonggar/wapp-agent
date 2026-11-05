@@ -27,7 +27,7 @@ export class FakeClock {
   }
 }
 
-export interface Sent { at: number; kind: "text" | "reaction" | "typing"; to: string; body?: string; quote?: string; target?: string; emoji?: string; id: string }
+export interface Sent { at: number; kind: "text" | "reaction" | "typing"; to: string; body?: string; quote?: string; previewUrl?: boolean; target?: string; emoji?: string; id: string }
 
 export class FakeWa implements WaClient {
   sent: Sent[] = [];
@@ -44,7 +44,7 @@ export class FakeWa implements WaClient {
   async sendText(to: string, body: string, opts?: { quote?: string; previewUrl?: boolean }) {
     const e = this.failNext;
     if (e) { this.failNext = undefined; throw e; }
-    return { id: this.rec({ kind: "text", to, body, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
+    return { id: this.rec({ kind: "text", to, body, previewUrl: opts?.previewUrl ?? false, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
   }
   async sendReaction(to: string, messageId: string, emoji: string) { this.rec({ kind: "reaction", to, target: messageId, emoji }); }
   async markReadTyping(messageId: string) { this.rec({ kind: "typing", to: "", target: messageId }); }
@@ -57,9 +57,12 @@ export class FakeWa implements WaClient {
 
 const zeroUsage = (job: string, model: string): Usage => ({ job, model, input: 0, output: 0, cached: 0, reasoning: 0, costTable: 0, ms: 0 });
 
-/** Canned line-format replies, streamed line by line; honours abortSignal like the real stream. */
+/** A reply hook result: the full text, or chunks followed by a stream error (text throws after them, done rejects). */
+export type StubReply = string | { chunks: string[]; error: Error };
+
+/** Canned line-format replies, streamed line by line; honours abortSignal and errors like the real stream. */
 export function stubLlm(o: {
-  reply?: (call: StreamCall) => string | Promise<string>;
+  reply?: (call: StreamCall) => StubReply | Promise<StubReply>;
   object?: (call: ObjectCall<unknown>) => unknown;
 } = {}): Llm & { calls: StreamCall[]; objectCalls: ObjectCall<unknown>[] } {
   const calls: StreamCall[] = [];
@@ -69,18 +72,19 @@ export function stubLlm(o: {
     objectCalls,
     stream(call) {
       calls.push(call);
-      const reply = Promise.resolve().then(() => (o.reply ? o.reply(call) : "react: none\nok"));
+      const reply = Promise.resolve().then((): StubReply | Promise<StubReply> => (o.reply ? o.reply(call) : "react: none\nok"));
       let resolve!: (v: Usage & { ttftMs: number; finishReason: string }) => void, reject!: (e: unknown) => void;
       const done = new Promise<Usage & { ttftMs: number; finishReason: string }>((res, rej) => { resolve = res; reject = rej; });
       done.catch(() => {});
       const aborted = () => call.abortSignal?.reason ?? new DOMException("aborted", "AbortError");
       async function* text() {
         try {
-          const s = await reply;
-          for (const chunk of s.split(/(?<=\n)/)) {
+          const r = await reply;
+          for (const chunk of typeof r === "string" ? r.split(/(?<=\n)/) : r.chunks) {
             if (call.abortSignal?.aborted) throw aborted();
             yield chunk;
           }
+          if (typeof r !== "string") throw r.error;
           resolve({ ...zeroUsage(call.job, call.modelId), ttftMs: 0, finishReason: "stop" });
         } catch (e) {
           reject(e);

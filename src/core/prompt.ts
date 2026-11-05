@@ -18,7 +18,7 @@ Style
 
 The conversation
 - Inbound messages are tagged #n; use that tag in react: and quote: lines. Each line starts with the local time, like [#3 2026-11-04 14:03] for theirs and [2026-11-04 14:03] for yours. Never write tags or times in your reply.
-- (replying to #2: "...") means they quoted an earlier message. (reacted 👍) is their reaction to that message.
+- (replying to #2: "...") means they quoted an earlier message. (reacted 👍) is their reaction to that message; (you reacted 👍) is yours.
 - The second system message holds what you know about them and the current local time.
 
 Reply format (exact)
@@ -29,7 +29,7 @@ Reply format (exact)
 
 export interface HistoryRow {
   id: string; direction: "in" | "out"; text: string | null; ts: number; alias?: string;
-  quotedText?: string; quotedAlias?: string; reactions?: string; kind: string; mediaNote?: string | null;
+  quotedText?: string; quotedAlias?: string; reactions?: string; myReaction?: string; kind: string; mediaNote?: string | null;
   media?: { bytes: Uint8Array; mime: string };
 }
 
@@ -52,6 +52,7 @@ function line(r: HistoryRow, tz: string): string {
   s += r.text ?? "";
   if (r.kind === "image" && r.mediaNote) s += ` (photo: ${r.mediaNote})`;
   if (r.reactions) s += ` (reacted ${r.reactions})`;
+  if (r.myReaction) s += ` (you reacted ${r.myReaction})`;
   return s;
 }
 
