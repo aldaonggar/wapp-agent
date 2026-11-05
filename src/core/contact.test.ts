@@ -766,13 +766,13 @@ test("search_web with nothing found returns an empty list and a note (the harnes
   expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["sec, let me look that up", '{"results":[],"note":"nothing found"}']);
 });
 
-test("view_page is offered from the step after a search, so the model can open a result", async () => {
+test("view_page is offered from the step after a search, so the model can open a result; forget and cancel_reminder are not", async () => {
   let before: string[] = [], after: string[] = [];
-  const t = setup({ reply: async (c) => { before = c.activeTools!(); await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }), reply: async (c) => { before = c.activeTools!(); await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
   await t.say("no link here");
   await t.run();
-  expect(before).not.toContain("view_page");
-  expect(after).toContain("view_page");
+  expect(before).toEqual(["set_reminder", "cancel_reminder", "forget", "search_web"]);
+  expect(after).toEqual(["set_reminder", "view_page", "search_web"]); // a fetched page must not be able to talk the model into deleting anything
 });
 
 test("without a search dependency there is no search_web tool and view_page keeps its link-only rule", async () => {

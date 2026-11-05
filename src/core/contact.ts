@@ -262,7 +262,8 @@ export class ContactCore {
         this.abort = new AbortController();
         const { text, done } = llm.stream({
           job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
-          activeTools: () => Object.keys(tools).filter((k) => k !== "view_page" || hasUrl || searched), // view_page opens up once a search ran
+          // view_page opens up once a search ran; search results are untrusted text, so the tools that delete close then.
+          activeTools: () => Object.keys(tools).filter((k) => (k === "view_page" ? hasUrl || searched : !(searched && (k === "forget" || k === "cancel_reminder")))),
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
