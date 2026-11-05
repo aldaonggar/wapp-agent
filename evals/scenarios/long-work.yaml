@@ -1,0 +1,11 @@
+# A project name said once is recalled days later among 30 unrelated facts.
+name: long-work
+category: long-term
+steps:
+  - seed_facts: 30
+  - { at: +0s, say: "starting a new project at work today, it's codenamed Bluebird, a payments dashboard for small shops" }
+  - fill: 45
+  - at: day 4
+    ask: "ugh what was that work project called again? the payments one"
+    gold: Bluebird
+    expect_contains: [Bluebird]

@@ -56,18 +56,22 @@ function line(r: HistoryRow, tz: string): string {
   return s;
 }
 
+const CONTROLS = `If they ask what you know about them, answer with a short plain summary of the profile and the most relevant memories.
+If they ask you to forget something, call the forget tool before writing anything, then confirm in one line without repeating what was forgotten.`;
+
 const memoryLine = (m: MemoryHit) =>
   `- ${m.text} (${m.kind === "insight" ? `derived, confidence ${m.confidence ?? 0}` : m.status === "superseded" ? `superseded on ${m.date}` : `said ${m.date}`})`;
 
 export function buildPrompt(input: {
   profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
-  nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[];
+  nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[]; memory?: boolean;
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [
     input.name && `their WhatsApp name: ${input.name}`,
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
+    input.memory && CONTROLS,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,
   ].filter(Boolean).join("\n\n");
 

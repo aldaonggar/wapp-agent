@@ -93,6 +93,21 @@ describe("llm.stream", () => {
     expect(logged).toHaveLength(1);
   });
 
+  it("starts the text of a step after a tool call on a new line", async () => {
+    const { f } = fake([
+      () => sse([
+        chunk({ role: "assistant", content: "react: none" }),
+        chunk({ tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "ping", arguments: "{}" } }] }),
+        usageChunk(500, 10, 0, 0.001, "tool_calls"),
+      ]),
+      textResponse,
+    ]);
+    const tools = { ping: tool({ description: "ping", inputSchema: z.object({}), execute: async () => ({ ok: true }) }) };
+    const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }], tools });
+    expect((await drain(r.text)).join("")).toBe("react: none\nhello");
+    await r.done;
+  });
+
   it("handles an in-stream error part: text yields the delta then throws, done rejects", async () => {
     const { f } = fake([() => sse([chunk({ role: "assistant", content: "par" }), { id: "gen-1", error: { code: 500, message: "boom" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }])]);
     const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });

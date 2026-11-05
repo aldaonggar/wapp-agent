@@ -1,8 +1,11 @@
+import { tool } from "ai";
+import { z } from "zod";
 import { extractUrls } from "../browser";
 import { maxOutputTokensFor, reasoningFor, replyModelFor } from "../models";
 import { WaError } from "../whatsapp";
 import { MAX_WAIT_MS, QUIET_MS, UNFINISHED_MS, bubblePauseMs, looksUnfinished, turnDue } from "./cadence";
 import { formatLocal } from "./db";
+import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { parseReply } from "./stream";
 import { tzFromPhone } from "./timezone";
@@ -33,9 +36,14 @@ export class ContactCore {
   turnRunning = false;
   media = new Map<string, Promise<Media | null>>();
   pages = new Map<string, Promise<Snapshot | null>>();
-  recallCache: { generation: number; promise: Promise<Recall> } | null = null;
+  recallCache: { generation: number; query: string; promise: Promise<Recall> } | null = null;
   abort: AbortController | null = null;
   private deps: Deps;
+  private forgetTool = tool({
+    description: "Delete stored facts matching the query; call when the person asks to forget something",
+    inputSchema: z.object({ query: z.string().describe("what to forget, in the words of the memory: names, places, the thing itself (e.g. \"Almaty\")") }),
+    execute: async ({ query }) => ({ deleted: await memory.forget(this.deps, query) }),
+  });
 
   constructor(deps: Deps) { this.deps = deps; }
 
@@ -63,9 +71,8 @@ export class ContactCore {
     const url = extractUrls(m.text ?? "")[0];
     if (url) void this.page(url);
     if (features.memory) {
-      const promise = this.recall();
-      promise.catch(() => {}); // awaited (and its error surfaced) by the turn
-      this.recallCache = { generation, promise };
+      const query = this.recallQuery();
+      this.recallCache = { generation, query, promise: memory.recall(this.deps, query) }; // never rejects
     }
     await this.scheduleNext();
   }
@@ -114,6 +121,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [];
     const outIds: string[] = [];
 
     try {
@@ -128,13 +136,17 @@ export class ContactCore {
         await this.scheduleNext();
         const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
         to = contact.wa_id;
+        tz = contact.timezone;
         waitMs ??= startedAt - newest.ts;
         wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
 
         const files = new Map(await Promise.all(snap.map(async (r) => [r.id, await this.mediaFor(r)] as const)));
         const urls = [...new Set(snap.flatMap((r) => extractUrls(r.text ?? "").slice(0, 1)))];
         const snapshots = (await Promise.all(urls.map((u) => this.page(u)))).filter((p): p is Snapshot => p !== null);
-        const recalled = !features.memory ? { hits: [], ms: 0 } : this.recallCache?.generation === gen ? await this.recallCache.promise : await this.recall();
+        images = [...files].flatMap(([messageId, f]) => (f ? [{ messageId, ...f }] : []));
+        // The prefetch is reused unless the query changed since ingest (a voice transcript landed, the last turn finished).
+        const query = features.memory ? this.recallQuery() : "", cached = this.recallCache;
+        const recalled = !features.memory ? { hits: [], ms: 0 } : cached?.generation === gen && cached.query === query ? await cached.promise : await memory.recall(this.deps, query);
         retrievalMs = recalled.ms;
 
         // Re-read after the awaits: voice transcripts land in messages.text.
@@ -153,13 +165,13 @@ export class ContactCore {
         const resolve = (tag: string) => alias.get(tag.startsWith("#") ? tag : `#${tag}`);
 
         const prompt = buildPrompt({
-          profile: "", memories: recalled.hits, history, pending: current, snapshots,
-          nowLocal: formatLocal(clock.now(), contact.timezone), tz: contact.timezone, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
+          profile: features.memory ? memory.profileText(db) : "", memories: recalled.hits, history, pending: current, snapshots, memory: features.memory,
+          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
         this.abort = new AbortController();
         const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages,
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: features.memory ? { forget: this.forgetTool } : undefined,
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
           sessionId: hash(to), abortSignal: this.abort.signal,
         });
@@ -236,7 +248,18 @@ export class ContactCore {
       for (const u of extractUrls(r.text ?? "")) this.pages.delete(u);
     }
     this.deps.log({ event: "turn", contact: hash(to), ...row, usage });
-    // Task 9: remember(pending + sent bubbles). Task 12: scheduleFollowup().
+    if (error === null && features.memory) {
+      const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(outIds));
+      try {
+        await memory.remember(this.deps, {
+          messages: [...pending.map((r) => ({ role: "user" as const, text: r.text ?? "", id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
+          images, nowLocal: formatLocal(clock.now(), tz), tz, sessionId: hash(to),
+        });
+      } catch (e) {
+        this.error("remember_failed", e);
+      }
+    }
+    // Task 12: scheduleFollowup().
   }
 
   // reactions JSON on a message row: { [sender]: emoji }; "me" is the agent; no emoji removes it.
@@ -296,8 +319,11 @@ export class ContactCore {
     return this.pages.get(url)!;
   }
 
-  // Task 9 replaces this with recall(deps, pending text + the last two messages).
-  private recall(): Promise<Recall> { return Promise.resolve({ hits: [], ms: 0 }); }
+  // What to recall for: the last two messages before the pending ones, then the pending ones.
+  private recallQuery(): string {
+    const prev = this.deps.db.all<{ text: string | null }>("SELECT text FROM messages WHERE status IN ('handled','sent') AND kind != 'unsupported' ORDER BY ts DESC, rowid DESC LIMIT 2").reverse();
+    return [...prev, ...this.pending()].map((r) => r.text ?? "").join("\n").trim();
+  }
 
   private async scheduleNext(): Promise<void> {
     const s = this.state();

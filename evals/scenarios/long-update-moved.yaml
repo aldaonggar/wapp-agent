@@ -1,0 +1,15 @@
+# A move supersedes the old city; the old one stays retrievable as history.
+name: long-update-moved
+category: long-term
+steps:
+  - { at: +0s, say: "my sister Aru lives in Almaty btw, she's a doctor there" }
+  - { at: day 5, say: "big news, Aru moved to Astana last weekend! new job at a hospital there" }
+  - fill: 45
+  - at: day 6
+    ask: "where does my sister live now? I keep mixing it up"
+    gold: Astana
+    expect_contains: [Astana]
+  - at: +5d 1h
+    ask: "and where did she live before that?"
+    gold: Almaty
+    expect_contains: [Almaty]

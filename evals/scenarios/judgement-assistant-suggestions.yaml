@@ -1,0 +1,9 @@
+# The assistant names restaurants in its replies; only what the person says about themselves is stored.
+name: judgement-assistant-suggestions
+category: judgement
+steps:
+  - { at: +0s, say: "I'm vegetarian btw. any good dinner spots near Union Square? give me a few names" }
+  - { at: +2min, say: "ooh what else? something cheaper" }
+  - { at: +4min, say: "and a good dessert place nearby?" }
+  - { at: +6min, say: "nice, thanks! I'll have a look later" }
+  - expect_facts: { count: 1, gold: [Is vegetarian] }

@@ -1,8 +1,9 @@
 import { expect, test, vi } from "vitest";
-import { FakeClock, FakeWa, drain, makeEvalDeps, stubLlm } from "../../evals/harness";
+import { FakeClock, FakeWa, drain, hashEmbed, makeEvalDeps, stubLlm } from "../../evals/harness";
 import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
 import { ContactCore } from "./contact";
+import { vecToBlob } from "./db";
 import type { Features, Inbound, ObjectCall, StreamCall } from "./types";
 
 const FROM = "15550000001";
@@ -75,6 +76,8 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
+  expect(t.llm.calls[0].tools).toBeUndefined(); // memory off: no forget tool
+  expect(t.llm.calls[0].system[1].content).not.toContain("forget");
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["hi", "sent"], ["second", "sent"]]);
   const turns = t.turns();
@@ -202,8 +205,7 @@ test("image at t, text at t+1 s: fetchMedia called once and the model gets one f
 });
 
 test("an early failure on both attempts still marks the pending rows handled", async () => {
-  const t = setup({ features: { memory: true } });
-  (t.core as unknown as { recall: () => Promise<never> }).recall = () => Promise.reject(new Error("recall down"));
+  const t = setup({ features: { memory: true }, reply: () => { throw new Error("upstream down"); } });
   await t.say("the movie was great");
   const lastInbound = t.clock.t;
   await t.fire();
@@ -211,9 +213,24 @@ test("an early failure on both attempts still marks the pending rows handled", a
   await t.fire();
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.turns()).toHaveLength(1);
-  expect(t.turns()[0].error).toContain("recall down");
+  expect(t.turns()[0].error).toContain("upstream down");
   expect(t.state()).toMatchObject({ turn_due: null, turn_attempts: 0 });
   expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000); // only the insights timer is left
+  expect(t.llm.objectCalls).toHaveLength(0); // a failed turn is not remembered
+});
+
+test("a failing recall still gets a reply, with no memories and a recall_failed log", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }) });
+  const log = vi.fn();
+  t.deps.log = log;
+  t.deps.embed = async () => { throw new Error("workers-ai down"); };
+  await t.say("the movie was great");
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok"]);
+  expect(t.turns()).toMatchObject([{ error: null }]);
+  expect(t.state().turn_attempts).toBe(0);
+  expect(log).toHaveBeenCalledWith({ event: "recall_failed", error: "workers-ai down" });
+  expect(t.llm.calls[0].system[1].content).not.toContain("memories:");
 });
 
 test("a mid-stream llm error sends only the complete bubble", async () => {
@@ -279,4 +296,80 @@ test("oversized image gets the could-not-read text and no file part", async () =
   expect(t.rows("kind = 'image'")[0].text).toBe("my cat [an image that could not be read]");
   const parts = t.llm.calls[0].messages.at(-1)!.content as { type: string }[];
   expect(parts.some((p) => p.type === "file")).toBe(false);
+});
+
+const SISTER = "Sister Aru lives in Almaty";
+const addFact = async (db: ReturnType<typeof setup>["db"], text: string) =>
+  db.run("INSERT INTO facts(text, kind, signal, created_at, source_message_ids, embedding) VALUES (?, 'person', 5, 0, '[]', ?)", text, vecToBlob((await hashEmbed([text]))[0]));
+
+test("memory on: recall feeds the prompt, the reply carries forget, and the turn is remembered", async () => {
+  const t = setup({ features: { memory: true }, object: () => (t.llm.objectCalls.length === 1 ? { ops: [{ op: "ADD", text: SISTER, kind: "person", signal: 5 }], profile: "Sister: Aru (Almaty)" } : { ops: [] }) });
+  const embed = vi.spyOn(t.deps, "embed");
+  await t.say("my sister Aru lives in Almaty");
+  await t.run();
+  const extract = t.llm.objectCalls[0];
+  expect(extract).toMatchObject({ job: "extract", modelId: t.deps.models.extract, sessionId: t.llm.calls[0].sessionId });
+  expect(JSON.stringify(extract.messages)).toContain("user: my sister Aru lives in Almaty\\nassistant: ok");
+  expect(t.db.all("SELECT text, status FROM facts")).toEqual([{ text: SISTER, status: "active" }]);
+
+  t.clock.t += 60_000;
+  await t.say("where does she live now?");
+  await t.run();
+  expect(embed.mock.calls.map((c) => c[0][0])).toContain("my sister Aru lives in Almaty\nok\nwhere does she live now?"); // last two messages + pending
+  const dyn = t.llm.calls[1].system[1].content as string;
+  expect(dyn).toContain("profile:\nSister: Aru (Almaty)");
+  expect(dyn).toContain(`- ${SISTER} (said 2026-11-04)`);
+  expect(dyn).toContain("what you know about them");
+  expect(t.llm.calls[1].tools?.forget).toBeDefined();
+  expect(t.db.all<{ retrieval_ms: number }>("SELECT retrieval_ms FROM turns").every((r) => r.retrieval_ms >= 0)).toBe(true);
+});
+
+test("the forget tool deletes matching facts and returns the count", async () => {
+  const t = setup({
+    features: { memory: true }, object: () => ({ ops: [] }),
+    reply: async (c) => `react: none\n${JSON.stringify(await c.tools!.forget.execute!({ query: "Almaty" }, { toolCallId: "t1", messages: [] } as never))}`,
+  });
+  await addFact(t.db, SISTER);
+  await t.say("forget my sister's city please");
+  await t.run();
+  expect(t.wa.sent.find((s) => s.kind === "text")?.body).toBe('{"deleted":1}');
+  expect(t.db.all("SELECT * FROM facts")).toEqual([]);
+});
+
+test("a failing remember is logged and the turn still completes", async () => {
+  const t = setup({ features: { memory: true }, object: () => { throw new Error("extract down"); } });
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("my sister lives in Almaty");
+  const lastInbound = t.clock.t;
+  await t.run();
+  expect(log).toHaveBeenCalledWith({ event: "remember_failed", error: "extract down" });
+  expect(t.turns()).toMatchObject([{ error: null }]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.view.alarmAt).toBe(lastInbound + 30 * 60_000);
+});
+
+test("recall runs on a voice note's transcript, not on the empty prefetch", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }) });
+  await addFact(t.db, SISTER);
+  const embed = vi.spyOn(t.deps, "embed");
+  t.deps.transcribe = async () => "where does my sister live";
+  t.wa.media.set("media.v", { bytes: new Uint8Array([1]), mime: "audio/ogg" });
+  await t.say("", { kind: "audio", mediaId: "media.v", mime: "audio/ogg", voice: true });
+  await t.run();
+  expect(embed.mock.calls[0][0]).toEqual(["where does my sister live"]);
+  expect(t.llm.calls[0].system[1].content).toContain(SISTER);
+});
+
+test("the turn's images go to remember and the media_note lands on the image row", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [], media_note: "a red road bike" }) });
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff]);
+  t.wa.media.set("media.1", { bytes: jpeg, mime: "image/jpeg" });
+  await t.say("[photo]", { kind: "image", mediaId: "media.1", mime: "image/jpeg" });
+  t.clock.t += 1000;
+  await t.say("my new bike!");
+  await t.run();
+  const parts = t.llm.objectCalls[0].messages[0].content as { type: string }[];
+  expect(parts.filter((p) => p.type === "file")).toEqual([{ type: "file", mediaType: "image/jpeg", data: jpeg }]);
+  expect(t.db.all("SELECT id, media_note FROM messages WHERE direction='in' ORDER BY ts")).toEqual([{ id: "wamid.in.1", media_note: "a red road bike" }, { id: "wamid.in.2", media_note: null }]);
 });

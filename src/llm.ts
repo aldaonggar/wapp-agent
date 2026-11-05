@@ -68,7 +68,8 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
             if (part.type === "text-delta") {
               if (first) { ttftMs = performance.now() - t0; first = false; }
               queue.push(part.text); notify();
-            } else if (part.type === "error") { error = part.error; break; }
+            } else if (part.type === "start-step" && !first) { queue.push("\n"); notify(); } // text after a tool call starts a new line
+            else if (part.type === "error") { error = part.error; break; }
           }
           if (error === undefined) {
             const [total, steps, final] = await Promise.all([result.usage, result.steps, result.finalStep]);

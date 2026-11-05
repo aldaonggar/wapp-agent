@@ -1,0 +1,9 @@
+# A standing preference shapes advice days later without being asked again.
+name: long-preference
+category: long-term
+steps:
+  - { at: +0s, say: "fyi I've been vegetarian for about 5 years, so no meat or fish for me" }
+  - fill: 45
+  - at: day 3
+    ask: "what should I cook tonight? something quick"
+    gold: "suggests only vegetarian dishes (no meat or fish) and does not ask whether they eat meat"

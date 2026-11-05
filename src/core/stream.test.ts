@@ -17,6 +17,8 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["no header", "hello there", [b("hello there")]],
   ["cap", "react: none\na\n---\nb\n---\nc\n---\nd", [b("a"), b("b"), b("c\n\nd")]],
   ["inline dashes", "react: none\nwait --- no\n", [b("wait --- no")]],
+  ["header repeated after a tool step", "react: none\n\nreact: none\nDone, forgotten.", [b("Done, forgotten.")]],
+  ["reaction in the repeated header", "react: none\nreact: #2 👍\nok", [{ type: "react", target: "#2", emoji: "👍" }, b("ok")]],
 ];
 
 for (const [name, input, expected] of cases) {

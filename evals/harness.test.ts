@@ -172,16 +172,15 @@ test("a judged probe asks Opus at low effort with the conversation so far", asyn
   expect(JSON.stringify(call.messages)).toContain("a: meet at 6");
 });
 
-test("ask at +10 s does not call llm.object (insights are 30 min out)", async () => {
-  const llm = stubLlm({ object: () => ({}) });
+test("ask at +10 s does not derive insights (they are 30 min out)", async () => {
+  const llm = stubLlm({ object: () => ({ ops: [] }) });
   const r = await run([{ at: "+10s", ask: "hi", gold: "ok", expect_contains: ["ok"] }, { at: "+1min", say: "still here" }], llm, { ...cfg, memory: true });
   expect(r.passed).toBe(true);
-  expect(llm.objectCalls).toHaveLength(0); // bites from Task 10, when the insights alarm calls object()
+  expect(llm.objectCalls.map((c) => c.job)).toEqual(["extract", "extract"]); // one per turn; Task 10's derive call must not appear
   expect(r.transcript).toContain("[2026-11-04 15:01:00] a: still here"); // a drain past insights_due would have jumped to 15:30
 });
 
-// recall() is a placeholder until Task 9 (it never embeds); Task 9 turns this into a plain test().
-test.fails("a counting embed passed to runScenario is called for a say step (memory on)", async () => {
+test("a counting embed passed to runScenario is called for a say step (memory on)", async () => {
   const embed = vi.fn(hashEmbed);
   await run([{ at: "+0s", say: "my sister lives in Almaty" }], stubLlm(), { ...cfg, memory: true }, { embed, rerank: cosineRerank });
   expect(embed).toHaveBeenCalled();

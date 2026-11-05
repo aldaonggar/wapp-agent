@@ -1,0 +1,16 @@
+# After "forget", the fact is gone from every table and never comes back in a reply.
+name: forget-never-returns
+category: forget
+steps:
+  - { at: +0s, say: "my sister Aru lives in Almaty" }
+  - at: +2min
+    ask: "where does my sister live again?"
+    gold: Almaty
+    expect_contains: [Almaty]
+  - { at: +4min, say: "actually please forget my sister's city, I don't want you keeping that" }
+  - fill: 45
+  - expect_facts_not_contains: [Almaty]
+  - at: day 2
+    ask: "where does my sister live?"
+    gold: "says it does not know; does not name the city"
+    expect_not_contains: [Almaty]

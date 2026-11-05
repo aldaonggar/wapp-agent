@@ -1,0 +1,57 @@
+# 50 lines of chit-chat, 2 minutes apart, each its own turn; only the 3 facts in lines 10, 25 and 41 are stored.
+name: judgement-smalltalk-50
+category: judgement
+steps:
+  - { at: +0min, say: "good morning!" }
+  - { at: +2min, say: "ugh slept so badly" }
+  - { at: +4min, say: "need coffee asap" }
+  - { at: +6min, say: "ok coffee acquired" }
+  - { at: +8min, say: "it's so grey outside today" }
+  - { at: +10min, say: "traffic is insane right now" }
+  - { at: +12min, say: "finally at my desk" }
+  - { at: +14min, say: "so many emails lol" }
+  - { at: +16min, say: "brb" }
+  - { at: +18min, say: "btw my brother Daniyar is a pilot" }
+  - { at: +20min, say: "haha anyway" }
+  - { at: +22min, say: "what a morning" }
+  - { at: +24min, say: "I'm starving already" }
+  - { at: +26min, say: "just had a croissant" }
+  - { at: +28min, say: "that was a mistake, now I'm sleepy" }
+  - { at: +30min, say: "the office is freezing" }
+  - { at: +32min, say: "lol someone microwaved fish again" }
+  - { at: +34min, say: "ok meeting time" }
+  - { at: +36min, say: "that meeting could have been an email" }
+  - { at: +38min, say: "back" }
+  - { at: +40min, say: "so bored" }
+  - { at: +42min, say: "it started raining" }
+  - { at: +44min, say: "forgot my umbrella of course" }
+  - { at: +46min, say: "whatever" }
+  - { at: +48min, say: "random but I'm allergic to penicillin, the doctor just called to confirm" }
+  - { at: +50min, say: "ok lunch" }
+  - { at: +52min, say: "had a salad, feeling virtuous" }
+  - { at: +54min, say: "lol" }
+  - { at: +56min, say: "my phone is at 5%" }
+  - { at: +58min, say: "charger found" }
+  - { at: +60min, say: "this afternoon is dragging" }
+  - { at: +62min, say: "the 3pm slump is real" }
+  - { at: +64min, say: "another coffee? probably" }
+  - { at: +66min, say: "yep, second coffee" }
+  - { at: +68min, say: "haha" }
+  - { at: +70min, say: "someone brought donuts!!" }
+  - { at: +72min, say: "ok I had two" }
+  - { at: +74min, say: "no regrets" }
+  - { at: +76min, say: "meh" }
+  - { at: +78min, say: "almost done for the day" }
+  - { at: +80min, say: "I go to a pottery class every tuesday evening btw" }
+  - { at: +82min, say: "heading home soon" }
+  - { at: +84min, say: "the train is packed" }
+  - { at: +86min, say: "stuck between two backpacks lol" }
+  - { at: +88min, say: "home finally" }
+  - { at: +90min, say: "so tired" }
+  - { at: +92min, say: "making pasta" }
+  - { at: +94min, say: "pasta was great" }
+  - { at: +96min, say: "netflix time" }
+  - { at: +98min, say: "night!" }
+  - expect_facts:
+      count: 3
+      gold: ["Brother Daniyar is a pilot", "Allergic to penicillin", "Goes to a pottery class every Tuesday evening"]

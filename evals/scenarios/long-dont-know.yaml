@@ -1,0 +1,9 @@
+# A pet was never mentioned: the reply says it does not know instead of inventing one.
+name: long-dont-know
+category: long-term
+steps:
+  - { at: +0s, say: "work has been crazy this week, we launch the new app on friday" }
+  - fill: 45
+  - at: day 3
+    ask: "what's my cat called again? totally blanking lol"
+    gold: "says it does not know (no cat or other pet was ever mentioned); does not invent a name"

@@ -45,10 +45,11 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
   }
 
   function* line(l: string): Generator<ReplyEvent> {
-    if (!started) {
+    const m = l.match(/^react:\s*(none|(\S+)\s+(\S+))\s*$/i);
+    // A tool step makes the model write its header again: a react line before any bubble text is still the header.
+    if (!started || (m && emitted === 0 && !cur.some((x) => x.trim()))) {
       if (!l.trim()) return;
       started = true;
-      const m = l.match(/^react:\s*(none|(\S+)\s+(\S+))\s*$/i);
       if (m) {
         if (m[2]) yield { type: "react", target: m[2], emoji: m[3] };
         return;

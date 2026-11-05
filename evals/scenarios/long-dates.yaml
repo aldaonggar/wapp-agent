@@ -1,0 +1,10 @@
+# "thursday next week", said on Tuesday 2026-11-10, is stored as an absolute date and recalled as one.
+# (The brief's "next Thursday" is ambiguous on a Tuesday, so the line names the week.)
+name: long-dates
+category: long-term
+steps:
+  - { at: day 7, say: "omg I got an interview at Monzo!! thursday next week at 2pm" }
+  - fill: 45
+  - at: day 8
+    ask: "when is my interview again? I need the exact date for my calendar"
+    gold: "Thursday 19 November 2026 at 2pm (14:00); any clear way of giving that date counts"

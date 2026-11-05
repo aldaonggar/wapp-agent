@@ -1,5 +1,6 @@
 import { expect, test } from "vitest";
 import { SYSTEM_PROMPT, buildPrompt, windowHistory, type HistoryRow } from "./prompt";
+import type { MemoryHit } from "./types";
 
 const T = Date.UTC(2026, 10, 4, 9, 3); // 14:03 in Asia/Almaty (UTC+5)
 const row = (i: number, text = `m${i}`): HistoryRow => ({ id: `w${i}`, direction: i % 2 ? "out" : "in", text, ts: T + i, kind: "text" });
@@ -66,4 +67,19 @@ test("buildPrompt drops the guess label once the timezone is confirmed and rende
   const parts = messages[0].content as { type: string; text?: string }[];
   expect(parts).toContainEqual({ type: "text", text: "page X (https://x.io/home, status 200):\n# Hi" });
   expect(parts).toContainEqual({ type: "file", mediaType: "image/jpeg", data: jpeg });
+});
+
+test("buildPrompt renders every memory status and adds the control sentences only with memory on", () => {
+  const base = { profile: "", history: [], pending: [], nowLocal: "2026-11-08 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [] };
+  const memories: MemoryHit[] = [
+    { id: 2, kind: "fact", text: "Sister Aru lives in Astana", date: "2026-11-08", score: 1, status: "active" },
+    { id: 1, kind: "fact", text: "Sister Aru lives in Almaty", date: "2026-11-08", score: 0.9, status: "superseded" },
+    { id: 1, kind: "insight", text: "Will visit Astana for the birthday", date: "2026-11-08", score: 0.8, confidence: 0.8, status: "active" },
+  ];
+  const on = buildPrompt({ ...base, memories, memory: true }).system[1].content;
+  expect(on).toContain("- Sister Aru lives in Astana (said 2026-11-08)\n- Sister Aru lives in Almaty (superseded on 2026-11-08)\n- Will visit Astana for the birthday (derived, confidence 0.8)");
+  expect(on).toContain("If they ask what you know about them, answer with a short plain summary of the profile and the most relevant memories.");
+  expect(on).toContain("call the forget tool");
+  expect(on).toMatch(/confirm in one line/);
+  expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget|know about them/);
 });
