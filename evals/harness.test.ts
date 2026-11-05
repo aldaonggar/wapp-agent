@@ -181,6 +181,13 @@ test("ask at +10 s does not derive insights (they are 30 min out)", async () => 
   expect(r.transcript).toContain("[2026-11-04 15:01:00] a: still here"); // a drain past insights_due would have jumped to 15:30
 });
 
+test("a failed background call shows up in the transcript instead of vanishing", async () => {
+  const llm = stubLlm({ object: (c) => { if (c.job === "derive") throw new Error("no host"); return { ops: [{ op: "ADD", text: "Likes tea", kind: "preference", signal: 4 }] }; } });
+  const r = await run([{ at: "+0s", say: "I like tea" }, { at: "+31min", say: "still here" }], llm, { ...cfg, memory: true });
+  expect(llm.objectCalls.map((c) => c.job)).toContain("derive");
+  expect(r.transcript).toContain("[2026-11-04 15:30:00] bot → a: (insights_failed: no host)");
+});
+
 test("a counting embed passed to runScenario is called for a say step (memory on)", async () => {
   const embed = vi.fn(hashEmbed);
   await run([{ at: "+0s", say: "my sister lives in Almaty" }], stubLlm(), { ...cfg, memory: true }, { embed, rerank: cosineRerank });

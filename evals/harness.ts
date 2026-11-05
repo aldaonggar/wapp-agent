@@ -133,11 +133,11 @@ export async function cosineRerank(query: string, docs: string[]): Promise<numbe
 
 export function makeEvalDeps(o: {
   clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>;
-  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"]; contactKey?: string;
+  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"]; contactKey?: string; log?: Deps["log"];
 }): Deps {
   const db = fromNode(new DatabaseSync(":memory:"));
   migrate(db);
-  const log = () => {};
+  const log = o.log ?? (() => {});
   // Same ledger as makeDeps' makeLlm hook, wrapped here because the Llm arrives already built.
   const ledger = (u: Usage) => { db.run("INSERT INTO calls(at, job, model, usage) VALUES (?,?,?,?)", o.clock.now(), u.job, u.model, JSON.stringify(u)); };
   const llm: Llm = {
@@ -291,7 +291,7 @@ const SEED_FACTS: [string, string][] = [
   ["Has two houseplants named Fern and Frank", "other"], ["Uncle Sam runs a bakery", "person"], ["Takes the 8:10 train", "routine"], ["Wants to learn to surf", "other"],
 ];
 
-interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number }
+interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number; errors: { at: number; line: string }[] }
 type MessageStep = { at: string; contact?: string; say?: string; ask?: string; image?: string; caption?: string; url?: string; quote?: number };
 
 /**
@@ -310,9 +310,11 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     let c = contacts.get(id);
     if (!c) {
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
-      const view = clock.forContact(id), wa = new FakeWa(clock);
-      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id });
-      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0 }));
+      const view = clock.forContact(id), wa = new FakeWa(clock), errors: Contact["errors"] = [];
+      // Failures off the reply path (extraction, insights, a retried first attempt) leave no turn row: keep them for the transcript.
+      const log = (e: Record<string, unknown>) => { if (e.error != null) errors.push({ at: clock.t, line: `bot → ${id}: (${e.event}: ${e.error})` }); };
+      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id, log });
+      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0, errors }));
     }
     return c;
   };
@@ -327,6 +329,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
         if (s.kind === "reaction") out.push({ at: s.at, line: `bot → ${c.id}: (reacted ${s.emoji})` });
       }
       c.shown = c.wa.sent.length;
+      out.push(...c.errors.splice(0));
       // A failed turn is stamped at its last bubble, or its start when it sent nothing.
       for (const t of c.deps.db.all<{ id: number; at: number; error: string | null }>("SELECT id, coalesce((SELECT max(ts) FROM messages WHERE turn_id=turns.id AND direction='out'), started_at) AS at, error FROM turns WHERE id > ? ORDER BY id", c.shownTurn)) {
         if (t.error) out.push({ at: t.at, line: `bot → ${c.id}: (turn error: ${t.error})` });
