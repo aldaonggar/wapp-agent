@@ -2,7 +2,7 @@
 
 A WhatsApp and Telegram assistant that remembers you. It runs on Cloudflare Workers. One Durable Object per contact keeps that person's chat, facts and insights in SQLite. Nothing is shared between contacts.
 
-Repo: https://github.com/aldaonggar/wapp-agent (branch `feat/wapp-agent`). Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` returns `ok`).
+Repo: https://github.com/aldaonggar/wapp-agent (branch `feat/wapp-agent`). Worker: https://wapp-agent.alda-onggar.workers.dev (`/health` answers `ok` followed by the configured transports, today `ok whatsapp,telegram`).
 
 What was asked: [init.md](init.md). What was decided and why: [design](docs/superpowers/specs/2026-11-04-whatsapp-memory-agent-design.md). Manual setup done by the owner: [SETUP.md](SETUP.md). Verified API notes: [docs/superpowers/research/](docs/superpowers/research/).
 
@@ -39,21 +39,22 @@ Things to try:
 
 ```mermaid
 flowchart LR
-  P[Phone] --> M[Meta Cloud API]
-  M -->|webhook| W[Worker]
-  T[Telegram Bot API] -->|webhook| W
-  W -->|verify, allowlist| D[ContactAgent DO]
-  D --> C[ContactCore]
-  C --> O[OpenRouter]
-  C --> A[Workers AI]
-  C --> B[Browser Rendering]
-  C -->|send| M
-  C -->|send| T
-  D -.->|alarm| L[Alarm loop]
-  L --> C
+  P[Phone] -->|WhatsApp| M[Meta Cloud API]
+  P -->|Telegram| T[Telegram Bot API]
+  M -->|POST /webhook| W[Worker: verify, allowlist, route]
+  T -->|POST /telegram| W
+  W -->|one object per contact| D["ContactAgent Durable Object: SQLite + one alarm"]
+  D -->|ingest, alarm| C[ContactCore: cadence, memory, reminders]
+  C -->|reply, extraction, insights| O[OpenRouter]
+  C -->|embeddings, rerank, Whisper, Aura-1 voice| A[Workers AI]
+  C -->|page snapshots| B[Browser Rendering]
+  C -->|bubbles, reactions, voice notes| M
+  C -->|bubbles, reactions, voice notes| T
 ```
 
-- `src/worker.ts` re-exports `src/index.ts` (verify signature, check allowlist, fan out to one Durable Object per contact) and the `ContactAgent` class.
+The Worker is stateless: it checks Meta's signature or Telegram's secret header and the allowlist, then hands the message to the one Durable Object named after the contact (`<phone>` or `tg:<chat id>`). That object stores the message, sets its single alarm for when the burst should be over, and on the alarm runs the turn: recall from its own SQLite, stream the reply, send the bubbles, then extract facts in the background and re-arm the alarm for the nearest of insights, check-ins and reminders.
+
+- `src/worker.ts` re-exports `src/index.ts` (the Worker above) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
 - OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups; send reminders at their time (no model call).
@@ -191,7 +192,7 @@ Measured on 2026-11-05 (tables in [Evals](#evals); [EVALS.md](EVALS.md) for p95 
 | Job | Default | Input / output per 1M tokens | Measured |
 |---|---|---|---|
 | Reply | `deepseek/deepseek-v4.1-flash` (served by Google Vertex) | $0.045 / $0.50 | Ties kimi-k2.6 and GLM-5.2 on short-term and is the cheapest per 1,000 turns; both of them are faster to first token. Medium effort (measured under the 2026-11-04 defaults): 5/7, slower (first token p50 1.65 s against 0.95 s), no gain |
-| Vision (photos) | the reply model when it accepts images (kimi does); `openai/gpt-6.1-terra` otherwise, which includes the default: `deepseek-v4.1-flash` is marked `vision: false` | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. Flash calls a plain red JPEG blank under the production prompt (0/4 in round 1); routed to `gpt-6.1-terra` the photo scenario passes (1/1, "red"), about $0.001 per photo turn |
+| Vision (photos) | `openai/gpt-6.1-terra` for every photo turn (the default reply model is marked `vision: false`; a reply model that reads images well, such as kimi-k2.6, would answer photos itself) | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. Flash calls a plain red JPEG blank under the production prompt (0/4 in round 1); routed to `gpt-6.1-terra` the photo scenario passes (1/1, "red"), about $0.001 per photo turn |
 | Extract | `anthropic/claude-haiku-5.5` (was `deepseek/deepseek-v4.1-flash`) | $0.10 / $0.50 | Ties flash and gpt-6-luna on pass rate; chosen on reliability: flash's extraction call timed out (60 s, fact lost) seven times across the day's runs (three inside its best run, on turns that carried no fact), haiku's and luna's never. Round 2 added the Anthropic cache marker to `llm.object()`; the table shows the cost and cached share measured with it |
 | Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | Ties gpt-6.1-sol at the top of the derive table and is the cheaper per 1,000 turns, with the lowest latency; claude-sonnet-5.5 one scenario behind. 0/4 in round 1 only because the first key's provider list had no host for it (gpt-6.1-sol was the default in between) |
 | Eval judge | `anthropic/claude-opus-5.5` | $4 / $20 | about $0.05 of table cost per full run |
@@ -209,7 +210,7 @@ npm test
 npm run eval
 ```
 
-`.dev.vars` (git-ignored) holds eleven names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md).
+`.dev.vars` (git-ignored) holds eleven names: `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_APP_SECRET`, `WHATSAPP_TOKEN`, `WHATSAPP_VERIFY_TOKEN`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `OPENROUTER_API_KEY`, `ALLOWED_PHONES`, plus three for Telegram: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `ALLOWED_TELEGRAM`. Where each comes from is in [SETUP.md](SETUP.md). Either transport's set is enough to run: a route whose transport is not fully configured answers 404, and `/health` names the ones that are (503 when neither is).
 
 ## Known limits
 
@@ -224,7 +225,7 @@ npm run eval
 - An extraction call that times out (60 s) loses that turn's facts for good; seen seven times today with `deepseek-v4.1-flash` as extractor (four are in the committed results), never with haiku or luna.
 - Follow-ups and reminders never retry.
 - The extractor sees only the current turn.
-- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. `/telegram` answers 404 until `TELEGRAM_WEBHOOK_SECRET` is set. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked.
+- Telegram: bots get no read receipts, so only the typing indicator shows. The timezone starts as UTC (a Telegram id carries no country code) until the person says where they are. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. `/telegram` answers 404 until the bot token and the webhook secret are both set. The first-message introduction and the far-out-reminder warning rest on the model following a prompt line, not on code. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked.
 
 ## What I would build next
 
@@ -232,6 +233,7 @@ npm run eval
 - Voice replies in the person's language (Aura-1 is English-only; MeloTTS is multilingual but returns WAV, which no platform shows as a voice note).
 - A second run of each model candidate ($0.10 each) to firm up the one-scenario margins in the Evals tables.
 - Retry an extraction call that timed out instead of losing that turn's facts.
+- A per-person daily turn cap before the bot link is shared widely.
 
 ## Credits
 
