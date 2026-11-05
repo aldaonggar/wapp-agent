@@ -26,7 +26,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
     transcribe: transcribeViaBinding(env.AI),
     tts: ttsViaBinding(env.AI),
     snapshot: makeSnapshot({ accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN, log }),
-    search: makeSearch({ log }),
+    search: makeSearch({ apiKey: env.OPENROUTER_API_KEY, log }),
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },
     contactKey: ctx.id.toString(),

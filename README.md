@@ -67,7 +67,7 @@ The Worker is stateless: it checks Telegram's secret header and the allowlist, t
 
 - `src/worker.ts` re-exports `src/index.ts` (the Worker above) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
-- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links. Search: a plain fetch of DuckDuckGo's HTML results and the top three pages, no Browser Rendering.
+- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links. Search: OpenRouter's web plugin (Exa engine) for three sources, then a plain fetch of each page, no Browser Rendering.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups; send reminders at their time (no model call).
 
 ## Why the memory is in-house
@@ -86,7 +86,7 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 - [llm.ts](src/llm.ts): streaming and structured calls over the AI SDK and OpenRouter.
 - [whatsapp.ts](src/whatsapp.ts): the parked WhatsApp transport (see the status at the top).
 - [telegram.ts](src/telegram.ts): Bot API update parsing, client (text, reactions, typing, media, voice notes via `sendVoice`), and the transport router.
-- [browser.ts](src/browser.ts): URL extraction, Browser Rendering snapshots, and the DuckDuckGo search behind `search_web`.
+- [browser.ts](src/browser.ts): URL extraction, Browser Rendering snapshots, and the OpenRouter web search behind `search_web`.
 - [workers-ai.ts](src/workers-ai.ts): embeddings, rerank, transcription, text-to-speech.
 - `*.test.ts` next to each file: unit tests.
 
@@ -243,7 +243,7 @@ npm run eval
 - OpenRouter's account-level **Allowed providers** setting can silently block a model: every call to a model with no host on the list fails with "No allowed providers are available for the selected model", and for insights that shows up only as `insights_failed` in the logs ([SETUP.md section 5](SETUP.md)).
 - Follow-ups never retry. Reminders are delivered at least once: if the object is reset in the middle of a reminder's send, it is sent again a minute later, so at worst it arrives twice; a send the transport refuses is not retried.
 - When a reply cannot be generated (the turn fails twice, or fails after only a reaction went out), the bot sends one fixed line, `sorry, something broke on my side. can you send that again in a bit?`, instead of leaving a typing indicator and silence. A failure after a real bubble sends nothing more.
-- Web search depends on DuckDuckGo's HTML page, which can refuse automated requests: on 2026-11-05 a single plain request from the owner's machine got its bot challenge (HTTP 202) instead of results. A refusal, a challenge or no results all mean the model is told nothing was found and says so; the code never tries to get past the challenge. Only the top 3 results, only each result's own page (no links followed), only what the server sends without JavaScript, and the first 3,000 characters of its text; one search per reply.
+- Web search is OpenRouter's web plugin (Exa engine) called through the same key: about a cent per search (measured $0.007), three sources, and typically 3 to 6 s, with an 8 s limit on the search call itself. Only each source's main page (no links followed), only what the server sends without JavaScript (first 3,000 characters); when a page cannot be read the source's search snippet is used instead. Any failure means the model is told nothing was found; one search per reply.
 - The extractor sees only the current turn.
 - Bots get no read receipts on Telegram, so only the typing indicator shows. The bot sets at most one reaction per message and only from Telegram's fixed emoji set; one outside it is logged as `send_failed` and the reply still goes out. An update whose ingest fails for a reason other than a transient Durable Object error is logged as `ingest_failed` and dropped (Telegram redelivers only on a non-2xx answer). A reaction aimed at a photo inside an album lands on the album's first photo, while the transcript records it on the photo the bot picked. The first-message introduction rests on the model following a prompt line, not on code.
 
