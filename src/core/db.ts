@@ -4,7 +4,7 @@ import type { Db, Param, Row } from "./types";
 export const SCHEMA = `
 CREATE TABLE IF NOT EXISTS messages(id TEXT PRIMARY KEY, direction TEXT, kind TEXT, text TEXT, ts INTEGER, quoted_id TEXT, media_id TEXT, mime TEXT, media_note TEXT, voice INTEGER DEFAULT 0, reactions TEXT, turn_id INTEGER, status TEXT DEFAULT 'pending');
 CREATE INDEX IF NOT EXISTS messages_ts ON messages(ts);
-CREATE TABLE IF NOT EXISTS facts(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, kind TEXT, signal INTEGER, created_at INTEGER, event_date TEXT, source_message_ids TEXT, status TEXT DEFAULT 'active', superseded_by INTEGER, followup_done INTEGER DEFAULT 0, embedding BLOB);
+CREATE TABLE IF NOT EXISTS facts(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, kind TEXT, signal INTEGER, created_at INTEGER, event_date TEXT, source_message_ids TEXT, status TEXT DEFAULT 'active', superseded_by INTEGER, followup_done INTEGER DEFAULT 0, followup_due INTEGER, embedding BLOB);
 CREATE VIRTUAL TABLE IF NOT EXISTS facts_fts USING fts5(text, fact_id UNINDEXED);
 CREATE TABLE IF NOT EXISTS insights(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, confidence REAL, evidence_fact_ids TEXT, created_at INTEGER, status TEXT DEFAULT 'active', embedding BLOB);
 CREATE TABLE IF NOT EXISTS profile(id INTEGER PRIMARY KEY CHECK(id=1), text TEXT, updated_at INTEGER);
@@ -19,6 +19,7 @@ export function migrate(db: Db): void {
   db.batch(SCHEMA);
   // Columns added after the first deploy.
   if (!db.all("SELECT 1 FROM pragma_table_info('turns') WHERE name='recalled'").length) db.run("ALTER TABLE turns ADD COLUMN recalled TEXT");
+  if (!db.all("SELECT 1 FROM pragma_table_info('facts') WHERE name='followup_due'").length) db.run("ALTER TABLE facts ADD COLUMN followup_due INTEGER");
 }
 
 const plain = (r: Record<string, unknown>): Row => {

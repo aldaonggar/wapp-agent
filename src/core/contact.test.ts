@@ -516,6 +516,7 @@ test("two plans: after the first fires, followup_due === D2 + 2h", async () => {
   await t.run(ny("2026-11-04 16:00") + 1);
   expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
   expect(t.state().followup_due).toBe(ny("2026-11-05 14:00"));
+  expect(t.db.all("SELECT followup_done FROM facts ORDER BY id")).toEqual([{ followup_done: 1 }, { followup_done: 0 }]);
 });
 
 test("a follow-up due at night is deferred to 09:00 and then sent", async () => {
@@ -524,8 +525,63 @@ test("a follow-up due at night is deferred to 09:00 and then sent", async () => 
   await t.run(t.clock.t + 60_000);
   await t.run(ny("2026-11-04 23:30") + 1);
   expect(t.llm.calls.some((c) => c.job === "followup")).toBe(false);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok"]);
   expect(t.state().followup_due).toBe(ny("2026-11-05 09:00"));
   await t.run(ny("2026-11-05 09:00") + 1);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok", "how did it go?"]);
   expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
   expect(t.state().followup_due).toBeNull();
+});
+
+test("the follow-up conversation ends on a user turn", async () => {
+  const t = followupT(["2026-11-04 14:00"]);
+  await t.say("interview at two today");
+  await t.run(ny("2026-11-04 16:00") + 1);
+  const m = t.llm.calls.find((c) => c.job === "followup")!.messages;
+  expect(m.at(-1)).toMatchObject({ role: "user", content: "[scheduled check-in]" });
+});
+
+test("a failed follow-up send stores a failed row, marks the fact done and does not retry", async () => {
+  const t = followupT(["2026-11-04 14:00"]);
+  await t.say("interview at two today");
+  await t.run(t.clock.t + 60_000);
+  t.wa.failNext = new WaError(131047, 400, "re-engagement");
+  await t.run(ny("2026-11-04 16:00") + 1);
+  expect(outs(t).map((r) => r.status)).toEqual(["sent", "failed"]);
+  expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
+  expect(t.db.all("SELECT last_proactive_date FROM contact")).toEqual([{ last_proactive_date: null }]);
+  expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("an empty follow-up reply is logged and the fact is still done", async () => {
+  const t = setup({ features: { memory: true }, object: planOps("2026-11-04 14:00"), reply: (c) => (c.job === "followup" ? "react: none\n" : "react: none\nok") });
+  t.clock.t = ny("2026-11-04 10:00");
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("interview at two today");
+  await t.run(ny("2026-11-04 16:00") + 1);
+  expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: "followup_empty" }));
+  expect(t.db.all("SELECT followup_done FROM facts")).toEqual([{ followup_done: 1 }]);
+});
+
+test("two plans due the same day: the daily limit defers the second to tomorrow 09:00", async () => {
+  const t = followupT(["2026-11-04 12:00", "2026-11-04 12:30"]);
+  await t.say("two things today");
+  await t.run(ny("2026-11-04 16:00"));
+  expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
+  expect(t.db.all("SELECT followup_done, followup_due FROM facts ORDER BY id")).toEqual([{ followup_done: 1, followup_due: null }, { followup_done: 0, followup_due: ny("2026-11-05 09:00") }]);
+  expect(t.state().followup_due).toBe(ny("2026-11-05 09:00"));
+});
+
+test("two plans plus a night deferral do not storm: one send, the other skipped by the window", async () => {
+  const t = followupT(["2026-11-04 21:30", "2026-11-04 22:30"], "2026-11-04 20:00");
+  let alarms = 0;
+  const alarm = t.core.alarm.bind(t.core);
+  t.core.alarm = async () => { alarms++; await alarm(); };
+  await t.say("dinner and a call");
+  await t.run(ny("2026-11-05 09:00") + 1);
+  expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
+  expect(alarms).toBeLessThanOrEqual(6); // turn, insights, 2 night deferrals, send, daily-limit deferral
+  expect(t.db.all("SELECT followup_done, followup_due FROM facts ORDER BY id")).toEqual([{ followup_done: 1, followup_due: ny("2026-11-05 09:00") }, { followup_done: 1, followup_due: ny("2026-11-05 09:00") }]); // D2: tomorrow 09:00 is past the 24h window, so it is skipped
 });

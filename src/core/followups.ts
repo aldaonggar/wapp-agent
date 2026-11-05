@@ -22,21 +22,23 @@ export function localToUtc(s: string, tz: string): number | null {
   return t;
 }
 
-const NINE = (ts: number, tz: string, tomorrow: boolean): number => {
+// 09:00 local: today if it is still before 09:00 and `skipToday` is false, else tomorrow.
+const next9am = (ts: number, tz: string, skipToday: boolean): number => {
   const [date, time] = formatLocal(ts, tz).split(" ");
-  const day = new Date(Date.parse(date + "T00:00:00Z") + (tomorrow || +time.slice(0, 2) >= 9 ? DAY : 0)).toISOString().slice(0, 10);
+  const plusDays = skipToday || +time.slice(0, 2) >= 9 ? DAY : 0;
+  const day = new Date(Date.parse(date + "T00:00:00Z") + plusDays).toISOString().slice(0, 10);
   return localToUtc(`${day} 09:00`, tz)!;
 };
 
-interface Plan { id: number; event_date: string }
-const plans = (db: Db) => db.all<Plan>("SELECT id, event_date FROM facts WHERE kind='plan' AND status='active' AND event_date IS NOT NULL AND followup_done = 0 ORDER BY id");
+interface Plan { id: number; event_date: string; followup_due: number | null }
+const plans = (db: Db) => db.all<Plan>("SELECT id, event_date, followup_due FROM facts WHERE kind='plan' AND status='active' AND event_date IS NOT NULL AND followup_done = 0 ORDER BY id");
 
+// Each plan is due at max(event + 2h, its own stored deferral); the earliest one arms the timer.
 export function scheduleFollowup(db: Db, now: number, tz: string): void {
-  const s = db.all<{ followup_due: number | null; followup_fact_id: number | null }>("SELECT followup_due, followup_fact_id FROM state")[0];
   let best: { id: number; due: number } | null = null;
   for (const p of plans(db)) {
     const ev = localToUtc(p.event_date, tz);
-    const due = p.id === s.followup_fact_id && s.followup_due !== null ? s.followup_due : ev === null ? null : ev + AFTER_EVENT_MS;
+    const due = ev === null ? null : Math.max(ev + AFTER_EVENT_MS, p.followup_due ?? 0);
     if (due === null || due <= now - DAY) { db.run("UPDATE facts SET followup_done = 1 WHERE id = ?", p.id); continue; } // malformed or too old: never re-picked
     if (!best || due < best.due) best = { id: p.id, due };
   }
@@ -56,6 +58,6 @@ export function followupDecision(db: Db, now: number, tz: string): FollowupDecis
   const hour = +time.slice(0, 2);
   const quiet = hour < 9 || hour >= 22, sentToday = c?.last_proactive_date === today;
   if (!quiet && !sentToday) return { kind: "send", factId: id!, text: fact.text };
-  const to = NINE(now, tz, sentToday);
+  const to = next9am(now, tz, sentToday);
   return to <= lastIn + DAY ? { kind: "defer", to } : { kind: "skip", reason: "window" };
 }

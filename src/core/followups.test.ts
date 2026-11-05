@@ -39,7 +39,7 @@ test("scheduleFollowup keeps a deferred due for the tracked fact and skips follo
   const now = at("2026-11-04 23:30");
   const a = plan(db, "2026-11-04 20:00"), done = plan(db, "2026-11-04 21:00"), old = plan(db, "2026-11-01 09:00"), junk = plan(db, "soon");
   db.run("UPDATE facts SET followup_done = 1 WHERE id = ?", done);
-  db.run("UPDATE state SET followup_due = ?, followup_fact_id = ?", at("2026-11-05 09:00"), a);
+  db.run("UPDATE facts SET followup_due = ? WHERE id = ?", at("2026-11-05 09:00"), a);
   scheduleFollowup(db, now, TZ);
   expect(st(db)).toEqual({ followup_due: at("2026-11-05 09:00"), followup_fact_id: a });
   expect(db.all<{ id: number; followup_done: number }>("SELECT id, followup_done FROM facts WHERE id IN (?, ?)", old, junk)).toEqual([{ id: old, followup_done: 1 }, { id: junk, followup_done: 1 }]);
@@ -71,4 +71,10 @@ test("quiet hours before 09:00 defer to today 09:00", () => {
   db.run("INSERT INTO contact(id, wa_id, timezone, last_inbound_ts) VALUES (1, 'x', ?, ?)", TZ, at("2026-11-03 19:00"));
   db.run("UPDATE state SET followup_fact_id = ?", id);
   expect(followupDecision(db, at("2026-11-04 07:00"), TZ)).toEqual({ kind: "defer", to: at("2026-11-04 09:00") });
+});
+
+test("localToUtc at the real DST edges", () => {
+  expect(localToUtc("2026-03-08 03:30", TZ)).toBe(Date.UTC(2026, 2, 8, 7, 30)); // just after spring-forward, already EDT
+  expect(at("2026-11-01 12:00") - at("2026-10-31 12:00")).toBe(25 * H); // fall back
+  expect(at("2026-03-08 12:00") - at("2026-03-07 12:00")).toBe(23 * H); // spring forward
 });

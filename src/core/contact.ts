@@ -221,13 +221,8 @@ export class ContactCore {
           }
           sends++;
           bubbles++;
-          let wamid: string | null = null;
-          try {
-            wamid = (await wa.sendText(to, ev.text, { quote, previewUrl: /https?:\/\//.test(ev.text) })).id;
-            ttfb ??= performance.now() - t0;
-          } catch (e) {
-            this.error("send_failed", e, { kind: "text" });
-          }
+          const wamid = await this.sendBubble(to, ev.text, quote);
+          if (wamid) ttfb ??= performance.now() - t0;
           lastSendAt = clock.now();
           prevChars = ev.text.length;
           const rowId = wamid || `local.${crypto.randomUUID()}`;
@@ -285,30 +280,44 @@ export class ContactCore {
     scheduleFollowup(db, clock.now(), tz);
   }
 
+  // One text send: a failure is logged and returns null (callers store a 'failed' row).
+  private async sendBubble(to: string, text: string, quote?: string): Promise<string | null> {
+    try {
+      return (await this.deps.wa.sendText(to, text, { quote, previewUrl: /https?:\/\//.test(text) })).id;
+    } catch (e) {
+      this.error("send_failed", e, { kind: "text" });
+      return null;
+    }
+  }
+
   // Timer 3 (followup_due is already NULL). Never retries a proactive message: send and skip both mark the fact done.
   private async followupTimer(now: number, factId: number | null): Promise<void> {
     const { db, clock } = this.deps;
-    const done = () => db.run("UPDATE facts SET followup_done = 1 WHERE id = ?", factId);
-    const tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
+    let tz = "UTC";
+    const done = () => {
+      db.run("UPDATE facts SET followup_done = 1 WHERE id = ?", factId);
+      db.run("UPDATE state SET followup_fact_id = NULL");
+    };
     try {
+      tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
       const d = followupDecision(db, now, tz);
-      if (d.kind === "defer") db.run("UPDATE state SET followup_due = ?", d.to);
-      else {
+      if (d.kind === "defer") {
+        db.run("UPDATE facts SET followup_due = ? WHERE id = ?", d.to, factId);
+        db.run("UPDATE state SET followup_due = ?", d.to);
+      } else {
         done();
-        db.run("UPDATE state SET followup_fact_id = NULL");
         if (d.kind === "send") await this.sendFollowup(d.text, tz, now);
       }
     } catch (e) {
       this.error("followup_failed", e);
       done();
-      db.run("UPDATE state SET followup_fact_id = NULL");
     } finally {
       scheduleFollowup(db, clock.now(), tz);
     }
   }
 
   private async sendFollowup(factText: string, tz: string, now: number): Promise<void> {
-    const { db, clock, wa, llm, models, features } = this.deps;
+    const { db, clock, llm, models, features } = this.deps;
     const contact = db.all<{ wa_id: string; name: string | null; timezone_confirmed: number }>("SELECT * FROM contact")[0];
     const prompt = buildPrompt({
       profile: features.memory ? memory.profileText(db) : "", memories: [], history: windowHistory(this.historyRows()), pending: [], snapshots: [], memory: features.memory,
@@ -316,21 +325,22 @@ export class ContactCore {
     });
     const last = prompt.system[1];
     const system = [prompt.system[0], { ...last, content: `${last.content}\n\nWrite one short check-in about this plan, in the person's language and register: "${factText}". No reaction line. One bubble, at most two sentences, one question at most.` }];
+    // buildPrompt ends on an empty user turn; some providers reject a conversation that ends on an assistant message.
+    const history = prompt.messages.slice(0, -1);
+    const messages = history.at(-1)?.role === "assistant" || history.length === 0 ? [...history, { role: "user" as const, content: "[scheduled check-in]" }] : history;
     const { text, done } = llm.stream({
       job: "followup", modelId: models.reply, maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort), reasoning: reasoningFor(models.reply, features.replyEffort),
-      sessionId: hash(contact.wa_id), system, messages: prompt.messages,
+      sessionId: hash(contact.wa_id), system, messages,
     });
+    let bubbles = 0;
     for await (const ev of parseReply(text, 1)) {
       if (ev.type === "react") continue;
-      let wamid: string | null = null;
-      try {
-        wamid = (await wa.sendText(contact.wa_id, ev.text, { previewUrl: /https?:\/\//.test(ev.text) })).id;
-      } catch (e) {
-        this.error("send_failed", e, { kind: "text" });
-      }
+      bubbles++;
+      const wamid = await this.sendBubble(contact.wa_id, ev.text);
       db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, ev.text, clock.now(), wamid === null ? "failed" : "sent");
       if (wamid) db.run("UPDATE contact SET last_proactive_date = ?", formatLocal(now, tz).slice(0, 10));
     }
+    if (!bubbles) this.error("followup_empty", new Error("the model wrote no check-in"));
     await done;
   }
 

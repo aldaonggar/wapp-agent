@@ -21,6 +21,13 @@ test("migrate adds turns.recalled to a database created before it existed", () =
   expect(db.all("SELECT 1 FROM pragma_table_info('turns') WHERE name='recalled'")).toHaveLength(1);
 });
 
+test("migrate adds facts.followup_due to a database created before it existed", () => {
+  db.batch("CREATE TABLE facts(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT)");
+  migrate(db); migrate(db);
+  db.run("INSERT INTO facts(text, followup_due) VALUES ('a', 5)");
+  expect(db.all("SELECT followup_due FROM facts")).toEqual([{ followup_due: 5 }]);
+});
+
 test("blob round trip keeps float32 values", () => {
   migrate(db);
   db.run("INSERT INTO facts(text, embedding) VALUES ('a', ?)", vecToBlob(new Float32Array([0.1, -2, 3.5])));
