@@ -293,7 +293,7 @@ const SEED_FACTS: [string, string][] = [
   ["Has two houseplants named Fern and Frank", "other"], ["Uncle Sam runs a bakery", "person"], ["Takes the 8:10 train", "routine"], ["Wants to learn to surf", "other"],
 ];
 
-interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; shownTurn: number; errors: { at: number; line: string }[] }
+interface Contact { id: string; phone: string; view: ClockView; wa: FakeWa; deps: Deps; core: ContactCore; shown: number; errors: { at: number; line: string }[] }
 type MessageStep = { at: string; contact?: string; say?: string; ask?: string; image?: string; caption?: string; url?: string; quote?: number };
 
 /**
@@ -313,17 +313,17 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     if (!c) {
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock), errors: Contact["errors"] = [];
-      // Failures off the reply path (extraction, insights, a retried first attempt) leave no turn row: keep them for the transcript.
+      // Every logged failure goes into the transcript (turn attempts, extraction, insights, sends); the turns table alone would miss a retried first attempt and background work.
       const log = (e: Record<string, unknown>) => { if (e.error != null) errors.push({ at: clock.t, line: `bot → ${id}: (${e.event}: ${e.error})` }); };
       const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id, log });
-      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0, errors }));
+      contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, errors }));
     }
     return c;
   };
 
   const transcript: string[] = [];
   const stamp = (t: number) => new Date(t).toISOString().slice(0, 19).replace("T", " ");
-  const flush = () => { // the bots' sends and failed turns since the last flush, in time order
+  const flush = () => { // the bots' sends and logged failures since the last flush, in time order
     const out: { at: number; line: string }[] = [];
     for (const c of contacts.values()) {
       for (const s of c.wa.sent.slice(c.shown)) {
@@ -332,11 +332,6 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       }
       c.shown = c.wa.sent.length;
       out.push(...c.errors.splice(0));
-      // A failed turn is stamped at its last bubble, or its start when it sent nothing.
-      for (const t of c.deps.db.all<{ id: number; at: number; error: string | null }>("SELECT id, coalesce((SELECT max(ts) FROM messages WHERE turn_id=turns.id AND direction='out'), started_at) AS at, error FROM turns WHERE id > ? ORDER BY id", c.shownTurn)) {
-        if (t.error) out.push({ at: t.at, line: `bot → ${c.id}: (turn error: ${t.error})` });
-        c.shownTurn = t.id;
-      }
     }
     for (const o of out.sort((x, y) => x.at - y.at)) transcript.push(`[${stamp(o.at)}] ${o.line}`);
   };

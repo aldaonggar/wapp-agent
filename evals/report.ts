@@ -12,7 +12,7 @@ const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget",
 const JOB_CATEGORIES: Record<Job, string[]> = { reply: ["short-term"], extract: ["long-term", "judgement"], derive: ["derived"] };
 const NOT_RUN = "not run";
 
-const model = (r: Run, job: Job) => r.config.models?.[job] ?? r.config[job] ?? JOBS[job].default; // files from before models were recorded: the defaults at the time
+const model = (r: Run, job: Job) => r.config.models?.[job] ?? r.config[job] ?? JOBS[job].default; // files from before models were recorded fall back to the current defaults (only their reply model is read today)
 // Base configuration (no job overridden, memory on, hybrid, lowest effort), optionally with one job swapped, memory off or cosine retrieval.
 const isDefault = (r: Run, o: { memory?: boolean; retrieval?: string; except?: Job } = {}) =>
   r.config.memory === (o.memory ?? true) && r.config.retrieval === (o.retrieval ?? "hybrid") && !r.config.effort &&

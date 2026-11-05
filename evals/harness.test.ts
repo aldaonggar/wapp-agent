@@ -113,7 +113,10 @@ test("max_turns fails the probe when the contact took more turns", async () => {
 
 test("a turn that fails twice shows up in the transcript and leaves ttfb undefined", async () => {
   const r = await run([{ at: "+0s", ask: "you there?", gold: "ok", expect_contains: ["ok"] }], stubLlm({ reply: () => ({ chunks: [], error: new Error("provider down") }) }));
-  expect(r.transcript).toContain("[2026-11-04 15:00:33] bot → a: (turn error: provider down)");
+  expect(r.transcript.filter((l) => l.includes("provider down"))).toEqual([ // both attempts, once each: the first leaves no turn row
+    "[2026-11-04 15:00:03] bot → a: (turn_failed: provider down)",
+    "[2026-11-04 15:00:33] bot → a: (turn_failed: provider down)",
+  ]);
   expect(r.probes[0]).toMatchObject({ answer: "", label: "wrong", ttfbMs: undefined });
   expect(r.probes[0].totalMs).toBeTypeOf("number");
 });
