@@ -25,8 +25,9 @@ export const JOBS = {
     compareByDefault: ["deepseek/deepseek-v4.1-flash", "moonshotai/kimi-k2.6", "z-ai/glm-5.2"],
   },
   vision: { default: "openai/gpt-6.1-terra", candidates: ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5.5"] },
-  extract: { default: "deepseek/deepseek-v4.1-flash", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
-  derive: { default: "deepseek/deepseek-v4-pro", candidates: ["deepseek/deepseek-v4-pro", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5"] },
+  // extract and derive defaults measured 2026-11-05 (EVALS.md); deepseek-v4-pro has no host in the account's OpenRouter allowed-providers list.
+  extract: { default: "anthropic/claude-haiku-5.5", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
+  derive: { default: "openai/gpt-6.1-sol", candidates: ["deepseek/deepseek-v4-pro", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5"] },
   judge: { default: "anthropic/claude-opus-5.5" as const },
 };
 
