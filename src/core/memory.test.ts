@@ -110,6 +110,13 @@ test("a target_id the extractor was not shown is never touched", async () => {
   expect(t.facts().map((f) => [f.text, f.status])).toEqual([["Has a dog named Biscuit", "active"], ["Brother Tom is a doctor", "active"]]);
 });
 
+test("DELETE is applied whatever its signal", async () => {
+  const t = setup(() => ({ ops: [op({ op: "DELETE", text: "Has a dog named Biscuit", signal: 1, target_id: 1 })] }));
+  await t.addFact("Has a dog named Biscuit");
+  expect(await remember(t.deps, t.turn("Biscuit died last week"))).toEqual({ added: 0, updated: 0, deleted: 1 });
+  expect(t.facts()).toEqual([]);
+});
+
 test("DELETE and UPDATE cascade to insights", async () => {
   const t = setup(() => ({ ops: [op({ op: "UPDATE", text: "Sister Aru lives in Astana", target_id: 1 }), op({ op: "DELETE", text: "Has a dog named Biscuit", target_id: 2 })] }));
   await t.addFact("Sister Aru lives in Almaty");
@@ -187,28 +194,62 @@ test("forget removes by substring and returns the count", async () => {
   expect(t.embed).not.toHaveBeenCalled();
 });
 
-test("forget by similarity deletes the best match and near ties, never a distant one above 0.6", async () => {
+test("forget by similarity deletes the best match and near ties above 0.68 only", async () => {
   const t = setup();
   t.deps.embed = async (texts) => texts.map(() => vec(1));
   await t.addFact("Has a dog named Biscuit", { v: vec(1) }); // 1.00
   await t.addFact("Walks the dog every morning", { v: vec(0.97, Math.sqrt(1 - 0.97 ** 2)) }); // 0.97: within 0.05 of the best
-  await t.addFact("Uses a standing desk", { v: vec(0.62, Math.sqrt(1 - 0.62 ** 2)) }); // 0.62: above 0.6 but far from the best
+  await t.addFact("Uses a standing desk", { v: vec(0.66, Math.sqrt(1 - 0.66 ** 2)) }); // 0.66: below the floor, far from the best
   expect(await forget(t.deps, "the pup")).toBe(2);
+  expect(t.facts().map((f) => f.text)).toEqual(["Uses a standing desk"]);
+  expect(await forget(t.deps, "the pup")).toBe(0); // a regeneration re-run: the next best is not a match
   expect(t.facts().map((f) => f.text)).toEqual(["Uses a standing desk"]);
 });
 
+test("forget never deletes a lone fact at bge-m3 noise level (0.62)", async () => {
+  const t = setup();
+  const noise = vec(0.62, Math.sqrt(1 - 0.62 ** 2));
+  t.deps.embed = async (texts) => texts.map((_, i) => (i ? noise : vec(1))); // the query, then the profile line
+  await t.addFact("Grew up near the sea", { v: noise });
+  t.db.run("INSERT INTO profile(id, text, updated_at) VALUES (1, 'Grew up near the sea', 0)");
+  expect(await forget(t.deps, "where I live")).toBe(0);
+  expect(t.facts()).toHaveLength(1);
+  expect(profileText(t.db)).toBe("Grew up near the sea");
+});
+
+test("forget's substring path needs 4+ characters and whole words", async () => {
+  const t = setup();
+  t.embed.mockImplementation(async (texts) => texts.map((_, i) => (i ? vec(0, 0, 1) : vec(0, 1)))); // no similarity anywhere
+  await t.addFact("Has a dog named Biscuit", { v: vec(1) });
+  await t.addFact("Works at Monzo", { v: vec(1) });
+  t.db.run("INSERT INTO profile(id, text, updated_at) VALUES (1, ?, 0)", "Dog: Biscuit\nWorks at Monzo");
+  expect(await forget(t.deps, "dog")).toBe(0); // 3 characters
+  expect(await forget(t.deps, "work")).toBe(0); // "Works" is another word
+  expect(t.facts()).toHaveLength(2);
+  expect(profileText(t.db)).toBe("Dog: Biscuit\nWorks at Monzo");
+  expect(await forget(t.deps, "biscuit")).toBe(1);
+  expect(t.facts().map((f) => f.text)).toEqual(["Works at Monzo"]);
+  expect(profileText(t.db)).toBe("Works at Monzo");
+});
+
 test("profile upsert", async () => {
-  let reply: unknown = { ops: [op({ text: "Name is Nur", kind: "identity", signal: 5 })], profile: "Name: Nur" };
+  let reply: unknown = { ops: [op({ text: "Name is Nurlan", kind: "identity", signal: 5 })], profile: "Name: Nurlan" };
   const t = setup(() => reply);
-  await remember(t.deps, t.turn("I'm Nur"));
-  expect(profileText(t.db)).toBe("Name: Nur");
-  reply = { ops: [op({ text: "Sister Aru lives in Almaty", signal: 5 })], profile: "Name: Nur\nSister: Aru (Almaty)" };
+  await remember(t.deps, t.turn("I'm Nurlan"));
+  expect(profileText(t.db)).toBe("Name: Nurlan");
+  reply = { ops: [op({ text: "Sister Aru lives in Almaty", signal: 5 })], profile: "Name: Nurlan\nSister: Aru (Almaty)" };
   await remember(t.deps, t.turn("my sister Aru lives in Almaty"));
-  expect(t.db.all("SELECT text FROM profile")).toEqual([{ text: "Name: Nur\nSister: Aru (Almaty)" }]);
+  expect(t.db.all("SELECT text FROM profile")).toEqual([{ text: "Name: Nurlan\nSister: Aru (Almaty)" }]);
   reply = { ops: [], profile: null };
   await remember(t.deps, t.turn("haha ok"));
-  expect(profileText(t.db)).toBe("Name: Nur\nSister: Aru (Almaty)");
-  reply = { ops: [], profile: "x".repeat(5000) };
+  expect(profileText(t.db)).toBe("Name: Nurlan\nSister: Aru (Almaty)");
+  reply = { ops: [], profile: "Name: Nurlan\nLikes tea" };
+  await remember(t.deps, t.turn("I like tea")); // nothing persisted: the profile is not rewritten
+  expect(profileText(t.db)).toBe("Name: Nurlan\nSister: Aru (Almaty)");
+  reply = { ops: [op({ text: "Brother Tom is a nurse" })], profile: "..." };
+  await remember(t.deps, t.turn("my brother Tom is a nurse")); // a placeholder is not a profile
+  expect(profileText(t.db)).toBe("Name: Nurlan\nSister: Aru (Almaty)");
+  reply = { ops: [op({ text: "Cousin Mira lives in Oslo" })], profile: "x".repeat(5000) };
   await remember(t.deps, t.turn("long"));
   expect(profileText(t.db).length).toBe(1200); // ~300 tokens
 });
@@ -219,7 +260,9 @@ test("media_note is written to the image row", async () => {
   const img = (messageId: string) => ({ messageId, bytes: new Uint8Array([1]), mime: "image/jpeg" });
   await remember(t.deps, t.turn("my new bike!", { images: [img("wamid.1"), img("wamid.2")] }));
   expect(t.db.all("SELECT id, media_note FROM messages ORDER BY id")).toEqual([{ id: "wamid.1", media_note: "photo of a red road bike" }, { id: "wamid.2", media_note: null }]);
-  await expect(remember(t.deps, t.turn("no image here"))).resolves.toBeTruthy(); // a note without an image is dropped
+  t.db.run("UPDATE messages SET media_note=NULL");
+  await remember(t.deps, t.turn("no image here")); // a note without an image is dropped
+  expect(t.db.all("SELECT media_note FROM messages WHERE media_note IS NOT NULL")).toEqual([]);
 });
 
 test('timezone "Europe/Lisbon" updates the contact row, "Mars/Olympus" is ignored', async () => {

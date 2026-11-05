@@ -50,6 +50,7 @@ test.each([
   ["a forward quote", "{ at: +1s, say: x, quote: 2 }", /step 2: quote must be an earlier step number/],
   ["a non-ISO at", "{ at: 10, say: x }", /step 2: bad at "10"/],
   ["a zero max_turns", "{ at: +1s, ask: x, gold: y, max_turns: 0 }", /step 2: max_turns must be a positive integer/],
+  ["a scalar expect_recalled", "{ at: +1s, ask: x, gold: y, expect_recalled: Almaty }", /step 2: expect_recalled must be a non-empty list of strings/],
 ])("loadScenarios rejects %s", (_name, step, error) => {
   const dir = mkdtempSync(join(tmpdir(), "scenarios-"));
   writeFileSync(join(dir, "bad.yaml"), `name: bad\ncategory: short-term\nsteps:\n  - { at: +0s, say: first }\n  - ${step}\n`);
@@ -184,6 +185,15 @@ test("a counting embed passed to runScenario is called for a say step (memory on
   const embed = vi.fn(hashEmbed);
   await run([{ at: "+0s", say: "my sister lives in Almaty" }], stubLlm(), { ...cfg, memory: true }, { embed, rerank: cosineRerank });
   expect(embed).toHaveBeenCalled();
+});
+
+test("expect_recalled fails when the ask turn recalled nothing matching and passes when it did", async () => {
+  const steps: Scenario["steps"] = [{ seed_facts: 2 }, { at: "+0s", ask: "do I like espresso?", gold: "yes", expect_contains: ["ok"], expect_recalled: ["ESPRESSO"] }];
+  const off = await run(steps, stubLlm()); // memory off: the turn's recalled is []
+  expect(off.probes[0]).toMatchObject({ label: "wrong", reason: 'not recalled: "ESPRESSO"' });
+  const on = await run(steps, stubLlm({ object: () => ({ ops: [] }) }), { ...cfg, memory: true });
+  expect(on.probes[0]).toMatchObject({ label: "correct" });
+  expect(on.passed).toBe(true);
 });
 
 test("seed_facts embeds through the passed embed and the checks read the tables", async () => {

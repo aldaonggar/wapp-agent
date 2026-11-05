@@ -13,3 +13,4 @@ steps:
     ask: "and where did she live before that?"
     gold: Almaty
     expect_contains: [Almaty]
+    expect_recalled: [Almaty]

@@ -13,6 +13,13 @@ test("migrate is idempotent and creates all tables", () => {
   expect(db.all<{ generation: number }>("SELECT generation FROM state")[0].generation).toBe(0);
 });
 
+test("migrate adds turns.recalled to a database created before it existed", () => {
+  db.batch("CREATE TABLE turns(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER)");
+  migrate(db); migrate(db);
+  db.run("INSERT INTO turns(started_at, recalled) VALUES (1, '[]')");
+  expect(db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
+});
+
 test("blob round trip keeps float32 values", () => {
   migrate(db);
   db.run("INSERT INTO facts(text, embedding) VALUES ('a', ?)", vecToBlob(new Float32Array([0.1, -2, 3.5])));

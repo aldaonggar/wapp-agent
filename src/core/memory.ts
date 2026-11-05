@@ -15,8 +15,8 @@ export interface TurnForMemory { messages: { role: "user" | "assistant"; text: s
 
 const DAY = 86_400_000;
 const PERSIST = 3, RECENCY = 0.05, PROFILE_CHARS = 1200; // 300 tokens at 4 chars each
-// bge-m3 scores unrelated short pairs up to ~0.62 (measured 2026-11-05), so a match must also be near the best one.
-const FORGET_MIN = 0.6, FORGET_MARGIN = 0.05;
+// bge-m3 scores unrelated short pairs up to 0.625 (measured 2026-11-05): a match clears 0.68 and is near the best one.
+const FORGET_MIN = 0.68, FORGET_MARGIN = 0.05, FORGET_MIN_CHARS = 4;
 
 // Adapted from mem0's FACT_RETRIEVAL_PROMPT and DEFAULT_UPDATE_MEMORY_PROMPT (github.com/mem0ai/mem0, mem0/configs/prompts.py, Apache-2.0).
 export const EXTRACT_PROMPT = `You are a Personal Information Organizer for a WhatsApp companion, specialized in accurately storing facts, memories and preferences about one person. You read the latest turn of the conversation and decide what is worth remembering long term, so that weeks from now the companion knows them the way a good friend would. You also keep the memory current: you compare what you learn with the existing facts and decide, for each piece of information, whether to add it, update an old fact, delete one, or change nothing.
@@ -37,6 +37,7 @@ Signal (1 to 5): how much it will matter in future conversations. Only signal 3 
 - 3: recurring routines, places, lasting details still worth knowing next month.
 - 2: one-off details unlikely to matter again.
 - 1: noise.
+DELETE needs no signal: a fact that is no longer true is always removed.
 Noise is signal 1 or 2 and is never stored:
 - small talk, greetings, thanks, jokes and reactions ("haha", "ok", "nice", "good morning");
 - passing states ("I'm tired", "so hungry", "stuck in traffic", "bored", "my phone is dying");
@@ -80,15 +81,15 @@ Output: {"ops": [{"op": "ADD", "text": "Name is John", "kind": "identity", "sign
 
 Existing facts: [3] Sister Aru lives in Almaty (person, 2026-11-04)
 Conversation: user: big news, Aru moved to Astana last weekend!
-Output: {"ops": [{"op": "UPDATE", "text": "Sister Aru lives in Astana", "kind": "person", "signal": 5, "target_id": 3}], "profile": "..."}
+Output: {"ops": [{"op": "UPDATE", "text": "Sister Aru lives in Astana", "kind": "person", "signal": 5, "target_id": 3}], "profile": "Name: Dana\nLives in London (Europe/London)\nSister: Aru, lives in Astana"}
 
 Now: Tuesday 2026-11-10 10:00
 Conversation: user: got an interview at Monzo thursday next week at 2pm!!
-Output: {"ops": [{"op": "ADD", "text": "Job interview at Monzo on 2026-11-19 14:00", "kind": "plan", "signal": 4, "event_date": "2026-11-19 14:00"}], "profile": "..."}
+Output: {"ops": [{"op": "ADD", "text": "Job interview at Monzo on 2026-11-19 14:00", "kind": "plan", "signal": 4, "event_date": "2026-11-19 14:00"}], "profile": "Name: Dana\nWork: job hunting, interview at Monzo on 2026-11-19 14:00"}
 
 Existing facts: [7] Likes cheese pizza (preference, 2026-10-02)
 Conversation: user: honestly I can't stand cheese pizza anymore
-Output: {"ops": [{"op": "UPDATE", "text": "Dislikes cheese pizza", "kind": "preference", "signal": 4, "target_id": 7}], "profile": "..."}
+Output: {"ops": [{"op": "UPDATE", "text": "Dislikes cheese pizza", "kind": "preference", "signal": 4, "target_id": 7}], "profile": "Name: Dana\nFood: dislikes cheese pizza"}
 
 Existing facts: [2] Is vegetarian (identity, 2026-10-01)
 Conversation: user: as a vegetarian I love this place
@@ -96,13 +97,13 @@ Output: {"ops": []}
 
 Existing facts: [5] Has a dog named Biscuit (person, 2026-10-20)
 Conversation: user: please forget about my dog
-Output: {"ops": [{"op": "DELETE", "text": "Has a dog named Biscuit", "kind": "person", "signal": 5, "target_id": 5}], "profile": "..."}
+Output: {"ops": [{"op": "DELETE", "text": "Has a dog named Biscuit", "kind": "person", "signal": 5, "target_id": 5}], "profile": "Name: Sam\nWork: nurse in Leeds"}
 
 Conversation: user: just moved to Lisbon for good!
-Output: {"ops": [{"op": "ADD", "text": "Lives in Lisbon", "kind": "identity", "signal": 5}], "profile": "...", "timezone": "Europe/Lisbon"}
+Output: {"ops": [{"op": "ADD", "text": "Lives in Lisbon", "kind": "identity", "signal": 5}], "profile": "Name: Dana\nLives in Lisbon (Europe/Lisbon)", "timezone": "Europe/Lisbon"}
 
 The other fields:
-- profile: only when your ops change something (an ADD, UPDATE or DELETE with signal 3 or more) or the person asked to forget something; otherwise null. Then return the whole new profile: at most 300 tokens, plain lines without markdown, the most important stable facts: name, where they live and time zone, key people, work, standing preferences. Start from the current profile, keep what still holds, and drop what was superseded or forgotten.
+- profile: only when your ops change something (an ADD or UPDATE with signal 3 or more, or a DELETE); otherwise null. Then return the whole new profile: at most 300 tokens, plain lines without markdown, the most important stable facts: name, where they live and time zone, key people, work, standing preferences. Start from the current profile, keep what still holds, and drop what was superseded or forgotten.
 - media_note: only when the person sent an image in this turn and it matters later: one line on what it shows ("photo of her new red road bike"). Otherwise null.
 - timezone: only when the person states, in this turn, the city or time zone they live in or are staying in: its IANA id ("Europe/Lisbon"). Otherwise null. Store the city as an identity fact too.
 
@@ -181,7 +182,7 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
 
   const now = clock.now();
   const shown = new Set(known.map((f) => f.id)); // the extractor may only touch facts it was shown, each once
-  const ops = value.ops.filter((o) => o.signal >= PERSIST && o.op !== "NONE");
+  const ops = value.ops.filter((o) => o.op === "DELETE" || (o.op !== "NONE" && o.signal >= PERSIST));
   const writes = ops.filter((o) => o.op !== "DELETE" && o.text.trim());
   const vecs = writes.length ? await deps.embed(writes.map((o) => o.text.trim())) : [];
   const source = json(turn.messages.filter((m) => m.role === "user").map((m) => m.id));
@@ -201,8 +202,8 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
   dropFacts(db, deleted);
   out.deleted = deleted.length;
 
-  const profile = value.profile?.trim();
-  if (profile) setProfile(db, profile, now);
+  const profile = value.profile?.trim() ?? "";
+  if (profile.length >= 10 && out.added + out.updated + out.deleted > 0) setProfile(db, profile, now); // not a placeholder, and something changed
   const note = value.media_note?.trim();
   if (note && turn.images[0]) db.run("UPDATE messages SET media_note=? WHERE id=?", note, turn.images[0].messageId);
   if (value.timezone) {
@@ -258,6 +259,9 @@ export async function recall(deps: Deps, query: string, k = 12): Promise<{ hits:
 export async function forget(deps: Deps, query: string): Promise<number> {
   const q = query.trim(), lq = q.toLowerCase();
   if (!q) return 0;
+  // Whole words only ("work" never hits "works"), and only for queries long enough to mean something.
+  const words = q.length >= FORGET_MIN_CHARS ? new RegExp(`(?<![\\p{L}\\p{N}])${lq.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "u") : null;
+  const mentions = (text: string) => !!words && words.test(text.toLowerCase());
   const { db } = deps;
   const lines = profileText(db).split("\n").filter((l) => l.trim());
   const [v, ...lineVecs] = await deps.embed([q, ...lines]);
@@ -266,12 +270,12 @@ export async function forget(deps: Deps, query: string): Promise<number> {
   const scored = cosineTopN(db, v, Infinity, "facts");
   const close = near(scored.map((s) => s.score));
   const ids = new Set(scored.filter((_, i) => close[i]).map((s) => s.id));
-  for (const f of db.all<{ id: number; text: string }>("SELECT id, text FROM facts")) if (f.text.toLowerCase().includes(lq)) ids.add(f.id);
+  for (const f of db.all<{ id: number; text: string }>("SELECT id, text FROM facts")) if (mentions(f.text)) ids.add(f.id);
   dropFacts(db, [...ids]);
 
   // The profile is rewritten only by extraction; drop its matching lines now so the forgotten thing is gone from the next reply.
   const hit = near(lineVecs.map((u) => dot(u, v)));
-  const kept = lines.filter((l, i) => !hit[i] && !l.toLowerCase().includes(lq));
+  const kept = lines.filter((l, i) => !hit[i] && !mentions(l));
   if (kept.length < lines.length) setProfile(db, kept.join("\n"), deps.clock.now());
   return ids.size;
 }

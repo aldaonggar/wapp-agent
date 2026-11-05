@@ -121,7 +121,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [];
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false;
     const outIds: string[] = [];
 
     try {
@@ -148,6 +148,7 @@ export class ContactCore {
         const query = features.memory ? this.recallQuery() : "", cached = this.recallCache;
         const recalled = !features.memory ? { hits: [], ms: 0 } : cached?.generation === gen && cached.query === query ? await cached.promise : await memory.recall(this.deps, query);
         retrievalMs = recalled.ms;
+        recalledTexts = recalled.hits.map((h) => h.text);
 
         // Re-read after the awaits: voice transcripts land in messages.text.
         const byId = new Map(this.pending().map((r) => [r.id, r]));
@@ -186,7 +187,8 @@ export class ContactCore {
           }
           if (ev.type === "react") {
             const target = resolve(ev.target);
-            if (!target) continue;
+            if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
+            reacted = true;
             sends++;
             try {
               await wa.sendReaction(to, target, ev.emoji);
@@ -234,7 +236,7 @@ export class ContactCore {
     // Bookkeeping (success, or a failure that already sent something / used its retry).
     const row = {
       started_at: startedAt, wait_ms: waitMs, retrieval_ms: ms(retrievalMs), ttft_ms: ms(usage?.ttftMs), ttfb_ms: ms(ttfb),
-      total_ms: ms(performance.now() - t0), model, provider: usage?.provider ?? null, bubbles, regenerated, error, usage: usage ? JSON.stringify(usage) : null,
+      total_ms: ms(performance.now() - t0), model, provider: usage?.provider ?? null, bubbles, regenerated, error, usage: usage ? JSON.stringify(usage) : null, recalled: JSON.stringify(recalledTexts),
     };
     const keys = Object.keys(row);
     const turnId = db.all<{ id: number }>(`INSERT INTO turns(${keys}) VALUES (${keys.map(() => "?")}) RETURNING id`, ...Object.values(row))[0].id;

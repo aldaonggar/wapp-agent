@@ -1,11 +1,13 @@
-# A fact said on day 1 is recalled on day 4, after 30 unrelated facts were seeded and 90 filler messages pushed it out of the window.
+# A detail said on day 1 (the sister's clinic, below what a profile keeps) is recalled on day 4, after 30 unrelated
+# facts were seeded and 90 filler messages pushed it out of the window. expect_recalled proves it came from recall.
 name: long-recall-sister-city
 category: long-term
 steps:
   - seed_facts: 30
-  - { at: +0s, say: "my sister Aru lives in Almaty, she moved there for work a few years ago" }
+  - { at: +0s, say: "my sister Aru lives in Almaty, she runs a little vet clinic there called Paws & Co" }
   - fill: 45
   - at: day 4
-    ask: "random q but which city does my sister live in again? want to send her a parcel"
-    gold: Almaty
-    expect_contains: [Almaty]
+    ask: "what's my sister's clinic called again? want to send her flowers at work"
+    gold: Paws & Co
+    expect_contains: [Paws]
+    expect_recalled: [Almaty]

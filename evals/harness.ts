@@ -206,7 +206,7 @@ export type Step =
   | { at: string; contact?: string; say?: string; image?: string; caption?: string; url?: string; quote?: number }
   | { fill: number }
   | { seed_facts: number }
-  | { at: string; contact?: string; ask: string; gold: string; quote?: number; expect_contains?: string[]; expect_not_contains?: string[]; max_turns?: number }
+  | { at: string; contact?: string; ask: string; gold: string; quote?: number; expect_contains?: string[]; expect_not_contains?: string[]; expect_recalled?: string[]; max_turns?: number }
   | { expect_facts: { count: number; gold: string[] } }
   | { expect_facts_not_contains: string[] }
   | { expect_insights: { min: number; evidence_count?: number } };
@@ -217,7 +217,7 @@ export interface ScenarioResult { name: string; category: string; probes: ProbeR
 const CATEGORIES = ["short-term", "long-term", "derived", "judgement", "forget", "isolation"];
 // Keys each step kind may carry besides its own; `at` and `contact` are accepted on every step.
 const KEYS: Record<string, string[]> = {
-  say: ["quote"], image: ["caption", "quote"], url: ["quote"], ask: ["gold", "quote", "expect_contains", "expect_not_contains", "max_turns"],
+  say: ["quote"], image: ["caption", "quote"], url: ["quote"], ask: ["gold", "quote", "expect_contains", "expect_not_contains", "expect_recalled", "max_turns"],
   fill: [], seed_facts: [], expect_facts: [], expect_facts_not_contains: [], expect_insights: [],
 };
 const MESSAGE_KINDS = ["say", "ask", "image", "url"];
@@ -232,7 +232,7 @@ function stepProblem(s: unknown, n: number): string {
   if (MESSAGE_KINDS.includes(kind) && r.at === undefined) return `${kind} needs at`;
   if (r.at !== undefined) try { parseAt(String(r.at), 0); } catch (e) { return (e as Error).message; }
   if (kind === "ask" && typeof r.gold !== "string") return "ask needs gold";
-  for (const k of ["expect_contains", "expect_not_contains"])
+  for (const k of ["expect_contains", "expect_not_contains", "expect_recalled"])
     if (k in r && !(Array.isArray(r[k]) && r[k].length > 0 && r[k].every((x) => typeof x === "string"))) return `${k} must be a non-empty list of strings`;
   if ("quote" in r && !(isInt(r.quote, 1) && r.quote < n)) return `quote must be an earlier step number (1..${n - 1})`;
   if ("max_turns" in r && !isInt(r.max_turns, 1)) return "max_turns must be a positive integer";
@@ -365,10 +365,14 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       if ("ask" in step) {
         await settle(c);
         const answer = c.wa.sent.slice(mark).filter((s) => s.kind === "text").map((s) => s.body).join("\n");
-        const turn = c.deps.db.all<Record<string, number | null>>("SELECT ttft_ms, ttfb_ms, total_ms FROM turns WHERE started_at >= ? ORDER BY id DESC LIMIT 1", msg.ts)[0];
+        const turn = c.deps.db.all<{ ttft_ms: number | null; ttfb_ms: number | null; total_ms: number | null; recalled: string | null }>("SELECT ttft_ms, ttfb_ms, total_ms, recalled FROM turns WHERE started_at >= ? ORDER BY id DESC LIMIT 1", msg.ts)[0];
         const turns = c.deps.db.all<{ n: number }>("SELECT count(*) AS n FROM turns")[0].n;
+        // The answer must come from recall, not from the always-present profile: some hit shown to the reply names each term.
+        const recalled = (JSON.parse(turn?.recalled ?? "[]") as string[]).map((t) => t.toLowerCase());
+        const missing = (step.expect_recalled ?? []).filter((x) => !recalled.some((t) => t.includes(x.toLowerCase())));
         const verdict = step.max_turns !== undefined && turns > step.max_turns
           ? { label: "wrong" as const, reason: `turns=${turns} > max_turns=${step.max_turns}` }
+          : missing.length ? { label: "wrong" as const, reason: missing.map((x) => `not recalled: "${x}"`).join("; ") }
           : await score(realLlm, step, answer, context);
         probes.push({ ask: step.ask, gold: step.gold, answer, ...verdict, ttftMs: turn?.ttft_ms ?? undefined, ttfbMs: turn?.ttfb_ms ?? undefined, totalMs: turn?.total_ms ?? undefined });
       }

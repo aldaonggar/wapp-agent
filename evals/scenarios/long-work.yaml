@@ -1,11 +1,12 @@
-# A project name said once is recalled days later among 30 unrelated facts.
+# A project's client (below what a profile keeps) is recalled days later among 30 unrelated facts; expect_recalled proves recall found it.
 name: long-work
 category: long-term
 steps:
   - seed_facts: 30
-  - { at: +0s, say: "starting a new project at work today, it's codenamed Bluebird, a payments dashboard for small shops" }
+  - { at: +0s, say: "starting a new project at work today, codenamed Bluebird: a payments dashboard for our client Fernhill Bakeries" }
   - fill: 45
   - at: day 4
-    ask: "ugh what was that work project called again? the payments one"
-    gold: Bluebird
-    expect_contains: [Bluebird]
+    ask: "ugh who's the client on that payments project again?"
+    gold: Fernhill Bakeries
+    expect_contains: [Fernhill]
+    expect_recalled: [Bluebird]

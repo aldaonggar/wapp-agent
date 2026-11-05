@@ -77,6 +77,7 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
   expect(t.llm.calls[0].tools).toBeUndefined(); // memory off: no forget tool
+  expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget");
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
   expect(t.rows("direction = 'out'").map((r) => [r.text, r.status])).toEqual([["hi", "sent"], ["second", "sent"]]);
@@ -85,6 +86,15 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   expect(turns[0].ttfb_ms).toBeGreaterThanOrEqual(0);
   expect(turns[0].total_ms).toBeGreaterThan(0);
   expect(turns[0].bubbles).toBe(2);
+});
+
+test("only the first reaction of a turn is sent (a tool step can repeat the header)", async () => {
+  const t = setup({ reply: () => "react: #1 👍\nreact: #1 ❤️\nok" });
+  await t.say("the movie was great");
+  await t.run();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "reaction", "text"]);
+  expect(t.wa.sent[1].emoji).toBe("👍");
+  expect(JSON.parse(t.rows("id = 'wamid.in.1'")[0].reactions!)).toEqual({ me: "👍" });
 });
 
 test("quote: #1 becomes opts.quote with the real wamid", async () => {
@@ -321,7 +331,12 @@ test("memory on: recall feeds the prompt, the reply carries forget, and the turn
   expect(dyn).toContain(`- ${SISTER} (said 2026-11-04)`);
   expect(dyn).toContain("what you know about them");
   expect(t.llm.calls[1].tools?.forget).toBeDefined();
-  expect(t.db.all<{ retrieval_ms: number }>("SELECT retrieval_ms FROM turns").every((r) => r.retrieval_ms >= 0)).toBe(true);
+  const turns = t.db.all<{ retrieval_ms: number | null; recalled: string }>("SELECT retrieval_ms, recalled FROM turns ORDER BY id");
+  for (const r of turns) {
+    expect(r.retrieval_ms).toEqual(expect.any(Number));
+    expect(r.retrieval_ms).toBeGreaterThanOrEqual(0);
+  }
+  expect(turns.map((r) => JSON.parse(r.recalled))).toEqual([[], [SISTER]]); // what each reply was shown
 });
 
 test("the forget tool deletes matching facts and returns the count", async () => {
