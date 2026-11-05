@@ -214,8 +214,9 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
   if (value.timezone) {
     try {
       const zone = new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }).resolvedOptions().timeZone;
-      const old = tzOf(db);
-      if (zone !== old) rezoneReminders(db, old, zone); // a reminder confirmed in the guessed zone keeps its wall time in the real one
+      const c = db.all<{ timezone: string | null; timezone_confirmed: number }>("SELECT timezone, timezone_confirmed FROM contact")[0];
+      const old = c?.timezone || "UTC";
+      if (zone !== old && !c?.timezone_confirmed) rezoneReminders(db, old, zone, now); // only a guessed zone was wrong; a traveller's confirmed one was not
       db.run("UPDATE contact SET timezone=?, timezone_confirmed=1", zone);
     } catch { /* not an IANA zone: keep the current one */ }
   }

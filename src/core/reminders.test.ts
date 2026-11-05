@@ -30,16 +30,31 @@ test("addReminder resolves the person's local time across DST and tolerates ISO 
   expect(db.all("SELECT length(text) AS n FROM reminders WHERE id = 10")).toEqual([{ n: 200 }]);
 });
 
-test("rezoneReminders keeps the wall time the person was told when the zone is corrected, pending rows only", () => {
+test("rezoneReminders moves only absolute pending rows, leaves durations alone, and never moves a row into the past", () => {
   const db = fresh();
   const now = at("2026-11-04 10:00");
-  addReminder(db, now, TZ, "call the dentist", "2026-11-05 09:00", null);
-  addReminder(db, now, TZ, "done already", "2026-11-05 20:00", null);
-  db.run("UPDATE reminders SET status = 'sent' WHERE id = 2");
-  rezoneReminders(db, TZ, "America/Los_Angeles");
+  addReminder(db, now, TZ, "call the dentist", "2026-11-05 09:00", null); // 1: a clock time, confirmed in the guessed zone
+  addReminder(db, now, TZ, "take the pizza out", "2026-11-04 10:20", null, true); // 2: "in 20 minutes"
+  addReminder(db, now, TZ, "done already", "2026-11-05 20:00", null); // 3: sent
+  addReminder(db, now, TZ, "soon", "2026-11-04 10:30", null); // 4: a clock time 30 min out
+  db.run("UPDATE reminders SET status = 'sent' WHERE id = 3");
+  rezoneReminders(db, TZ, "America/Los_Angeles", now); // westward, 3 h
   expect(dueOf(db, 1)).toBe(Date.UTC(2026, 10, 5, 17, 0)); // 09:00 Los Angeles, was 14:00Z
-  expect(dueOf(db, 2)).toBe(at("2026-11-05 20:00"));
-  expect(due(db)).toBe(Date.UTC(2026, 10, 5, 17, 0));
+  expect(dueOf(db, 2)).toBe(now + 20 * 60_000); // the instant was right already
+  expect(dueOf(db, 3)).toBe(at("2026-11-05 20:00"));
+  expect(dueOf(db, 4)).toBe(now + 30 * 60_000 + 3 * H); // 10:30 Los Angeles
+  expect(due(db)).toBe(now + 20 * 60_000);
+
+  // Eastward: a +7 number is guessed Europe/Moscow, the person is in Novosibirsk (4 h ahead).
+  const msk = fresh(), t0 = localToUtc("2026-11-04 10:00", "Europe/Moscow")!;
+  addReminder(msk, t0, "Europe/Moscow", "call mum", "2026-11-04 12:00", null, true); // "in 2 hours"
+  addReminder(msk, t0, "Europe/Moscow", "pills", "2026-11-04 12:00", null); // 12:00 Novosibirsk would be 2 h ago
+  addReminder(msk, t0, "Europe/Moscow", "dentist", "2026-11-05 09:00", null);
+  rezoneReminders(msk, "Europe/Moscow", "Asia/Novosibirsk", t0);
+  expect(dueOf(msk, 1)).toBe(t0 + 2 * H);
+  expect(dueOf(msk, 2)).toBe(t0 + 2 * H); // kept: the rezoned instant is in the past
+  expect(dueOf(msk, 3)).toBe(Date.UTC(2026, 10, 5, 2, 0)); // 09:00 Novosibirsk
+  expect(due(msk)).toBe(t0 + 2 * H);
 });
 
 test("addReminder refuses the past, more than a year ahead, and junk, storing nothing; the current minute is accepted", () => {

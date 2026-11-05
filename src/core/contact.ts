@@ -58,10 +58,14 @@ export class ContactCore {
   });
 
   private setReminderTool = tool({
-    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns.",
-    inputSchema: z.object({ text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"), at: z.string().describe("their local time as YYYY-MM-DD HH:mm") }),
-    execute: async ({ text, at }) => {
-      const r = addReminder(this.deps.db, this.deps.clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null);
+    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns. Set relative when they spoke in a duration.",
+    inputSchema: z.object({
+      text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"),
+      at: z.string().describe("their local time as YYYY-MM-DD HH:mm"),
+      relative: z.boolean().optional().describe("true when they gave a duration (\"in 20 minutes\", \"in 2 hours\") rather than a clock time or a day"),
+    }),
+    execute: async ({ text, at, relative }) => {
+      const r = addReminder(this.deps.db, this.deps.clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null, relative);
       await this.scheduleNext();
       return r;
     },
