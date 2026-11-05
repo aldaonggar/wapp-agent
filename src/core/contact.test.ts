@@ -407,18 +407,39 @@ test("a mid-stream error on a voice note still sends the complete bubble as text
   expect(t.view.alarmAt).toBeNull();
 });
 
-test("when the extractor learns the real timezone, a pending reminder keeps the wall time the person was told", async () => {
-  const t = setup({ features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "America/Los_Angeles" } : { insights: [] }), reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : "react: none\nok") });
+test("when the extractor learns the real timezone, a clock-time reminder keeps the wall time the person was told and a duration keeps its instant", async () => {
+  const t = setup({
+    features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "America/Los_Angeles" } : { insights: [] }),
+    reply: async (c) => {
+      if (t.llm.calls.length > 1) return "react: none\nok";
+      await c.tools!.set_reminder.execute!({ text: "take the pizza out", at: "2026-11-04 10:20", relative: true }, { toolCallId: "t", messages: [] } as never);
+      return remind("call the dentist", "2026-11-05 09:00")(c);
+    },
+  });
   t.clock.t = ny("2026-11-04 10:00");
-  await t.say("I'm in LA btw, remind me tomorrow at 9 to call the dentist");
+  await t.say("I'm in LA btw, pizza out in 20 minutes, and remind me tomorrow at 9 to call the dentist");
   await t.run(); // the +1 number was guessed as New York: the tool confirmed 09:00 there (14:00Z)
-  expect(t.db.all("SELECT timezone FROM contact")).toEqual([{ timezone: "America/Los_Angeles" }]);
-  expect(t.db.all("SELECT due_ts FROM reminders")).toEqual([{ due_ts: Date.UTC(2026, 10, 5, 17, 0) }]); // 09:00 Los Angeles
-  expect(t.state().reminder_due).toBe(Date.UTC(2026, 10, 5, 17, 0));
+  expect(t.db.all("SELECT timezone, timezone_confirmed FROM contact")).toEqual([{ timezone: "America/Los_Angeles", timezone_confirmed: 1 }]);
+  expect(t.db.all("SELECT text, due_ts, relative FROM reminders ORDER BY id")).toEqual([
+    { text: "take the pizza out", due_ts: ny("2026-11-04 10:20"), relative: 1 }, // still 20 minutes after the request
+    { text: "call the dentist", due_ts: Date.UTC(2026, 10, 5, 17, 0), relative: 0 }, // 09:00 Los Angeles
+  ]);
+  expect(t.state().reminder_due).toBe(ny("2026-11-04 10:20"));
   t.clock.t += 60_000;
   await t.say("thanks");
   await t.run();
-  expect(t.llm.calls[1].system[1].content).toContain("- 2026-11-05 09:00 call the dentist (id 1)");
+  expect(t.llm.calls[1].system[1].content).toContain("- 2026-11-05 09:00 call the dentist (id 2)");
+});
+
+test("a change of an already confirmed zone (travel) moves no reminder", async () => {
+  const t = setup({ features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "Europe/London" } : { insights: [] }), reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : "react: none\nok") });
+  t.clock.t = ny("2026-11-04 10:00");
+  t.db.run("INSERT INTO contact(id, wa_id, timezone, timezone_confirmed) VALUES (1, ?, 'America/New_York', 1)", FROM); // ingest keeps the zone on conflict
+  await t.say("in London this week, remind me tomorrow at 9 to call the dentist");
+  await t.run();
+  expect(t.db.all("SELECT timezone FROM contact")).toEqual([{ timezone: "Europe/London" }]);
+  expect(t.db.all("SELECT due_ts FROM reminders")).toEqual([{ due_ts: ny("2026-11-05 09:00") }]); // set under a confirmed zone: untouched
+  expect(t.state().reminder_due).toBe(ny("2026-11-05 09:00"));
 });
 
 test("a text message keeps text replies, and a reply in another script is sent as text even to a voice note", async () => {

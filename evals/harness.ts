@@ -248,7 +248,7 @@ function stepProblem(s: unknown, n: number, prev: unknown[]): string {
   if ("quote" in r && !(isInt(r.quote, 1) && r.quote < n)) return `quote must be an earlier step number (1..${n - 1})`;
   if ("max_turns" in r && !isInt(r.max_turns, 1)) return "max_turns must be a positive integer";
   if (kind === "expect_sent") {
-    const last = [...prev].reverse().find((p) => MESSAGE_KINDS.some((k) => k in (p as object)));
+    const last = [...prev].reverse().find((p) => typeof p === "object" && p !== null && MESSAGE_KINDS.some((k) => k in p));
     if (!last || !("ask" in (last as object))) return "expect_sent needs an ask as the previous message step: a say's reply would land in its window";
   }
   return "";
