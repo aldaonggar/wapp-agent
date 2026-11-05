@@ -133,7 +133,7 @@ export async function cosineRerank(query: string, docs: string[]): Promise<numbe
 
 export function makeEvalDeps(o: {
   clock: Clock; wa: FakeWa; llm: Llm; features?: Partial<Features>; models?: Partial<ModelChoice>;
-  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"];
+  embed?: Deps["embed"]; rerank?: Deps["rerank"]; transcribe?: Deps["transcribe"]; snapshot?: Deps["snapshot"]; contactKey?: string;
 }): Deps {
   const db = fromNode(new DatabaseSync(":memory:"));
   migrate(db);
@@ -160,6 +160,7 @@ export function makeEvalDeps(o: {
     snapshot: o.snapshot ?? (async () => null),
     models: { ...pickModels({}), ...o.models },
     features: { memory: false, retrieval: "hybrid", ...o.features },
+    contactKey: o.contactKey ?? "test",
     log,
   };
 }
@@ -309,7 +310,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
     if (!c) {
       if (!/^[a-z]$/.test(id)) throw new Error(`${sc.name}: contact ids are single letters, got "${id}"`);
       const view = clock.forContact(id), wa = new FakeWa(clock);
-      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot });
+      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id });
       contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, shownTurn: 0 }));
     }
     return c;

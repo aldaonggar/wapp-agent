@@ -26,6 +26,7 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
     snapshot: makeSnapshot({ accountId: env.CLOUDFLARE_ACCOUNT_ID, token: env.CLOUDFLARE_API_TOKEN, log }),
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },
+    contactKey: ctx.id.toString(),
     log,
   };
 }

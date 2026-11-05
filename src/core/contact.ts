@@ -25,11 +25,6 @@ const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
 
-const hash = (s: string) => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193);
-  return (h >>> 0).toString(36);
-};
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
 
@@ -104,7 +99,7 @@ export class ContactCore {
         try { await this.turnTimer(s, now); } catch (e) { this.error("turn_failed", e); }
       }
       if (insightsDue && this.deps.features.memory) {
-        try { await deriveInsights(this.deps, hash(db.all<{ wa_id: string }>("SELECT wa_id FROM contact")[0]?.wa_id ?? "")); } catch (e) { this.error("insights_failed", e); }
+        try { await deriveInsights(this.deps, this.deps.contactKey); } catch (e) { this.error("insights_failed", e); }
       }
       if (followupDue) await this.followupTimer(now, s.followup_fact_id);
     } catch (e) {
@@ -191,7 +186,7 @@ export class ContactCore {
         const { text, done } = llm.stream({
           job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: Object.keys(tools).length ? tools : undefined,
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
-          sessionId: hash(to), abortSignal: this.abort.signal,
+          sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
 
         let restart = false;
@@ -263,14 +258,14 @@ export class ContactCore {
       this.media.delete(r.id);
       for (const u of extractUrls(r.text ?? "")) this.pages.delete(u);
     }
-    this.deps.log({ event: "turn", contact: hash(to), ...row, usage });
+    this.deps.log({ event: "turn", contact: this.deps.contactKey, ...row, recalled: recalledTexts.length, usage }); // never the phone number or memory texts
     // Not awaited: turnRunning is released now, so the next reply never waits for this extraction.
-    const finished = { pending, cachedPages, outIds, images, tz, sessionId: hash(to) };
+    const finished = { pending, cachedPages, outIds, images, tz };
     this.afterTurn = this.afterTurn.then(() => this.postTurn(finished)).catch((e) => this.error("post_turn_failed", e));
   }
 
   // Remember the turn (failed turns too: what they said still counts), then re-arm for any plan it stored.
-  private async postTurn(t: { pending: Msg[]; cachedPages: (Promise<Snapshot | null> | undefined)[]; outIds: string[]; images: memory.TurnForMemory["images"]; tz: string; sessionId: string }): Promise<void> {
+  private async postTurn(t: { pending: Msg[]; cachedPages: (Promise<Snapshot | null> | undefined)[]; outIds: string[]; images: memory.TurnForMemory["images"]; tz: string }): Promise<void> {
     const { db, clock, features } = this.deps;
     if (features.memory) {
       try {
@@ -281,7 +276,7 @@ export class ContactCore {
         const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(t.outIds));
         await memory.remember(this.deps, {
           messages: [...t.pending.map((r, i) => ({ role: "user" as const, text: noted[i], id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],
-          images: t.images, nowLocal: formatLocal(clock.now(), t.tz), tz: t.tz, sessionId: t.sessionId,
+          images: t.images, nowLocal: formatLocal(clock.now(), t.tz), tz: t.tz, sessionId: this.deps.contactKey,
         });
       } catch (e) {
         this.error("remember_failed", e);
@@ -311,7 +306,7 @@ export class ContactCore {
     };
     try {
       tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
-      const d = followupDecision(db, now, tz);
+      const d = followupDecision(db, now, tz, factId);
       if (d.kind === "defer") {
         db.run("UPDATE facts SET followup_due = ? WHERE id = ?", d.to, factId);
         db.run("UPDATE state SET followup_due = ?", d.to);
@@ -341,7 +336,7 @@ export class ContactCore {
     const messages = history.at(-1)?.role === "assistant" || history.length === 0 ? [...history, { role: "user" as const, content: "[scheduled check-in]" }] : history;
     const { text, done } = llm.stream({
       job: "followup", modelId: models.reply, maxOutputTokens: maxOutputTokensFor(models.reply, features.replyEffort), reasoning: reasoningFor(models.reply, features.replyEffort),
-      sessionId: hash(contact.wa_id), system, messages,
+      sessionId: this.deps.contactKey, system, messages,
     });
     let bubbles = 0;
     for await (const ev of parseReply(text, 1)) {

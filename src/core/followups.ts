@@ -45,9 +45,9 @@ export function scheduleFollowup(db: Db, now: number, tz: string): void {
   db.run("UPDATE state SET followup_due = ?, followup_fact_id = ?", best?.due ?? null, best?.id ?? null);
 }
 
-export function followupDecision(db: Db, now: number, tz: string): FollowupDecision {
-  const id = db.all<{ followup_fact_id: number | null }>("SELECT followup_fact_id FROM state")[0]?.followup_fact_id;
-  const fact = id == null ? undefined : db.all<{ text: string; event_date: string | null }>("SELECT text, event_date FROM facts WHERE id = ? AND status = 'active'", id)[0];
+// `id` is the fact the alarm was armed for, read when the alarm started.
+export function followupDecision(db: Db, now: number, tz: string, id: number | null): FollowupDecision {
+  const fact = id === null ? undefined : db.all<{ text: string; event_date: string | null }>("SELECT text, event_date FROM facts WHERE id = ? AND status = 'active'", id)[0];
   const eventMs = fact?.event_date ? localToUtc(fact.event_date, tz) : null;
   if (!fact || eventMs === null) return { kind: "skip", reason: "no-fact" };
   const c = db.all<{ last_inbound_ts: number | null; last_proactive_date: string | null }>("SELECT last_inbound_ts, last_proactive_date FROM contact")[0];

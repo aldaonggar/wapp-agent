@@ -385,6 +385,20 @@ test("memory on: recall feeds the prompt, the reply carries forget, and the turn
   expect(turns.map((r) => JSON.parse(r.recalled))).toEqual([[], [SISTER]]); // what each reply was shown
 });
 
+test("logs and model sessions use the opaque contact key, never the phone number; the turn log counts recalled memories", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }) });
+  const log = vi.fn();
+  t.deps.log = log;
+  await addFact(t.db, SISTER);
+  await t.say("where does my sister live");
+  await t.run();
+  expect([...t.llm.calls, ...t.llm.objectCalls].map((c) => c.sessionId)).toEqual([t.deps.contactKey, t.deps.contactKey]);
+  expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: "turn", contact: t.deps.contactKey, recalled: 1 }));
+  expect(JSON.stringify(log.mock.calls)).not.toContain(FROM);
+  expect(JSON.stringify(log.mock.calls)).not.toContain("Almaty"); // recalled texts stay in turns.recalled only
+  expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: JSON.stringify([SISTER]) }]);
+});
+
 test("the forget tool deletes matching facts and returns the count and the texts", async () => {
   const t = setup({
     features: { memory: true }, object: () => ({ ops: [] }),

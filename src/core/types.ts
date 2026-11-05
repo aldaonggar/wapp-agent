@@ -26,5 +26,6 @@ export interface Deps {
   transcribe(bytes: Uint8Array, mime: string): Promise<string>;
   snapshot(url: string): Promise<Snapshot | null>;
   models: ModelChoice; features: Features;
+  contactKey: string; // opaque per-contact id for logs and OpenRouter session_id/user; never the phone number
   log(event: Record<string, unknown>): void;
 }
