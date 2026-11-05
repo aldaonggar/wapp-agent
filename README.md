@@ -112,7 +112,7 @@ npm run eval -- --filter=forget                # scenarios whose name matches a 
 npm run eval:report                            # results -> EVALS.md
 ```
 
-Tests that run today (offline): `npm test` is 171 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts` is 34 tests in 2 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 175 tests in 15 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts` is 34 tests in 2 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 

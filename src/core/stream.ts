@@ -4,11 +4,14 @@ export type ReplyEvent =
 
 const LIMIT = 4096;
 
-// Lenient: "react: #n <emoji>", "react: #n<emoji>", "react: <emoji>"; "none" or anything without an emoji is no reaction.
+// Exactly one emoji: a flag, or a pictograph with variation selectors / skin tones, ZWJ-joined to more.
+const EMOJI = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*(?:‍\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*)*)$/u;
+
+// Lenient: "react: #n <emoji>", "react: #n<emoji>", "react: <emoji>"; "none" or a token that is not one emoji is no reaction.
 function header(l: string): ReplyEvent | null {
   const m = /^\s*react:\s*(#\d+|\d+(?=\s))?\s*(\S*)/i.exec(l)!;
   const emoji = m[2].replace(/[.,!;:]+$/, "");
-  return /[\p{Extended_Pictographic}\p{Regional_Indicator}]/u.test(emoji) ? { type: "react", target: m[1] ?? "", emoji } : null;
+  return EMOJI.test(emoji) ? { type: "react", target: m[1] ?? "", emoji } : null;
 }
 
 // Split at the last paragraph, else sentence, boundary before the limit.

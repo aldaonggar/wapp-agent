@@ -41,7 +41,8 @@ export class ContactCore {
   private forgetTool = tool({
     description: "Delete stored facts matching the query; call when the person asks to forget something",
     inputSchema: z.object({ query: z.string().describe("what to forget, in the words of the memory: names, places, the thing itself (e.g. \"Almaty\")") }),
-    execute: ({ query }) => memory.forget(this.deps, query),
+    // The previous turn's extraction may still be running; forgetting first would let it write the fact back.
+    execute: async ({ query }) => { await this.afterTurn; return memory.forget(this.deps, query); },
   });
 
   private viewPageTool = tool({

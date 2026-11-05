@@ -411,6 +411,39 @@ test("the forget tool deletes matching facts and returns the count and the texts
   expect(t.db.all("SELECT * FROM facts")).toEqual([]);
 });
 
+test("forget waits for the previous turn's extraction, so that extraction cannot bring the fact back", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  let forgot: unknown;
+  const t = setup({
+    features: { memory: true },
+    object: async () => {
+      if (t.llm.objectCalls.length > 1) return { ops: [] };
+      await gate; // turn 1's extraction is still running when turn 2 forgets
+      return { ops: [{ op: "ADD", text: SISTER, kind: "person", signal: 5 }], profile: "Name: Dana\nSister: Aru, lives in Almaty" };
+    },
+    reply: async (c) => {
+      if (t.llm.calls.length === 1) return "react: none\nnice";
+      forgot = await c.tools!.forget.execute!({ query: "Almaty" }, { toolCallId: "t1", messages: [] } as never);
+      return "react: none\ndone, forgotten";
+    },
+  });
+  await t.say("my sister Aru lives in Almaty");
+  void t.fire();
+  await vi.waitFor(() => expect(t.llm.objectCalls).toHaveLength(1));
+  t.clock.t += 1000;
+  await t.say("please forget my sister's city");
+  const second = t.fire();
+  await vi.waitFor(() => expect(t.llm.calls).toHaveLength(2));
+  release();
+  await second;
+  await t.core.afterTurn;
+  expect(forgot).toEqual({ deleted: 1, texts: [SISTER] });
+  expect(t.db.all("SELECT text FROM facts")).toEqual([]);
+  expect(t.db.all("SELECT text FROM profile")).toEqual([{ text: "Name: Dana" }]);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["nice", "done, forgotten"]);
+});
+
 test("a failing remember is logged and the turn still completes", async () => {
   const t = setup({ features: { memory: true }, object: () => { throw new Error("extract down"); } });
   const log = vi.fn();

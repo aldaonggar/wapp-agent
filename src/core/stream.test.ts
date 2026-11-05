@@ -25,6 +25,9 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["upper-case header", "REACT: #1 👍\nhi", [{ type: "react", target: "#1", emoji: "👍" }, b("hi")]],
   ["a header with no usable emoji is dropped", "react: #2\nhello", [b("hello")]],
   ["a header with a word is dropped", "react: maybe\nhello", [b("hello")]],
+  ["an emoji with text glued on is dropped", "react: 👍hello\nhi", [b("hi")]],
+  ["a digit glued to the emoji is dropped", "react: 2❤️\nhi", [b("hi")]],
+  ["skin tones and ZWJ sequences are one emoji", "react: #1 👍🏽\nreact: #1 👨‍👩‍👧\nhi", [{ type: "react", target: "#1", emoji: "👍🏽" }, { type: "react", target: "#1", emoji: "👨‍👩‍👧" }, b("hi")]],
 ];
 
 for (const [name, input, expected] of cases) {
