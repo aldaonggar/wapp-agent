@@ -197,3 +197,16 @@ test("fetchMedia gives up after a second 404", async () => {
   const { f } = stub(json(meta), new Response("", { status: 404 }), json(meta), new Response("", { status: 404 }));
   await expect(makeWaClient({ token: "t", phoneNumberId: "PN", fetch: f }).fetchMedia("MID")).rejects.toMatchObject({ status: 404 });
 });
+
+test("parseWebhook: missing document filename or location address never prints undefined", () => {
+  expect(one({ type: "document", document: { mime_type: "application/pdf", id: "5" } }).text).toBe("document: (application/pdf)");
+  expect(one({ type: "document", document: { filename: "file.pdf", id: "5" } }).text).toBe("document: file.pdf");
+  expect(one({ type: "location", location: { name: "Cafe", latitude: 1, longitude: 2 } }).text).toBe("location: Cafe");
+  expect(one({ type: "location", location: { latitude: 1 } }).text).toBe("location:");
+});
+
+test("fetchMedia throws WaError(0, 502) when the metadata has no url", async () => {
+  const { calls, f } = stub(json({ mime_type: "image/jpeg" }));
+  await expect(makeWaClient({ token: "t", phoneNumberId: "PN", fetch: f }).fetchMedia("MID")).rejects.toMatchObject({ code: 0, status: 502 });
+  expect(calls).toHaveLength(1);
+});

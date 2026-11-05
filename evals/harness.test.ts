@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import type { Llm, StreamCall } from "../src/core/types";
-import { cosineRerank, evalConfig, hashEmbed, loadScenarios, parseAt, runScenario, stubLlm, type EvalConfig, type Scenario } from "./harness";
+import { cosineRerank, evalConfig, evalEmbedders, hashEmbed, loadScenarios, parseAt, runScenario, stubLlm, type EvalConfig, type Scenario } from "./harness";
 
 const cfg: EvalConfig = { memory: false, retrieval: "hybrid", tag: "test" };
 const local = { embed: hashEmbed, rerank: cosineRerank }; // never the REST clients, whatever the env
@@ -226,4 +226,14 @@ test("evalConfig() builds the tag from the EVAL_* env", () => {
   });
   vi.stubEnv("EVAL_EFFORT", "max");
   expect(() => evalConfig()).toThrow(/EVAL_EFFORT/);
+});
+
+test("evalEmbedders picks the hash pair offline and REST bge-m3 when the account env is set", async () => {
+  expect(evalEmbedders({})).toEqual({ embed: hashEmbed, rerank: cosineRerank });
+  const urls: string[] = [];
+  const f = (async (u: string) => { urls.push(u); return new Response(JSON.stringify({ result: { data: [[1, 0]] }, success: true })); }) as unknown as typeof fetch;
+  const e = evalEmbedders({ CLOUDFLARE_ACCOUNT_ID: "x", CLOUDFLARE_API_TOKEN: "y" }, f);
+  expect(e.embed).not.toBe(hashEmbed);
+  await e.embed(["hi"]);
+  expect(urls).toEqual(["https://api.cloudflare.com/client/v4/accounts/x/ai/run/@cf/baai/bge-m3"]);
 });

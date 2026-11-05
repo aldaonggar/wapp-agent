@@ -56,13 +56,13 @@ function describe(m: Obj, type: string): string | undefined {
       return "a sticker";
     case "document": {
       const d = obj(m.document);
-      return `document: ${str(d.filename)} (${str(d.mime_type)})`;
+      return `document: ${[str(d.filename), str(d.mime_type) && `(${str(d.mime_type)})`].filter(Boolean).join(" ")}`;
     }
     case "location": {
       const l = obj(m.location);
-      return l.name !== undefined || l.address !== undefined
-        ? `location: ${str(l.name)}, ${str(l.address)}`
-        : `location: ${l.latitude}, ${l.longitude}`;
+      const place = [str(l.name), str(l.address)].filter(Boolean).join(", ");
+      const coords = typeof l.latitude === "number" && typeof l.longitude === "number" ? `${l.latitude}, ${l.longitude}` : "";
+      return `location: ${place || coords}`.trimEnd();
     }
     case "contacts":
       return arr(m.contacts)
@@ -187,7 +187,8 @@ export function makeWaClient(cfg: {
       for (let attempt = 0; ; attempt++) {
         try {
           const meta = await check(await doFetch(`${GRAPH}/${mediaId}?phone_number_id=${cfg.phoneNumberId}`, { headers: auth }));
-          const res = await doFetch(String(meta.url), { headers: auth });
+          if (typeof meta.url !== "string") throw new WaError(0, 502, `media ${mediaId}: no url`);
+          const res = await doFetch(meta.url, { headers: auth });
           if (!res.ok) throw new WaError(0, res.status, `media ${mediaId}: ${res.status}`);
           return {
             bytes: new Uint8Array(await res.arrayBuffer()),

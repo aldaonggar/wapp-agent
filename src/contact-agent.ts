@@ -5,9 +5,9 @@ import type { Db, Deps, Inbound } from "./core/types";
 import { makeLlm } from "./llm";
 import { pickModels } from "./models";
 import { makeWaClient } from "./whatsapp";
-import { embedViaBinding } from "./workers-ai";
+import { embedViaBinding, rerankViaBinding, transcribeViaBinding } from "./workers-ai";
 
-const notImplemented = () => Promise.reject(new Error("not implemented")); // rerank, transcribe: Task 8; snapshot: Task 11
+const notImplemented = () => Promise.reject(new Error("not implemented")); // snapshot: Task 11
 
 export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
   const log = (e: Record<string, unknown>) => console.log(JSON.stringify(e));
@@ -22,8 +22,8 @@ export function makeDeps(env: Env, ctx: DurableObjectState, db: Db): Deps {
       },
     }),
     embed: embedViaBinding(env.AI),
-    rerank: notImplemented,
-    transcribe: notImplemented,
+    rerank: rerankViaBinding(env.AI),
+    transcribe: transcribeViaBinding(env.AI),
     snapshot: notImplemented,
     models: pickModels(env),
     features: { memory: true, retrieval: "hybrid" },

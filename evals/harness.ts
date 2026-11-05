@@ -8,6 +8,7 @@ import { fromNode, migrate, vecToBlob } from "../src/core/db";
 import type { Clock, Deps, Features, Inbound, Llm, ModelChoice, ObjectCall, StreamCall, Usage, WaClient } from "../src/core/types";
 import { MODELS, pickModels } from "../src/models";
 import { WaError } from "../src/whatsapp";
+import { embedViaRest, rerankViaRest } from "../src/workers-ai";
 import { judge, judgeFacts } from "./judge";
 
 export type ClockView = Clock & { alarmAt: number | null };
@@ -171,8 +172,10 @@ export async function drain(core: ContactCore, view: ClockView, clock: FakeClock
   }
 }
 
-// Task 8 switches this to embedViaRest/rerankViaRest when CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are set.
-export function evalEmbedders(_env: NodeJS.ProcessEnv): { embed: Deps["embed"]; rerank: Deps["rerank"] } {
+// Real bge-m3 over REST when CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN are set, else the offline hash pair.
+export function evalEmbedders(env: Record<string, string | undefined>, fetchFn?: typeof fetch): { embed: Deps["embed"]; rerank: Deps["rerank"] } {
+  const id = env.CLOUDFLARE_ACCOUNT_ID, token = env.CLOUDFLARE_API_TOKEN;
+  if (id && token) return { embed: embedViaRest(id, token, fetchFn), rerank: rerankViaRest(id, token, fetchFn) };
   return { embed: hashEmbed, rerank: cosineRerank };
 }
 

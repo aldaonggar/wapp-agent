@@ -13,6 +13,7 @@ type Recall = { hits: MemoryHit[]; ms: number };
 interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null }
 interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
 
+const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
 const VOICE_FAILED = "[voice note could not be transcribed]";
 const INSIGHTS_AFTER_MS = 30 * 60_000;
 const RETRY_MS = 30_000;
@@ -268,7 +269,12 @@ export class ContactCore {
   private loadMedia(id: string, kind: string, mediaId: string): Promise<Media | null> {
     const { db } = this.deps;
     const file = this.deps.wa.fetchMedia(mediaId);
-    if (kind !== "audio") return file.catch((e) => { this.error("media_failed", e); return null; });
+    if (kind !== "audio") return file.then((f) => {
+      if (f.bytes.length <= MAX_IMAGE && IMAGE_MIME.test(f.mime)) return f;
+      const text = db.all<{ text: string | null }>("SELECT text FROM messages WHERE id=?", id)[0]?.text;
+      db.run("UPDATE messages SET text=? WHERE id=?", ((text === "[photo]" ? "" : text ?? "") + " [an image that could not be read]").trim(), id);
+      return null;
+    }).catch((e) => { this.error("media_failed", e); return null; });
     return file
       .then((f) => this.deps.transcribe(f.bytes, f.mime))
       .then((t) => db.run("UPDATE messages SET text=?, voice=1 WHERE id=?", t, id), (e) => {

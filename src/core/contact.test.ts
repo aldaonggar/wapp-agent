@@ -251,3 +251,32 @@ test("a sent reaction is stored under me and shown in the next prompt", async ()
   await t.run();
   expect(JSON.stringify(t.llm.calls[1].messages)).toContain("I got the job (you reacted 🎉)");
 });
+
+test("voice note with failing transcribe leaves the marker and the stub prompt contains it", async () => {
+  const t = setup();
+  t.deps.transcribe = async () => { throw new Error("whisper down"); };
+  t.wa.media.set("media.v", { bytes: new Uint8Array([1]), mime: "audio/ogg" });
+  await t.say("", { kind: "audio", mediaId: "media.v", mime: "audio/ogg", voice: true });
+  await t.run();
+  expect(t.rows("kind = 'audio'")[0].text).toBe("[voice note could not be transcribed]");
+  expect(JSON.stringify(t.llm.calls[0].messages)).toContain("[voice note could not be transcribed]");
+});
+
+test("image on a text-only reply model switches to the vision model", async () => {
+  const t = setup();
+  t.deps.models = { ...t.deps.models, reply: "z-ai/glm-5.2" };
+  t.wa.media.set("media.1", { bytes: new Uint8Array([0xff, 0xd8, 0xff]), mime: "image/jpeg" });
+  await t.say("[photo]", { kind: "image", mediaId: "media.1", mime: "image/jpeg" });
+  await t.run();
+  expect(t.llm.calls[0].modelId).toBe("openai/gpt-6.1-terra");
+});
+
+test("oversized image gets the could-not-read text and no file part", async () => {
+  const t = setup();
+  t.wa.media.set("media.big", { bytes: new Uint8Array(5 * 1024 * 1024 + 1), mime: "image/jpeg" });
+  await t.say("my cat", { kind: "image", mediaId: "media.big", mime: "image/jpeg" });
+  await t.run();
+  expect(t.rows("kind = 'image'")[0].text).toBe("my cat [an image that could not be read]");
+  const parts = t.llm.calls[0].messages.at(-1)!.content as { type: string }[];
+  expect(parts.some((p) => p.type === "file")).toBe(false);
+});
