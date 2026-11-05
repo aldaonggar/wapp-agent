@@ -9,21 +9,24 @@ import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
+import { addReminder, cancelReminder, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
 import { tzFromPhone } from "./timezone";
 import type { Deps, Inbound, MemoryHit, Snapshot, Usage } from "./types";
 
 type Media = { bytes: Uint8Array; mime: string };
 type Recall = { hits: MemoryHit[]; ms: number };
-interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null }
-interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
+interface Msg { id: string; direction: "in" | "out"; kind: string; text: string | null; ts: number; quoted_id: string | null; media_id: string | null; media_note: string | null; reactions: string | null; voice: number }
+interface State { turn_due: number | null; insights_due: number | null; followup_due: number | null; followup_fact_id: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number }
 
 const MAX_IMAGE = 5 * 1024 * 1024, IMAGE_MIME = /^image\/(jpeg|png|webp)\b/i;
 const VOICE_FAILED = "[voice note could not be transcribed]";
 const INSIGHTS_AFTER_MS = 30 * 60_000;
+const DAY = 86_400_000; // WhatsApp's free-form window after their last message
 const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
+const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
@@ -51,6 +54,26 @@ export class ContactCore {
     execute: async ({ url }) => {
       const p = await this.page(url);
       return p ? { title: p.title, status: p.status, finalUrl: p.finalUrl, markdown: p.markdown.slice(0, 6000) } : { error: "could not open the page" };
+    },
+  });
+
+  private setReminderTool = tool({
+    description: "Set a reminder for an exact time: they get the text back as a message at that moment. Work `at` out from the \"now:\" line and confirm with the time this returns.",
+    inputSchema: z.object({ text: z.string().min(1).describe("what to remind them of, in their words (\"call the dentist\")"), at: z.string().describe("their local time as YYYY-MM-DD HH:mm") }),
+    execute: async ({ text, at }) => {
+      const r = addReminder(this.deps.db, this.deps.clock.now(), this.tz(), text, at, this.pending().at(-1)?.id ?? null);
+      await this.scheduleNext();
+      return r;
+    },
+  });
+
+  private cancelReminderTool = tool({
+    description: "Cancel a pending reminder by the id shown in the reminders list",
+    inputSchema: z.object({ id: z.number().int() }),
+    execute: async ({ id }) => {
+      const r = cancelReminder(this.deps.db, id);
+      await this.scheduleNext();
+      return r;
     },
   });
 
@@ -94,8 +117,11 @@ export class ContactCore {
       // Every due timer is consumed before the first await: alarms are at-least-once and retry on throw.
       const insightsDue = s.insights_due !== null && now >= s.insights_due;
       const followupDue = s.followup_due !== null && now >= s.followup_due;
+      const reminderDue = s.reminder_due !== null && now >= s.reminder_due;
       if (insightsDue) db.run("UPDATE state SET insights_due=NULL");
       if (followupDue) db.run("UPDATE state SET followup_due=NULL");
+      if (reminderDue) db.run("UPDATE state SET reminder_due=NULL");
+      if (reminderDue) await this.reminderTimer(now); // first: no model call, and it is due at an exact time
       if (s.turn_due !== null && now >= s.turn_due) {
         try { await this.turnTimer(s, now); } catch (e) { this.error("turn_failed", e); }
       }
@@ -144,6 +170,9 @@ export class ContactCore {
         const snap = this.pending();
         pending = snap;
         const newest = snap.at(-1)!;
+        // A voice note gets one voice note back with the whole reply; the bubbles are held until the stream ends.
+        let voiceReply = newest.kind === "audio" && newest.voice === 1 && !!this.deps.tts && !!wa.sendAudio;
+        const held: { text: string; quote?: string }[] = [];
         await this.scheduleNext();
         const contact = db.all<{ wa_id: string; name: string | null; timezone: string; timezone_confirmed: number }>("SELECT * FROM contact")[0];
         to = contact.wa_id;
@@ -178,40 +207,19 @@ export class ContactCore {
 
         const prompt = buildPrompt({
           profile: features.memory ? memory.profileText(db) : "", memories: recalled.hits, history, pending: current, snapshots, memory: features.memory,
-          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined,
+          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db),
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
         const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
-        const tools = { ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
+        const tools = { set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}), ...(hasUrl ? { view_page: this.viewPageTool } : {}) };
         this.abort = new AbortController();
         const { text, done } = llm.stream({
-          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools: Object.keys(tools).length ? tools : undefined,
+          job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort), reasoning: reasoningFor(model, features.replyEffort),
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });
 
-        let restart = false;
-        for await (const ev of parseReply(text)) {
-          if (sends === 0 && this.state().generation !== gen && regenerated < MAX_REGENERATIONS) {
-            this.abort.abort();
-            regenerated++;
-            restart = true;
-            break;
-          }
-          if (ev.type === "react") {
-            const target = ev.target ? resolve(ev.target) : pending.at(-1)?.id;
-            if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
-            reacted = true;
-            sends++;
-            try {
-              await wa.sendReaction(to, target, ev.emoji);
-              this.setReaction(target, "me", ev.emoji);
-            } catch (e) {
-              this.error("send_failed", e, { kind: "reaction" });
-            }
-            continue;
-          }
-          const quote = ev.quote ? resolve(ev.quote) : undefined;
+        const deliver = async (text: string, quote?: string) => {
           if (bubbles > 0) {
             wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
             const wait = bubblePauseMs(prevChars) - (clock.now() - lastSendAt);
@@ -219,15 +227,61 @@ export class ContactCore {
           }
           sends++;
           bubbles++;
-          const wamid = await this.sendBubble(to, ev.text, quote);
+          const wamid = await this.sendBubble(to, text, quote);
           if (wamid) ttfb ??= performance.now() - t0;
           lastSendAt = clock.now();
-          prevChars = ev.text.length;
+          prevChars = text.length;
           const rowId = wamid || `local.${crypto.randomUUID()}`;
-          db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, ev.text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
+          db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, status) VALUES (?, 'out', 'text', ?, ?, ?, ?)", rowId, text, lastSendAt, quote ?? null, wamid === null ? "failed" : "sent");
           outIds.push(rowId);
+        };
+
+        let restart = false;
+        try {
+          for await (const ev of parseReply(text)) {
+            if (sends === 0 && this.state().generation !== gen && regenerated < MAX_REGENERATIONS) {
+              this.abort.abort();
+              regenerated++;
+              restart = true;
+              break;
+            }
+            if (ev.type === "react") {
+              const target = ev.target ? resolve(ev.target) : pending.at(-1)?.id;
+              if (!target || reacted) continue; // one reaction per turn, even if a tool step repeats the header
+              reacted = true;
+              sends++;
+              try {
+                await wa.sendReaction(to, target, ev.emoji);
+                this.setReaction(target, "me", ev.emoji);
+              } catch (e) {
+                this.error("send_failed", e, { kind: "reaction" });
+              }
+              continue;
+            }
+            const quote = ev.quote ? resolve(ev.quote) : undefined;
+            if (voiceReply && !SPEAKABLE.test(ev.text)) { // from here on the reply streams as text, starting with what was held
+              voiceReply = false;
+              for (const b of held.splice(0)) await deliver(b.text, b.quote);
+            }
+            if (voiceReply) held.push({ text: ev.text, quote });
+            else await deliver(ev.text, quote);
+          }
+        } catch (e) {
+          for (const b of held.splice(0)) await deliver(b.text, b.quote); // the stream died: the complete bubbles go out as text, like the text path
+          throw e;
         }
         if (restart) continue; // the next snapshot takes the new messages
+        if (held.length) {
+          const joined = held.map((b) => b.text).join("\n\n"), quote = held.find((b) => b.quote)?.quote; // one voice note carries one quote
+          const wamid = await this.sendVoice(to, joined, quote);
+          if (wamid) {
+            sends++;
+            bubbles = held.length;
+            ttfb ??= performance.now() - t0;
+            db.run("INSERT INTO messages(id, direction, kind, text, ts, quoted_id, voice, status) VALUES (?, 'out', 'audio', ?, ?, ?, 1, 'sent')", wamid, joined, clock.now(), quote ?? null);
+            outIds.push(wamid);
+          } else for (const b of held) await deliver(b.text, b.quote); // synthesis or upload failed: the text bubbles, paced as usual
+        }
         usage = await done;
         break;
       }
@@ -306,7 +360,7 @@ export class ContactCore {
       db.run("UPDATE state SET followup_fact_id = NULL");
     };
     try {
-      tz = db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC";
+      tz = this.tz();
       const d = followupDecision(db, now, tz, factId);
       if (d.kind === "defer") {
         db.run("UPDATE facts SET followup_due = ? WHERE id = ?", d.to, factId);
@@ -320,6 +374,38 @@ export class ContactCore {
       done();
     } finally {
       scheduleFollowup(db, clock.now(), tz);
+    }
+  }
+
+  // One voice note for the whole reply; null when synthesis or the upload fails, and the caller falls back to text.
+  private async sendVoice(to: string, text: string, quote?: string): Promise<string | null> {
+    const { tts, wa } = this.deps;
+    if (!tts || !wa.sendAudio) return null;
+    try {
+      const a = await tts(text);
+      return (await wa.sendAudio(to, a.bytes, a.mime, { quote })).id;
+    } catch (e) {
+      this.error("voice_reply_failed", e);
+      return null;
+    }
+  }
+
+  // Timer 4 (reminder_due is already NULL). Each due reminder is marked before its send: never twice, never retried.
+  private async reminderTimer(now: number): Promise<void> {
+    const { db, clock } = this.deps;
+    try {
+      const c = db.all<{ wa_id: string; last_inbound_ts: number | null }>("SELECT wa_id, last_inbound_ts FROM contact")[0];
+      for (const r of pendingReminders(db).filter((r) => r.due_ts <= now)) {
+        const inWindow = now - (c?.last_inbound_ts ?? 0) <= DAY;
+        db.run("UPDATE reminders SET status=? WHERE id=?", inWindow ? "sent" : "skipped", r.id);
+        if (!inWindow) { this.deps.log({ event: "reminder_skipped", reason: "window", id: r.id }); continue; }
+        const text = `Reminder: ${r.text}`;
+        const wamid = await this.sendBubble(c.wa_id, text);
+        db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'text', ?, ?, ?)", wamid || `local.${crypto.randomUUID()}`, text, clock.now(), wamid === null ? "failed" : "sent");
+      }
+    } catch (e) {
+      this.error("reminder_failed", e);
+      db.run("UPDATE reminders SET status='skipped' WHERE status='pending' AND due_ts <= ?", now); // never re-armed into an alarm storm
     }
   }
 
@@ -363,6 +449,8 @@ export class ContactCore {
 
   private state(): State { return this.deps.db.all<State>("SELECT * FROM state")[0]; }
 
+  private tz(): string { return this.deps.db.all<{ timezone: string }>("SELECT timezone FROM contact")[0]?.timezone ?? "UTC"; }
+
   private pending(): Msg[] {
     return this.deps.db.all<Msg>("SELECT * FROM messages WHERE direction='in' AND status='pending' ORDER BY ts, rowid");
   }
@@ -389,7 +477,7 @@ export class ContactCore {
     }).catch((e) => { this.error("media_failed", e); return null; });
     return file
       .then((f) => this.deps.transcribe(f.bytes, f.mime))
-      .then((t) => db.run("UPDATE messages SET text=?, voice=1 WHERE id=?", t, id), (e) => {
+      .then((t) => db.run("UPDATE messages SET text=? WHERE id=?", t, id), (e) => { // voice stays what the webhook said: a forwarded audio file is not a voice note
         this.error("voice_failed", e);
         db.run("UPDATE messages SET text=? WHERE id=?", VOICE_FAILED, id);
       })
@@ -415,8 +503,9 @@ export class ContactCore {
   }
 
   private async scheduleNext(): Promise<void> {
+    scheduleReminder(this.deps.db); // from the table, so a reset mid-send cannot lose the next reminder
     const s = this.state();
-    const due = [s.turn_due, s.insights_due, s.followup_due].filter((x): x is number => x !== null);
+    const due = [s.turn_due, s.insights_due, s.followup_due, s.reminder_due].filter((x): x is number => x !== null);
     await this.deps.clock.setAlarm(due.length ? Math.min(...due) : null);
   }
 

@@ -18,7 +18,10 @@ export function localToUtc(s: string, tz: string): number | null {
   const offset = (t: number) => Date.parse(formatLocal(t, tz).replace(" ", "T") + ":00Z") - Math.floor(t / 60_000) * 60_000;
   // Offset read at the guess, then re-read at the corrected instant (DST edges).
   let t = guess - offset(guess);
-  t = guess - offset(t);
+  const o2 = offset(t);
+  t = guess - o2;
+  const o3 = offset(t);
+  if (o3 !== o2) t = guess - Math.min(o2, o3); // a wall time inside a spring-forward gap does not exist: shift it forward
   return t;
 }
 

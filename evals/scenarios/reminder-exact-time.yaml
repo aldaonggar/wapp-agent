@@ -1,0 +1,10 @@
+# An explicit reminder: the reply model turns "in 2 hours" into an exact local time with set_reminder and confirms;
+# the alarm then sends the person's own words back at that moment with no model call. Short-term because it is the
+# reply model's work (time arithmetic and tool use), like the other scenarios in that category.
+name: reminder-exact-time
+category: short-term
+steps:
+  - at: +0s
+    ask: "remind me in 2 hours to call mum"
+    gold: "confirms a reminder at 12:00 today (noon; it is 10:00 now); naming 12:00, noon or 'in 2 hours' counts"
+  - { at: +2h 1min, expect_sent: ["Reminder:", mum] }

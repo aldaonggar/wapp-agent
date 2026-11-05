@@ -2,6 +2,7 @@ import type { ModelMessage } from "ai";
 import { z } from "zod";
 import { reasoningFor } from "../models";
 import { blobToVec, formatLocal, vecToBlob } from "./db";
+import { rezoneReminders } from "./reminders";
 import type { Db, Deps, MemoryHit } from "./types";
 
 export const KINDS = ["identity", "person", "preference", "plan", "routine", "work", "place", "other"] as const;
@@ -43,6 +44,7 @@ Noise is signal 1 or 2 and is never stored:
 - passing states ("I'm tired", "so hungry", "stuck in traffic", "bored", "my phone is dying");
 - one-off trivia (what they had for lunch, the weather, a show they happen to be watching);
 - one-off requests and questions ("looking for a restaurant tonight", "what's a good movie?");
+- requests to be reminded ("remind me at 9 to call the dentist"): a reminder is set by a tool and is never a fact; only an event behind it with its own date ("dentist appointment on 2026-11-07 10:00") is a plan;
 - anything the assistant said: its suggestions, recommendations, ideas, opinions and questions. Store only what the person states about themselves and their life. A suggestion becomes a fact only when the person adopts it as their own ("booked Hoppers for Friday 20:00" is a plan).
 
 How to write a fact (text):
@@ -74,6 +76,9 @@ Conversation: user: Hi, I am looking for a restaurant in San Francisco.
 Output: {"ops": []}
 
 Conversation: user: any ideas for dinner? / assistant: You could try Dishoom or Hoppers, both great. / user: ooh maybe, thanks
+Output: {"ops": []}
+
+Conversation: user: remind me tomorrow at 9 to call the dentist / assistant: Will do, tomorrow at 09:00.
 Output: {"ops": []}
 
 Conversation: user: Hi, my name is John. I am a software engineer.
@@ -209,6 +214,8 @@ export async function remember(deps: Deps, turn: TurnForMemory): Promise<{ added
   if (value.timezone) {
     try {
       const zone = new Intl.DateTimeFormat(undefined, { timeZone: value.timezone }).resolvedOptions().timeZone;
+      const old = tzOf(db);
+      if (zone !== old) rezoneReminders(db, old, zone); // a reminder confirmed in the guessed zone keeps its wall time in the real one
       db.run("UPDATE contact SET timezone=?, timezone_confirmed=1", zone);
     } catch { /* not an IANA zone: keep the current one */ }
   }

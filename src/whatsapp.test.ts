@@ -146,6 +146,24 @@ test("sendText posts the documented body and returns the wamid", async () => {
   });
 });
 
+test("sendAudio uploads the bytes as multipart, then sends an audio message with the media id", async () => {
+  const { calls, f } = stub(json({ id: "MEDIA1" }), json(OK));
+  const wa = makeWaClient({ token: "tok", phoneNumberId: "PN", fetch: f });
+  expect(await wa.sendAudio!("16505551234", new Uint8Array([79, 103, 103, 83]), "audio/ogg", { quote: "wamid.Q" })).toEqual({ id: "wamid.OUT" });
+  expect(calls[0].url).toBe(`${GRAPH}/PN/media`);
+  expect((calls[0].init?.headers as Record<string, string>)).toEqual({ Authorization: "Bearer tok" }); // no content-type: fetch adds the multipart boundary
+  const form = calls[0].init?.body as FormData;
+  expect(form.get("messaging_product")).toBe("whatsapp");
+  expect(form.get("type")).toBe("audio/ogg");
+  const file = form.get("file") as File;
+  expect([file.name, file.type, new Uint8Array(await file.arrayBuffer())]).toEqual(["voice.ogg", "audio/ogg", new Uint8Array([79, 103, 103, 83])]);
+  expect(calls[1].url).toBe(`${GRAPH}/PN/messages`);
+  expect(JSON.parse(calls[1].init?.body as string)).toEqual({ messaging_product: "whatsapp", recipient_type: "individual", to: "+16505551234", type: "audio", audio: { id: "MEDIA1" }, context: { message_id: "wamid.Q" } });
+  const bad = stub(json(errBody(131053), 400));
+  await expect(makeWaClient({ token: "t", phoneNumberId: "PN", fetch: bad.f }).sendAudio!("1", new Uint8Array([1]), "audio/ogg")).rejects.toMatchObject({ code: 131053 });
+  expect(bad.calls).toHaveLength(1);
+});
+
 test("sendReaction and markReadTyping send the documented bodies", async () => {
   const { calls, f } = stub(json(OK), json({ success: true }));
   const wa = makeWaClient({ token: "t", phoneNumberId: "PN", fetch: f });

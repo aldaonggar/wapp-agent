@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { embedViaBinding, embedViaRest, rerankViaBinding, rerankViaRest, toBase64, transcribeViaBinding } from "./workers-ai";
+import { embedViaBinding, embedViaRest, rerankViaBinding, rerankViaRest, toBase64, transcribeViaBinding, ttsViaBinding } from "./workers-ai";
 
 const rest = (result: unknown, calls: { url: string; init: RequestInit }[] = []) =>
   (async (url: string, init: RequestInit) => { calls.push({ url, init }); return new Response(JSON.stringify({ result, success: true, errors: [] })); }) as unknown as typeof fetch;
@@ -60,6 +60,16 @@ test("rerankViaBinding sends query and contexts", async () => {
   const ai = { run: async (_m: string, i: unknown) => { seen.push(i); return { response: [{ id: 0, score: 0.7 }] }; } } as unknown as Ai;
   expect(await rerankViaBinding(ai)("q", ["a"])).toEqual([0.7]);
   expect(seen).toEqual([{ query: "q", contexts: [{ text: "a" }] }]);
+});
+
+test("ttsViaBinding asks aura-1 for OGG/Opus as a raw response and labels the bytes audio/ogg; a non-2xx throws", async () => {
+  const seen: unknown[] = [];
+  let res = new Response(new Uint8Array([79, 103, 103, 83]), { headers: { "content-type": "audio/mpeg" } }); // the service mislabels the container
+  const ai = { run: async (m: string, i: unknown, o: unknown) => { seen.push([m, i, o]); return res; } } as unknown as Ai;
+  expect(await ttsViaBinding(ai)("hi there")).toEqual({ bytes: new Uint8Array([79, 103, 103, 83]), mime: "audio/ogg" });
+  expect(seen).toEqual([["@cf/deepgram/aura-1", { text: "hi there", encoding: "opus", container: "ogg" }, { returnRawResponse: true }]]);
+  res = new Response("quota", { status: 429 });
+  await expect(ttsViaBinding(ai)("hi")).rejects.toThrow(/aura-1: 429 quota/);
 });
 
 test("transcribeViaBinding sends base64 audio, language only when given, throws on empty text", async () => {

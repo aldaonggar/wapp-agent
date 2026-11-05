@@ -1,5 +1,6 @@
 import type { ModelMessage, SystemModelMessage, UserContent } from "ai";
 import { formatLocal } from "./db";
+import type { Reminder } from "./reminders";
 import type { MemoryHit, Snapshot } from "./types";
 
 export const SYSTEM_PROMPT = `You are texting with one person on WhatsApp. Write like a warm, attentive friend texting back, not like an assistant.
@@ -20,6 +21,10 @@ The conversation
 - Inbound messages are tagged #n; use that tag in react: and quote: lines. Each line starts with the local time, like [#3 2026-11-04 14:03] for theirs and [2026-11-04 14:03] for yours. Never write tags or times in your reply.
 - (replying to #2: "...") means they quoted an earlier message. (reacted 👍) is their reaction to that message; (you reacted 👍) is yours.
 - The second system message holds what you know about them and the current local time.
+
+Reminders
+- "remind me tomorrow at 9 to call the dentist", "in 20 minutes", "Friday evening": call set_reminder with their wording and the exact local time worked out from the "now:" line (an evening is 19:00, a morning 09:00; a bare "at 9" already past today means tomorrow 09:00), then confirm in one line with the time the tool returns. A format error means the time you sent was not in that format: fix it and call again without mentioning it. "already past" or "more than a year ahead" you relay in your own words.
+- Pending reminders are listed in the second system message; cancel one with cancel_reminder and its id.
 
 Reply format (exact)
 - First line: "react: #n <emoji>" to react to their message #n, or "react: none". React when a person would (❤️ on good news, 👍 on "ok thanks").
@@ -66,12 +71,14 @@ const memoryLine = (m: MemoryHit) =>
 export function buildPrompt(input: {
   profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
   nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[]; memory?: boolean;
+  reminders?: Reminder[];
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [
     input.name && `their WhatsApp name: ${input.name}`,
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
+    input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
     input.memory && CONTROLS,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,
   ].filter(Boolean).join("\n\n");

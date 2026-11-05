@@ -1,7 +1,7 @@
 import type { Deps } from "./core/types";
 
 const DIM = 1024;
-const EMBED = "@cf/baai/bge-m3", WHISPER = "@cf/openai/whisper-large-v3-turbo";
+const EMBED = "@cf/baai/bge-m3", WHISPER = "@cf/openai/whisper-large-v3-turbo", TTS = "@cf/deepgram/aura-1";
 type Run = (model: string, input: Record<string, unknown>) => Promise<unknown>;
 
 const viaBinding = (ai: Ai): Run => (model, input) => (ai.run as (m: string, i: unknown) => Promise<unknown>)(model, input);
@@ -60,6 +60,16 @@ export function toBase64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
+}
+
+// OGG/Opus is the one format WhatsApp shows as a voice note. Measured 2026-11-05: p50 0.58 s for a 126-character reply; billed per character, 1,364 neurons per 1,000.
+// The service labels the body audio/mpeg whatever the container, so the mime is set here.
+export function ttsViaBinding(ai: Ai): NonNullable<Deps["tts"]> {
+  return async (text) => {
+    const res = await (ai.run as (m: string, i: unknown, o: unknown) => Promise<Response>)(TTS, { text, encoding: "opus", container: "ogg" }, { returnRawResponse: true });
+    if (!res.ok) throw new Error(`aura-1: ${res.status} ${(await res.text()).slice(0, 200)}`);
+    return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/ogg" };
+  };
 }
 
 export function transcribeViaBinding(ai: Ai, language?: string): Deps["transcribe"] {

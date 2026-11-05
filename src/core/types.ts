@@ -6,6 +6,7 @@ export interface WaClient {
   sendReaction(to: string, messageId: string, emoji: string): Promise<void>;
   markReadTyping(messageId: string): Promise<void>;
   fetchMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string }>;
+  sendAudio?(to: string, bytes: Uint8Array, mime: string, opts?: { quote?: string }): Promise<{ id: string }>; // optional: a transport without it gets text replies
 }
 export type { Usage, Llm, StreamCall, ObjectCall } from "../llm";
 export type { ReasoningSetting, ModelChoice } from "../models";
@@ -24,6 +25,7 @@ export interface Deps {
   embed(texts: string[]): Promise<Float32Array[]>;
   rerank(query: string, docs: string[]): Promise<number[]>;
   transcribe(bytes: Uint8Array, mime: string): Promise<string>;
+  tts?(text: string): Promise<{ bytes: Uint8Array; mime: string }>; // optional: without it every reply is text
   snapshot(url: string): Promise<Snapshot | null>;
   models: ModelChoice; features: Features;
   contactKey: string; // opaque per-contact id for logs and OpenRouter session_id/user; never the phone number

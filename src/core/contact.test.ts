@@ -7,7 +7,7 @@ import { vecToBlob } from "./db";
 import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
 
 const FROM = "15550000001";
-type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
+type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
 function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"] } = {}) {
@@ -76,7 +76,7 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
-  expect(t.llm.calls[0].tools).toBeUndefined(); // memory off: no forget tool
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]); // memory off: no forget tool
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget");
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
@@ -333,6 +333,103 @@ test("voice note with failing transcribe leaves the marker and the stub prompt c
   await t.run();
   expect(t.rows("kind = 'audio'")[0].text).toBe("[voice note could not be transcribed]");
   expect(JSON.stringify(t.llm.calls[0].messages)).toContain("[voice note could not be transcribed]");
+});
+
+// Voice replies: a voice note in gets one voice note back; anything that fails falls back to the text bubbles.
+const voiceNote = async (t: ReturnType<typeof setup>, transcript = "how are you") => {
+  t.deps.transcribe = async () => transcript;
+  t.wa.media.set("media.v", { bytes: new Uint8Array([1]), mime: "audio/ogg; codecs=opus" });
+  await t.say("", { kind: "audio", mediaId: "media.v", mime: "audio/ogg; codecs=opus", voice: true });
+};
+
+test("a voice note gets one voice note with the whole reply and the model's quote, stored as an audio row", async () => {
+  const t = setup({ reply: () => "react: none\nquote: #1\nall good here\n---\nand you?" });
+  const spoken: string[] = [];
+  t.deps.tts = async (text) => { spoken.push(text); return { bytes: new Uint8Array([7]), mime: "audio/ogg" }; };
+  await voiceNote(t);
+  await t.run();
+  expect(spoken).toEqual(["all good here\n\nand you?"]);
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "audio"]);
+  expect(t.wa.sent[1]).toMatchObject({ to: FROM, bytes: new Uint8Array([7]), mime: "audio/ogg", quote: "wamid.in.1" });
+  expect(t.rows("direction = 'out'")).toMatchObject([{ id: "wamid.out.2", text: "all good here\n\nand you?", status: "sent", quoted_id: "wamid.in.1" }]);
+  expect(t.db.all("SELECT kind, voice FROM messages WHERE direction = 'out'")).toEqual([{ kind: "audio", voice: 1 }]);
+  expect(t.turns()[0]).toMatchObject({ bubbles: 2, error: null });
+  expect(t.turns()[0].ttfb_ms).toBeGreaterThanOrEqual(0);
+});
+
+test("voice reply falls back to the paced text bubbles when synthesis fails, when the upload fails, and when the client cannot send audio", async () => {
+  const cases: [string, (t: ReturnType<typeof setup>) => void][] = [
+    ["tts down", (t) => { t.deps.tts = async () => { throw new Error("aura down"); }; }],
+    ["upload down", (t) => { t.wa.failNext = new WaError(131053, 400, "bad media"); }],
+    ["no sendAudio", (t) => { Object.assign(t.wa, { sendAudio: undefined }); }],
+  ];
+  for (const [name, arrange] of cases) {
+    const t = setup({ reply: () => "react: none\nall good here\n---\nand you?" });
+    const log = vi.fn();
+    t.deps.log = log;
+    arrange(t);
+    await voiceNote(t);
+    await t.run();
+    const texts = t.wa.sent.filter((s) => s.kind === "text");
+    expect(texts.map((s) => s.body), name).toEqual(["all good here", "and you?"]);
+    expect(texts[1].at - texts[0].at, name).toBe(bubblePauseMs("all good here".length));
+    expect(t.wa.sent.some((s) => s.kind === "audio"), name).toBe(false);
+    expect(t.rows("direction = 'out'").map((r) => r.status), name).toEqual(["sent", "sent"]);
+    expect(log.mock.calls.some(([e]) => e.event === "voice_reply_failed"), name).toBe(name !== "no sendAudio");
+  }
+});
+
+test("a non-Latin bubble on a voice note streams as text at once, not after the whole reply", async () => {
+  const t = setup();
+  let release!: () => void;
+  const gate = new Promise<void>((r) => { release = r; });
+  const stream = t.llm.stream.bind(t.llm);
+  t.deps.llm.stream = (c) => {
+    const s = stream(c); // drained first so the stub's own `done` still settles
+    return { done: s.done, text: (async function* () { for await (const chunk of s.text) void chunk; yield "react: none\nвсё хорошо\n---\n"; await gate; yield "и у тебя?"; })() };
+  };
+  await voiceNote(t, "как дела");
+  const turn = t.run();
+  await vi.waitFor(() => expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["всё хорошо"])); // sent while the stream is still open
+  release();
+  await turn;
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text", "typing", "text"]);
+  expect(t.turns()).toMatchObject([{ bubbles: 2, error: null }]);
+});
+
+test("a mid-stream error on a voice note still sends the complete bubble as text, like the text path", async () => {
+  const t = setup({ reply: () => ({ chunks: ["react: #1 👍\n", "bubble one\n", "---\n", "bubble two is cut o"], error: new Error("stream cut") }) });
+  await voiceNote(t);
+  await t.run();
+  expect(t.wa.sent.map((s) => [s.kind, s.body ?? s.emoji])).toEqual([["typing", undefined], ["reaction", "👍"], ["text", "bubble one"]]);
+  expect(t.turns()).toMatchObject([{ error: expect.stringContaining("stream cut"), bubbles: 1 }]);
+  expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("when the extractor learns the real timezone, a pending reminder keeps the wall time the person was told", async () => {
+  const t = setup({ features: { memory: true }, object: (c) => (c.job === "extract" ? { ops: [], timezone: "America/Los_Angeles" } : { insights: [] }), reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : "react: none\nok") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("I'm in LA btw, remind me tomorrow at 9 to call the dentist");
+  await t.run(); // the +1 number was guessed as New York: the tool confirmed 09:00 there (14:00Z)
+  expect(t.db.all("SELECT timezone FROM contact")).toEqual([{ timezone: "America/Los_Angeles" }]);
+  expect(t.db.all("SELECT due_ts FROM reminders")).toEqual([{ due_ts: Date.UTC(2026, 10, 5, 17, 0) }]); // 09:00 Los Angeles
+  expect(t.state().reminder_due).toBe(Date.UTC(2026, 10, 5, 17, 0));
+  t.clock.t += 60_000;
+  await t.say("thanks");
+  await t.run();
+  expect(t.llm.calls[1].system[1].content).toContain("- 2026-11-05 09:00 call the dentist (id 1)");
+});
+
+test("a text message keeps text replies, and a reply in another script is sent as text even to a voice note", async () => {
+  const t = setup({ reply: () => "react: none\nвсё хорошо" });
+  await voiceNote(t, "как дела");
+  await t.run();
+  expect(t.wa.sent.map((s) => s.kind)).toEqual(["typing", "text"]);
+  const u = setup({ reply: () => "react: none\nall good" });
+  await u.say("how are you");
+  await u.run();
+  expect(u.wa.sent.map((s) => s.kind)).toEqual(["typing", "text"]);
 });
 
 test("image on a text-only reply model switches to the vision model", async () => {
@@ -677,4 +774,108 @@ test("two plans plus a night deferral do not storm: one send, the other skipped 
   expect(t.llm.calls.filter((c) => c.job === "followup")).toHaveLength(1);
   expect(alarms).toBeLessThanOrEqual(6); // turn, insights, 2 night deferrals, send, daily-limit deferral
   expect(t.db.all("SELECT followup_done, followup_due FROM facts ORDER BY id")).toEqual([{ followup_done: 1, followup_due: ny("2026-11-05 09:00") }, { followup_done: 1, followup_due: ny("2026-11-05 09:00") }]); // D2: tomorrow 09:00 is past the 24h window, so it is skipped
+});
+
+// Reminders: the reply model calls set_reminder during the turn; the timer sends their words back at that local time.
+const call = async (c: StreamCall, name: string, input: unknown) => `react: none\n${JSON.stringify(await c.tools![name].execute!(input, { toolCallId: "t", messages: [] } as never))}`;
+const remind = (text: string, at: string) => (c: StreamCall) => call(c, "set_reminder", { text, at });
+const texts = (t: ReturnType<typeof setup>) => t.wa.sent.filter((s) => s.kind === "text");
+
+test("set_reminder stores the reminder and arms the alarm; the timer sends it once, on time, in their words, with no model call", async () => {
+  const t = setup({ reply: remind("call the dentist", "2026-11-05 09:00") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me tomorrow at 9 to call the dentist");
+  await t.run();
+  expect(texts(t).map((s) => s.body)).toEqual(['{"id":1,"at":"2026-11-05 09:00"}']);
+  expect(t.db.all("SELECT text, due_ts, status, source_message_id FROM reminders")).toEqual([{ text: "call the dentist", due_ts: ny("2026-11-05 09:00"), status: "pending", source_message_id: "wamid.in.1" }]);
+  expect(t.state().reminder_due).toBe(ny("2026-11-05 09:00"));
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 09:00"));
+  await t.run(ny("2026-11-05 09:00") - 1);
+  expect(texts(t)).toHaveLength(1);
+  await t.run(ny("2026-11-05 09:00"));
+  expect(texts(t).at(-1)).toMatchObject({ body: "Reminder: call the dentist", at: ny("2026-11-05 09:00") });
+  expect(outs(t).map((r) => [r.text, r.status])).toEqual([['{"id":1,"at":"2026-11-05 09:00"}', "sent"], ["Reminder: call the dentist", "sent"]]);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
+  await t.run(ny("2026-11-06 09:00"));
+  expect(texts(t)).toHaveLength(2);
+  expect(t.llm.calls).toHaveLength(1);
+});
+
+test("a reset during one reminder's send does not lose the next: the redelivered alarm re-arms it from the table", async () => {
+  const t = setup({ reply: async (c) => { await c.tools!.set_reminder.execute!({ text: "a", at: "2026-11-05 09:00" }, { toolCallId: "t", messages: [] } as never); return remind("b", "2026-11-05 10:00")(c); } });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("two reminders tomorrow");
+  await t.run();
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 09:00"));
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = () => new Promise(() => {}); // the send hangs and the object is reset mid-handler
+  t.clock.t = ny("2026-11-05 09:00");
+  t.view.alarmAt = null;
+  void t.core.alarm();
+  await vi.waitFor(() => expect(t.db.all("SELECT status FROM reminders WHERE id = 1")).toEqual([{ status: "sent" }]));
+  expect(t.state().reminder_due).toBeNull();
+  t.wa.sendText = send;
+  const fresh = new ContactCore(t.deps); // same storage, new instance; alarms are at-least-once, so it is delivered again
+  await fresh.alarm();
+  expect(t.view.alarmAt).toBe(ny("2026-11-05 10:00"));
+  await drain(fresh, t.view, t.clock, ny("2026-11-05 10:00"));
+  expect(texts(t).map((s) => s.body)).toEqual([expect.stringContaining('"id":2'), "Reminder: b"]);
+  expect(t.db.all("SELECT id, status FROM reminders ORDER BY id")).toEqual([{ id: 1, status: "sent" }, { id: 2, status: "sent" }]);
+});
+
+test("set_reminder refuses a time already past with an error the model can relay; nothing is stored or armed", async () => {
+  const t = setup({ reply: remind("x", "2026-11-04 09:59") });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me at 9:59");
+  await t.run();
+  expect(texts(t)[0].body).toContain("already past");
+  expect(t.db.all("SELECT 1 FROM reminders")).toEqual([]);
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reminder and a follow-up due the same day each fire once at their own time", async () => {
+  const t = setup({ features: { memory: true }, object: planOps("2026-11-04 14:00"), reply: (c) => (c.job === "followup" ? "react: none\nhow did it go?" : remind("call the dentist", "2026-11-04 17:00")(c)) });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("interview at two today, remind me at 5 to call the dentist");
+  await t.run(t.clock.t + 60_000);
+  expect(t.state()).toMatchObject({ followup_due: ny("2026-11-04 16:00"), reminder_due: ny("2026-11-04 17:00") });
+  await t.run(ny("2026-11-04 18:00"));
+  expect(texts(t).map((s) => [s.body, s.at])).toEqual([[expect.stringContaining('"id":1'), ny("2026-11-04 10:00") + 3000], ["how did it go?", ny("2026-11-04 16:00")], ["Reminder: call the dentist", ny("2026-11-04 17:00")]]);
+  expect(t.state()).toMatchObject({ followup_due: null, reminder_due: null });
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("a reminder due more than 24 h after their last message is skipped and logged without the text, not sent", async () => {
+  const t = setup({ reply: remind("water the plants", "2026-11-06 09:00") });
+  t.clock.t = ny("2026-11-04 10:00");
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("remind me the day after tomorrow at 9 to water the plants");
+  await t.run(ny("2026-11-06 09:00"));
+  expect(texts(t)).toHaveLength(1);
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "skipped" }]);
+  expect(log).toHaveBeenCalledWith({ event: "reminder_skipped", reason: "window", id: 1 });
+  expect(JSON.stringify(log.mock.calls)).not.toContain("plants");
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
+});
+
+test("pending reminders are listed in the prompt in local time; cancel_reminder clears the row and the alarm", async () => {
+  const t = setup({ reply: (c) => (t.llm.calls.length === 1 ? remind("call the dentist", "2026-11-05 09:00")(c) : t.llm.calls.length === 2 ? "react: none\none" : call(c, "cancel_reminder", { id: 1 })) });
+  t.clock.t = ny("2026-11-04 10:00");
+  await t.say("remind me tomorrow at 9 to call the dentist");
+  await t.run();
+  t.clock.t += 60_000;
+  await t.say("what reminders do I have?");
+  await t.run();
+  expect(t.llm.calls[1].system[1].content).toContain("reminders (pending, local time):\n- 2026-11-05 09:00 call the dentist (id 1)");
+  t.clock.t += 60_000;
+  await t.say("cancel the dentist one");
+  await t.run();
+  expect(texts(t).at(-1)?.body).toBe('{"cancelled":true}');
+  expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "cancelled" }]);
+  expect(t.state().reminder_due).toBeNull();
+  expect(t.view.alarmAt).toBeNull();
 });
