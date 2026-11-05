@@ -37,6 +37,7 @@ const cases: [string, string, ReplyEvent[]][] = [
   ["voice header with another value is no request and no text", "react: none\nvoice: no\nvoice: maybe\nvoice:\nok", [b("ok")]],
   ["voice header after bubble text is ignored and never shown", "react: none\nhello\nvoice: yes\n---\nvoice: yes\nbye", [b("hello"), b("bye")]],
   ["a line that only starts with voice: is text", "react: none\nvoice: deep and calm, loved it", [b("voice: deep and calm, loved it")]],
+  ["a one-word voice line after text stays text", "react: none\nparts:\nvoice: soprano", [b("parts:\nvoice: soprano")]],
   ["skin tones and ZWJ sequences are one emoji", "react: #1 👍🏽\nreact: #1 👨‍👩‍👧\nhi", [{ type: "react", target: "#1", emoji: "👍🏽" }, { type: "react", target: "#1", emoji: "👨‍👩‍👧" }, b("hi")]],
 ];
 

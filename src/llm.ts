@@ -49,7 +49,8 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
         messages: call.messages,
         tools: call.tools,
         stopWhen: call.tools ? isStepCount(3) : undefined,
-        prepareStep: call.activeTools && (() => ({ activeTools: call.activeTools!() })),
+        // the last allowed step must be text: a turn cannot end on tool calls with only a search's say line sent (keep 2 in sync with isStepCount(3))
+        prepareStep: call.tools ? ({ stepNumber }) => ({ activeTools: call.activeTools?.(), toolChoice: stepNumber === 2 ? "none" : undefined }) : undefined,
         maxOutputTokens: call.maxOutputTokens,
         maxRetries: 1,
         timeout: { firstChunkMs: 15000, totalMs: 60000 },

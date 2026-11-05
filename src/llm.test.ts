@@ -127,6 +127,16 @@ describe("llm.stream", () => {
     expect(bodies.map((b) => b.tools.map((t: { function: { name: string } }) => t.function.name))).toEqual([["ping"], ["ping", "pong"]]);
   });
 
+  it("forces a text answer on the last allowed step: tool_choice none on step 3 only", async () => {
+    const call = (n: number) => () => sse([chunk({ role: "assistant", content: null, tool_calls: [{ index: 0, id: `call_${n}`, type: "function", function: { name: "ping", arguments: "{}" } }] }), usageChunk(500, 10, 0, 0.001, "tool_calls")]);
+    const { f, bodies } = fake([call(1), call(2), textResponse]);
+    const tools = { ping: tool({ description: "ping", inputSchema: z.object({}), execute: async () => ({ ok: true }) }) };
+    const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }], tools });
+    await drain(r.text);
+    await r.done;
+    expect(bodies.map((b) => b.tool_choice)).toEqual(["auto", "auto", "none"]);
+  });
+
   it("handles an in-stream error part: text yields the delta then throws, done rejects", async () => {
     const { f } = fake([() => sse([chunk({ role: "assistant", content: "par" }), { id: "gen-1", error: { code: 500, message: "boom" }, choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }])]);
     const r = makeLlm("k", { fetch: f }).stream({ ...base, job: "reply", modelId: "deepseek/deepseek-v4.1-flash", system: [{ role: "system", content: "s" }] });
