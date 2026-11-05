@@ -62,7 +62,7 @@ export function toBase64(bytes: Uint8Array): string {
   return btoa(s);
 }
 
-// OGG/Opus is the one format WhatsApp shows as a voice note. Measured 2026-11-05: p50 0.58 s for 25 words, 172 neurons a call.
+// OGG/Opus is the one format WhatsApp shows as a voice note. Measured 2026-11-05: p50 0.58 s for a 126-character reply; billed per character, 1,364 neurons per 1,000.
 // The service labels the body audio/mpeg whatever the container, so the mime is set here.
 export function ttsViaBinding(ai: Ai): NonNullable<Deps["tts"]> {
   return async (text) => {

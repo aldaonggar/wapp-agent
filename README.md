@@ -14,7 +14,7 @@ Caveat: nothing has been exercised end to end from a phone yet (pending the owne
 - Reads photos, transcribes voice notes, and fetches pages for links you send.
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
-- Sets reminders at an exact time: "remind me tomorrow at 9 to call the dentist" gets a confirmation now and your own words back at 09:00.
+- Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00. Delivery only works within 24 hours of your last message (Meta's rule, see Known limits), so a reminder for the day after tomorrow needs you to text again before it.
 - Answers a voice note with a voice note (one, carrying the whole reply); a text message gets text.
 
 To try it, the owner must first add your WhatsApp number to Meta's recipient list ([SETUP.md section 7](SETUP.md)). Meta's test number only talks to numbers on that list. The number to text is Meta's test number, shown in the owner's Meta dashboard (API Setup page). You must text first; the bot cannot start a chat.
@@ -50,7 +50,7 @@ flowchart LR
 
 - `src/worker.ts` re-exports `src/index.ts` (verify signature, check allowlist, fan out to one Durable Object per contact) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
-- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper. Browser Rendering: `/snapshot` for links.
+- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups; send reminders at their time (no model call).
 
 ## Why the memory is in-house
@@ -126,7 +126,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 191 tests in 16 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 38 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 195 tests in 16 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 39 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -161,7 +161,7 @@ npm run eval
 - Meta's test number only talks to a small list of verified recipient numbers.
 - Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day (about 200 minutes of voice notes).
 - Meta's free tier is 1,000 delivered service messages per month per number. No payment method is on file. The status webhook's `pricing.type` flip is logged.
-- Voice replies only answer voice notes, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word reply: p50 0.58 s, max 0.93 s, 10 KB, 172 neurons a call, so about 58 voice replies a day fit the Free plan's 10,000 neurons before anything else. A reply in a non-Latin script, or any synthesis or upload failure, falls back to the text bubbles.
+- Voice replies only answer voice notes, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters (172 for that reply); a full reply of 300-900 characters is 400-1,200 neurons, so roughly 8 to 25 voice replies a day fit the Free plan's 10,000 neurons before anything else, after which each voice note costs one failed synthesis call before the text fallback. A reply in a non-Latin script, or any synthesis or upload failure, falls back to the text bubbles.
 - Timezone is guessed from the phone's country code until the person says where they are; reminder times are resolved in that zone.
 - The model comparison has not run (see Evals).
 - Follow-ups and reminders never retry.
