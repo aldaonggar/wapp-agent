@@ -1,0 +1,647 @@
+{
+  "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,effort=low",
+  "config": {
+    "effort": "low",
+    "memory": true,
+    "retrieval": "hybrid",
+    "filter": "short",
+    "tag": "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid,effort=low",
+    "models": {
+      "reply": "deepseek/deepseek-v4.1-flash",
+      "extract": "anthropic/claude-haiku-5.5",
+      "derive": "deepseek/deepseek-v4-pro"
+    }
+  },
+  "at": "2026-11-05T23:08:57.834Z",
+  "scenarios": [
+    {
+      "name": "short-burst-of-three",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "and milk. can you send me that list back so I don't forget",
+          "gold": "eggs, flour and milk",
+          "answer": "Hey, I'm your assistant, I remember stuff for you across days, set reminders, read photos, listen to voice notes and look things up. Send me the list anytime.\neggs\nflour\nmilk\n\nFor pancakes tonight.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 588,
+          "ttfbMs": 939,
+          "totalMs": 981
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: making pancakes tonight, need to grab eggs",
+        "[2026-11-04 15:00:01] a: flour",
+        "[2026-11-04 15:00:02] a: and milk. can you send me that list back so I don't forget",
+        "[2026-11-04 15:00:05] bot → a: Hey, I'm your assistant, I remember stuff for you across days, set reminders, read photos, listen to voice notes and look things up. Send me the list anytime.",
+        "[2026-11-04 15:00:07] bot → a: eggs\nflour\nmilk\n\nFor pancakes tonight."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 226,
+          "ttft_ms": 588,
+          "ttfb_ms": 939,
+          "total_ms": 981,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2470,\"output\":112,\"cached\":2304,\"reasoning\":58,\"costTable\":0.000104942,\"costReported\":0.000131988,\"ms\":742.1002080000001,\"ttftMs\":587.615166,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000104942,
+        "extract": 0.00008598
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 2470,
+          "cached": 2304
+        },
+        "extract": {
+          "input": 3926,
+          "cached": 3568
+        }
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.000190922,
+      "passed": true,
+      "at": "2026-11-05T23:07:46.147Z"
+    },
+    {
+      "name": "short-correction",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "wait when am I meeting Sam again?",
+          "gold": "7 (it was moved from 6 to 7)",
+          "answer": "Tomorrow, Thursday, at 7pm. I've got a nudge set for then too.",
+          "label": "correct",
+          "reason": "The reply gives the updated time of 7pm tomorrow, which matches the gold. 'Thursday' is accurate, since 2026-11-04 is a Wednesday.",
+          "ttftMs": 610,
+          "ttfbMs": 1012,
+          "totalMs": 1012
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: meeting Sam for coffee tomorrow at 6",
+        "[2026-11-04 15:00:03] bot → a: Hey, I'm your assistant, and I actually remember things between chats. I can set reminders, read photos, listen to voice notes, read links you send, and look stuff up online when you need something current.",
+        "[2026-11-04 15:00:05] bot → a: Got it, coffee with Sam tomorrow at 6pm, I'll nudge you then. If you meant 6 in the morning, say so and I'll shift it.",
+        "[2026-11-04 15:02:00] a: actually make it 7, he's stuck at work",
+        "[2026-11-04 15:02:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:02:03] bot → a: Moved to 7pm tomorrow. One thing: on WhatsApp the reminder only lands if you message me within the 24 hours before it, so ping me tomorrow afternoon and I'll be sure to nudge you.",
+        "[2026-11-04 15:10:00] a: wait when am I meeting Sam again?",
+        "[2026-11-04 15:10:03] bot → a: Tomorrow, Thursday, at 7pm. I've got a nudge set for then too."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 149,
+          "ttft_ms": 2557,
+          "ttfb_ms": 2823,
+          "total_ms": 3345,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":5223,\"output\":424,\"cached\":4992,\"reasoning\":264,\"costTable\":0.000312251,\"costReported\":0.000379394,\"ms\":3194.398417,\"ttftMs\":2556.7075,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 354,
+          "ttft_ms": 1470,
+          "ttfb_ms": 2000,
+          "total_ms": 2000,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":5345,\"output\":266,\"cached\":3968,\"reasoning\":94,\"costTable\":0.000266389,\"costReported\":0.000482146,\"ms\":1643.6173330000001,\"ttftMs\":1470.4099999999999,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 313,
+          "ttft_ms": 610,
+          "ttfb_ms": 1012,
+          "total_ms": 1012,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2652,\"output\":111,\"cached\":1280,\"reasoning\":69,\"costTable\":0.00014028,\"costReported\":0.00034819,\"ms\":697.0509999999995,\"ttftMs\":609.947709,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\",\"Coffee with Sam on 2026-11-05 19:00\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.0007189200000000001,
+        "extract": 0.0005459400000000001
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 13220,
+          "cached": 10240
+        },
+        "extract": {
+          "input": 11793,
+          "cached": 10704
+        }
+      },
+      "judgeCostUsd": 0.005418,
+      "costUsd": 0.00126486,
+      "passed": true,
+      "at": "2026-11-05T23:08:02.320Z"
+    },
+    {
+      "name": "short-like-i-said",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ok so like I said, which colour am I going with? need to tell the shop",
+          "gold": "teal",
+          "answer": "teal, the one you told me at the start. if you want a specific shade for the shop, a deep teal like a peacock kind of tone reads closest to what you described",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 531,
+          "ttfbMs": 910,
+          "totalMs": 910
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: repainting the bedroom this weekend, going with teal",
+        "[2026-11-04 15:00:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:00:03] bot → a: hey, i'm your assistant, the kind that actually remembers stuff. tell me things and i'll keep them across days, i can set reminders for a time you name, read photos, listen to voice notes, read links, look things up online, and forget anything you want gone.\n\nteal for a bedroom is a bold pick, i like it. deep teal or something lighter?",
+        "[2026-11-04 15:01:00] a: the landlord said it's fine as long as I paint it back before I move out",
+        "[2026-11-04 15:01:03] bot → a: smart of you to check first. worth keeping the paint code or leftover tin somewhere, makes painting it back way easier later\n\nhow many coats are you planning for? teal usually needs a couple over a light wall",
+        "[2026-11-04 15:03:00] a: also need new curtains",
+        "[2026-11-04 15:03:03] bot → a: with teal walls, warm neutrals or cream curtains would look really nice, or go dark if you want moody. what's the light like in there?",
+        "[2026-11-04 15:05:00] a: something light, linen maybe",
+        "[2026-11-04 15:05:03] bot → a: linen in a light cream or oatmeal would soften the teal nicely, and it hangs well too. just remember linen creases, so if that bugs you, a linen blend keeps the look without the ironing",
+        "[2026-11-04 15:07:00] a: and the hardware store closes at 5 on saturday which is annoying",
+        "[2026-11-04 15:07:03] bot → a: yeah that's tight when you're mid project. worth grabbing the paint and rollers friday evening if you can, then saturday is just tape and paint",
+        "[2026-11-04 15:10:00] a: ok so like I said, which colour am I going with? need to tell the shop",
+        "[2026-11-04 15:10:03] bot → a: teal, the one you told me at the start. if you want a specific shade for the shop, a deep teal like a peacock kind of tone reads closest to what you described"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 156,
+          "ttft_ms": 1013,
+          "ttfb_ms": 1492,
+          "total_ms": 1492,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2425,\"output\":247,\"cached\":2304,\"reasoning\":159,\"costTable\":0.000170417,\"costReported\":0.000211188,\"ms\":1335.2575419999994,\"ttftMs\":1013.4048750000002,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 174,
+          "ttft_ms": 663,
+          "ttfb_ms": 1191,
+          "total_ms": 1192,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2458,\"output\":76,\"cached\":1408,\"reasoning\":24,\"costTable\":0.00011059399999999999,\"costReported\":0.000265796,\"ms\":1017.0040420000005,\"ttftMs\":662.6503750000011,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 256,
+          "ttft_ms": 567,
+          "ttfb_ms": 979,
+          "total_ms": 979,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2587,\"output\":62,\"cached\":1280,\"reasoning\":16,\"costTable\":0.00011285499999999999,\"costReported\":0.00030399,\"ms\":721.8440420000006,\"ttftMs\":566.7987920000014,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Landlord allows painting the walls as long as they are painted back before moving out\"]"
+        },
+        {
+          "contact": "a",
+          "id": 4,
+          "started_at": 1793804703000,
+          "wait_ms": 3000,
+          "retrieval_ms": 240,
+          "ttft_ms": 906,
+          "ttfb_ms": 1182,
+          "total_ms": 1182,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2657,\"output\":66,\"cached\":1408,\"reasoning\":19,\"costTable\":0.00011454899999999999,\"costReported\":0.000297106,\"ms\":940.3171250000014,\"ttftMs\":906.4082080000007,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Landlord allows painting the walls as long as they are painted back before moving out\"]"
+        },
+        {
+          "contact": "a",
+          "id": 5,
+          "started_at": 1793804823000,
+          "wait_ms": 3000,
+          "retrieval_ms": 231,
+          "ttft_ms": 665,
+          "ttfb_ms": 1153,
+          "total_ms": 1153,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2746,\"output\":112,\"cached\":1280,\"reasoning\":71,\"costTable\":0.00014501,\"costReported\":0.0003667,\"ms\":922.0152919999964,\"ttftMs\":665.1908750000002,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Landlord allows painting the walls as long as they are painted back before moving out\"]"
+        },
+        {
+          "contact": "a",
+          "id": 6,
+          "started_at": 1793805003000,
+          "wait_ms": 3000,
+          "retrieval_ms": 232,
+          "ttft_ms": 531,
+          "ttfb_ms": 910,
+          "total_ms": 910,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2828,\"output\":70,\"cached\":1280,\"reasoning\":23,\"costTable\":0.0001277,\"costReported\":0.00035498,\"ms\":675.8192909999998,\"ttftMs\":531.0813750000016,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Landlord allows painting the walls as long as they are painted back before moving out\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.0007811249999999999,
+        "extract": 0.0009463799999999999
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 15701,
+          "cached": 8960
+        },
+        "extract": {
+          "input": 23546,
+          "cached": 21408
+        }
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.0017275049999999998,
+      "passed": true,
+      "at": "2026-11-05T23:08:23.639Z"
+    },
+    {
+      "name": "short-photo-then-question",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "what colour is it?",
+          "gold": "red",
+          "answer": "hi, i’m your personal assistant. i can remember what you tell me across days, set reminders for a time you name, read photos and links, listen to voice notes, look things up online, and forget things when you ask.\nit’s red.",
+          "label": "correct",
+          "reason": "The reply says it's red, matching the gold; the self-introduction is extra small talk.",
+          "ttftMs": 1624,
+          "ttfbMs": 2406,
+          "totalMs": 2624
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: [photo photo.jpg] look",
+        "[2026-11-04 15:00:01] a: what colour is it?",
+        "[2026-11-04 15:00:04] bot → a: hi, i’m your personal assistant. i can remember what you tell me across days, set reminders for a time you name, read photos and links, listen to voice notes, look things up online, and forget things when you ask.",
+        "[2026-11-04 15:00:06] bot → a: it’s red."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804404000,
+          "wait_ms": 3000,
+          "retrieval_ms": 167,
+          "ttft_ms": 1624,
+          "ttfb_ms": 2406,
+          "total_ms": 2624,
+          "model": "openai/gpt-6.1-terra",
+          "provider": "OpenAI",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"openai/gpt-6.1-terra\",\"provider\":\"OpenAI\",\"input\":2049,\"output\":61,\"cached\":0,\"reasoning\":0,\"costTable\":0.002354,\"costReported\":0.0028655,\"ms\":2455.907374999995,\"ttftMs\":1623.5529159999933,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.002354,
+        "extract": 0.00010237999999999999
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 2049,
+          "cached": 0
+        },
+        "extract": {
+          "input": 4015,
+          "cached": 3568
+        }
+      },
+      "judgeCostUsd": 0.001442,
+      "costUsd": 0.00245638,
+      "passed": true,
+      "at": "2026-11-05T23:08:29.494Z"
+    },
+    {
+      "name": "short-quoted-reply",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "how about this one?",
+          "gold": "pizza: the option the person quoted (step 1), not sushi; the reply treats pizza as the one being asked about",
+          "answer": "pizza it is then. any particular kind, or full wildcard?",
+          "label": "correct",
+          "reason": "The reply treats pizza as the option being asked about, which matches the gold.",
+          "ttftMs": 951,
+          "ttfbMs": 1090,
+          "totalMs": 1090
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: dinner options tonight. A: pizza",
+        "[2026-11-04 15:00:02] a: B: sushi",
+        "[2026-11-04 15:00:05] bot → a: hey, i'm your assistant here. i remember what you tell me across days, can set reminders for a time you name, read photos, listen to voice notes, read links you send, look things up online, and forget anything on request.",
+        "[2026-11-04 15:00:07] bot → a: pizza says cozy night in, sushi says you want to be out. what's the mood tonight?",
+        "[2026-11-04 15:01:00] a: (replying to step 1) how about this one?",
+        "[2026-11-04 15:01:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:01:03] bot → a: pizza it is then. any particular kind, or full wildcard?"
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804405000,
+          "wait_ms": 3000,
+          "retrieval_ms": 132,
+          "ttft_ms": 2542,
+          "ttfb_ms": 2859,
+          "total_ms": 2980,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2440,\"output\":475,\"cached\":2432,\"reasoning\":395,\"costTable\":0.000281636,\"costReported\":0.000339454,\"ms\":2845.957208,\"ttftMs\":2542.2028749999954,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 131,
+          "ttft_ms": 951,
+          "ttfb_ms": 1090,
+          "total_ms": 1090,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2474,\"output\":85,\"cached\":2304,\"reasoning\":67,\"costTable\":0.00009162199999999998,\"costReported\":0.000115198,\"ms\":957.383249999999,\"ttftMs\":950.9192919999987,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00037325799999999996,
+        "extract": 0.00047388
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 4914,
+          "cached": 4736
+        },
+        "extract": {
+          "input": 7760,
+          "cached": 3568
+        }
+      },
+      "judgeCostUsd": 0.00193,
+      "costUsd": 0.0008471379999999999,
+      "passed": true,
+      "at": "2026-11-05T23:08:37.535Z"
+    },
+    {
+      "name": "short-second-one",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "ooh the second one. would that suit a girl?",
+          "gold": "talks about the second of the three names the assistant suggested in its previous reply (by name)",
+          "answer": "Sure, Pebble works for a girl. It's soft and round sounding, no gender to it really. Big nickname potential too, Pebbles, Peb, Pebs.",
+          "label": "correct",
+          "reason": "The reply names Pebble, the second suggestion, and says it suits a girl.",
+          "ttftMs": 3742,
+          "ttfbMs": 4126,
+          "totalMs": 4127
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: give me 3 name ideas for my new grey kitten",
+        "[2026-11-04 15:00:03] bot → a: Hey, I'm your assistant here, I remember what you tell me between chats, can set reminders, read photos and voice notes, look things up, and forget stuff on request.",
+        "[2026-11-04 15:00:05] bot → a: Three for a grey kitten: Ash, Pebble, or Cinder. Ash if the grey is soft and pale, Pebble if it's round and silly, Cinder if it's dark and a bit of a troublemaker. What's it like so far?",
+        "[2026-11-04 15:02:00] a: ooh the second one. would that suit a girl?",
+        "[2026-11-04 15:02:03] bot → a: Sure, Pebble works for a girl. It's soft and round sounding, no gender to it really. Big nickname potential too, Pebbles, Peb, Pebs."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 179,
+          "ttft_ms": 812,
+          "ttfb_ms": 1168,
+          "total_ms": 1356,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2425,\"output\":202,\"cached\":2304,\"reasoning\":98,\"costTable\":0.00014791700000000001,\"costReported\":0.000181938,\"ms\":1176.5751249999958,\"ttftMs\":812.275834,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804523000,
+          "wait_ms": 3000,
+          "retrieval_ms": 122,
+          "ttft_ms": 3742,
+          "ttfb_ms": 4126,
+          "total_ms": 4127,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2471,\"output\":171,\"cached\":1408,\"reasoning\":118,\"costTable\":0.000158679,\"costReported\":0.000330016,\"ms\":4003.0033330000006,\"ttftMs\":3741.6637499999997,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.000306596,
+        "extract": 0.00048188
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 4896,
+          "cached": 3712
+        },
+        "extract": {
+          "input": 7840,
+          "cached": 3568
+        }
+      },
+      "judgeCostUsd": 0.002194,
+      "costUsd": 0.000788476,
+      "passed": true,
+      "at": "2026-11-05T23:08:47.340Z"
+    },
+    {
+      "name": "short-that-place",
+      "category": "short-term",
+      "probes": [
+        {
+          "ask": "my sister wants to go, remind me where that place is so I can text her",
+          "gold": "the cafe on Abay street (green door)",
+          "answer": "Abay street, the one with the green door. that's the one you found yesterday, so you're sorted for texting her.",
+          "label": "correct",
+          "reason": "string checks passed",
+          "ttftMs": 657,
+          "ttfbMs": 1050,
+          "totalMs": 1050
+        }
+      ],
+      "checks": [],
+      "transcript": [
+        "[2026-11-04 15:00:00] a: found a great little cafe on Abay street yesterday, the one with the green door",
+        "[2026-11-04 15:00:03] bot → a: hey, I'm your assistant in here. I remember what you tell me across days, set reminders for a time you name, read photos, listen to voice notes, read links, look things up online, and forget anything on request.",
+        "[2026-11-04 15:00:05] bot → a: a cafe on Abay street with a green door, noted. does it have a name? and what should I call you?",
+        "[2026-11-04 15:01:00] a: their flat white is unreal",
+        "[2026-11-04 15:01:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:01:03] bot → a: good flat whites are hard to find, that place sounds like a keeper. is it somewhere you can sit and work, or more of a grab and go?",
+        "[2026-11-04 15:03:00] a: my sister wants to go, remind me where that place is so I can text her",
+        "[2026-11-04 15:03:03] bot → a: Abay street, the one with the green door. that's the one you found yesterday, so you're sorted for texting her."
+      ],
+      "turns": [
+        {
+          "contact": "a",
+          "id": 1,
+          "started_at": 1793804403000,
+          "wait_ms": 3000,
+          "retrieval_ms": 163,
+          "ttft_ms": 1333,
+          "ttfb_ms": 1622,
+          "total_ms": 1716,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 2,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2431,\"output\":332,\"cached\":2304,\"reasoning\":250,\"costTable\":0.00021318700000000002,\"costReported\":0.000267578,\"ms\":1553.041333000001,\"ttftMs\":1333.3061660000021,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
+        },
+        {
+          "contact": "a",
+          "id": 2,
+          "started_at": 1793804463000,
+          "wait_ms": 3000,
+          "retrieval_ms": 247,
+          "ttft_ms": 799,
+          "ttfb_ms": 1201,
+          "total_ms": 1201,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2507,\"output\":111,\"cached\":1280,\"reasoning\":68,\"costTable\":0.000133755,\"costReported\":0.00032064,\"ms\":952.0692080000008,\"ttftMs\":798.7999580000032,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Found a great small cafe on Abay street with a green door (discovered 2026-11-03)\"]"
+        },
+        {
+          "contact": "a",
+          "id": 3,
+          "started_at": 1793804583000,
+          "wait_ms": 3000,
+          "retrieval_ms": 268,
+          "ttft_ms": 657,
+          "ttfb_ms": 1050,
+          "total_ms": 1050,
+          "model": "deepseek/deepseek-v4.1-flash",
+          "provider": "Wafer",
+          "bubbles": 1,
+          "regenerated": 0,
+          "error": null,
+          "usage": "{\"job\":\"reply\",\"model\":\"deepseek/deepseek-v4.1-flash\",\"provider\":\"Wafer\",\"input\":2595,\"output\":67,\"cached\":1280,\"reasoning\":38,\"costTable\":0.000115715,\"costReported\":0.00030876,\"ms\":779.1842500000057,\"ttftMs\":657.400542000003,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Found a great small cafe on Abay street with a green door (discovered 2026-11-03)\"]"
+        }
+      ],
+      "costByJob": {
+        "reply": 0.00046265700000000005,
+        "extract": 0.0008289599999999999
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 7533,
+          "cached": 4864
+        },
+        "extract": {
+          "input": 11762,
+          "cached": 7136
+        }
+      },
+      "judgeCostUsd": 0,
+      "costUsd": 0.001291617,
+      "passed": true,
+      "at": "2026-11-05T23:08:57.832Z"
+    }
+  ]
+}

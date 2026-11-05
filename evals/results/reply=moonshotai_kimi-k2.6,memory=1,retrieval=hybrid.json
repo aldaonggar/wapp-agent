@@ -9,10 +9,10 @@
     "models": {
       "reply": "moonshotai/kimi-k2.6",
       "extract": "anthropic/claude-haiku-5.5",
-      "derive": "openai/gpt-6.1-sol"
+      "derive": "deepseek/deepseek-v4-pro"
     }
   },
-  "at": "2026-11-05T20:41:36.393Z",
+  "at": "2026-11-05T22:59:58.961Z",
   "scenarios": [
     {
       "name": "short-burst-of-three",
@@ -21,12 +21,12 @@
         {
           "ask": "and milk. can you send me that list back so I don't forget",
           "gold": "eggs, flour and milk",
-          "answer": "eggs\nflour\nmilk\n\nanything else for the pancakes?",
+          "answer": "Hey, I'm your personal assistant that remembers. I can remember what you tell me across days, set reminders at a time you name, read photos and links, listen to voice notes, look things up on the web, and forget anything on request.\nTonight's list:\n\neggs\nflour\nmilk",
           "label": "correct",
           "reason": "string checks passed",
-          "ttftMs": 1117,
-          "ttfbMs": 1511,
-          "totalMs": 1511
+          "ttftMs": 6736,
+          "ttfbMs": 6989,
+          "totalMs": 6996
         }
       ],
       "checks": [],
@@ -35,7 +35,8 @@
         "[2026-11-04 15:00:01] a: flour",
         "[2026-11-04 15:00:02] a: and milk. can you send me that list back so I don't forget",
         "[2026-11-04 15:00:05] bot → a: (reacted 👍)",
-        "[2026-11-04 15:00:05] bot → a: eggs\nflour\nmilk\n\nanything else for the pancakes?"
+        "[2026-11-04 15:00:05] bot → a: Hey, I'm your personal assistant that remembers. I can remember what you tell me across days, set reminders at a time you name, read photos and links, listen to voice notes, look things up on the web, and forget anything on request.",
+        "[2026-11-04 15:00:07] bot → a: Tonight's list:\n\neggs\nflour\nmilk"
       ],
       "turns": [
         {
@@ -43,27 +44,37 @@
           "id": 1,
           "started_at": 1793804405000,
           "wait_ms": 3000,
-          "retrieval_ms": 288,
-          "ttft_ms": 1117,
-          "ttfb_ms": 1511,
-          "total_ms": 1511,
+          "retrieval_ms": 169,
+          "ttft_ms": 6736,
+          "ttfb_ms": 6989,
+          "total_ms": 6996,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":927,\"output\":28,\"cached\":0,\"reasoning\":0,\"costTable\":0.0006980300000000001,\"costReported\":0.00069803,\"ms\":1214.6945409999998,\"ttftMs\":1117.451458,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2232,\"output\":1942,\"cached\":0,\"reasoning\":1871,\"costTable\":0.00807302,\"costReported\":0.00807302,\"ms\":6814.934416,\"ttftMs\":6735.5175,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.0006980300000000001,
-        "extract": 0.00038720000000000003
+        "reply": 0.00807302,
+        "extract": 0.00010888
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 2232,
+          "cached": 0
+        },
+        "extract": {
+          "input": 3940,
+          "cached": 3568
+        }
       },
       "judgeCostUsd": 0,
-      "costUsd": 0.0010852300000000002,
+      "costUsd": 0.0081819,
       "passed": true,
-      "at": "2026-11-05T20:40:40.844Z"
+      "at": "2026-11-05T22:58:31.593Z"
     },
     {
       "name": "short-correction",
@@ -72,24 +83,25 @@
         {
           "ask": "wait when am I meeting Sam again?",
           "gold": "7 (it was moved from 6 to 7)",
-          "answer": "Tomorrow at 7, you said he's stuck at work",
+          "answer": "tomorrow at 7pm",
           "label": "correct",
-          "reason": "The reply gives the updated time of 7 tomorrow, which matches the gold.",
-          "ttftMs": 660,
-          "ttfbMs": 1205,
-          "totalMs": 1205
+          "reason": "The reply gives 7pm tomorrow, which matches the updated time in the gold.",
+          "ttftMs": 982,
+          "ttfbMs": 1126,
+          "totalMs": 1126
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] a: meeting Sam for coffee tomorrow at 6",
-        "[2026-11-04 15:00:03] bot → a: (reacted ☕)",
+        "[2026-11-04 15:00:03] bot → a: hey, i'm your assistant. i remember what you tell me across days, set reminders when you name a time, read photos and voice notes, check links, look things up online when needed, and forget anything on request.",
+        "[2026-11-04 15:00:05] bot → a: got it, coffee with sam tomorrow at 6. need a reminder?",
         "[2026-11-04 15:02:00] a: actually make it 7, he's stuck at work",
         "[2026-11-04 15:02:03] bot → a: (reacted 👍)",
-        "[2026-11-04 15:02:03] bot → a: Got it, moved to 7. Sam's work life strikes again 😅",
+        "[2026-11-04 15:02:03] bot → a: got it, 7pm with sam instead. hope his work lets up soon",
         "[2026-11-04 15:10:00] a: wait when am I meeting Sam again?",
-        "[2026-11-04 15:10:03] bot → a: (reacted ☕)",
-        "[2026-11-04 15:10:03] bot → a: Tomorrow at 7, you said he's stuck at work"
+        "[2026-11-04 15:10:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:10:03] bot → a: tomorrow at 7pm"
       ],
       "turns": [
         {
@@ -97,16 +109,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 198,
-          "ttft_ms": 605,
-          "ttfb_ms": null,
-          "total_ms": 851,
+          "retrieval_ms": 127,
+          "ttft_ms": 3296,
+          "ttfb_ms": 3503,
+          "total_ms": 3511,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 0,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":882,\"output\":7,\"cached\":832,\"reasoning\":0,\"costTable\":0.00018117000000000003,\"costReported\":0.00018117,\"ms\":652.897958,\"ttftMs\":604.5419999999999,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2187,\"output\":913,\"cached\":0,\"reasoning\":847,\"costTable\":0.00453488,\"costReported\":0.00453488,\"ms\":3384.786209,\"ttftMs\":3296.474459000001,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -114,16 +126,16 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 758,
-          "ttft_ms": 453,
-          "ttfb_ms": 1395,
-          "total_ms": 1395,
+          "retrieval_ms": 259,
+          "ttft_ms": 2104,
+          "ttfb_ms": 2443,
+          "total_ms": 2444,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":965,\"output\":24,\"cached\":704,\"reasoning\":0,\"costTable\":0.00035709,\"costReported\":0.00035709,\"ms\":635.6736659999997,\"ttftMs\":452.5948330000001,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":4708,\"output\":207,\"cached\":4256,\"reasoning\":154,\"costTable\":0.0016380700000000002,\"costReported\":0.0016380700000000002,\"ms\":2181.946,\"ttftMs\":2103.760957999999,\"finishReason\":\"stop\"}",
           "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\"]"
         },
         {
@@ -131,27 +143,37 @@
           "id": 3,
           "started_at": 1793805003000,
           "wait_ms": 3000,
-          "retrieval_ms": 388,
-          "ttft_ms": 660,
-          "ttfb_ms": 1205,
-          "total_ms": 1205,
+          "retrieval_ms": 118,
+          "ttft_ms": 982,
+          "ttfb_ms": 1126,
+          "total_ms": 1126,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1056,\"output\":19,\"cached\":704,\"reasoning\":0,\"costTable\":0.00039919,\"costReported\":0.00039919,\"ms\":816.0012079999997,\"ttftMs\":660.2838329999995,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Coffee with Sam on 2026-11-05 18:00\",\"Coffee with Sam on 2026-11-05 19:00\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2269,\"output\":165,\"cached\":1984,\"reasoning\":151,\"costTable\":0.0010455,\"costReported\":0.0010455,\"ms\":1006.1286670000009,\"ttftMs\":981.6428750000014,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.00093745,
-        "extract": 0.0012464
+        "reply": 0.0072184499999999995,
+        "extract": 0.00048214
       },
-      "judgeCostUsd": 0.003972,
-      "costUsd": 0.00218385,
+      "tokensByJob": {
+        "reply": {
+          "input": 9164,
+          "cached": 6240
+        },
+        "extract": {
+          "input": 11590,
+          "cached": 10704
+        }
+      },
+      "judgeCostUsd": 0.002222,
+      "costUsd": 0.007700589999999999,
       "passed": true,
-      "at": "2026-11-05T20:40:53.027Z"
+      "at": "2026-11-05T22:58:47.653Z"
     },
     {
       "name": "short-like-i-said",
@@ -160,32 +182,34 @@
         {
           "ask": "ok so like I said, which colour am I going with? need to tell the shop",
           "gold": "teal",
-          "answer": "[2026-11-04 10:10] teal! you told me earlier",
+          "answer": "teal. you said it at 10:00 this morning",
           "label": "correct",
           "reason": "string checks passed",
-          "ttftMs": 707,
-          "ttfbMs": 1653,
-          "totalMs": 1653
+          "ttftMs": 1452,
+          "ttfbMs": 1735,
+          "totalMs": 1735
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] a: repainting the bedroom this weekend, going with teal",
-        "[2026-11-04 15:00:03] bot → a: (reacted ❤️)",
-        "[2026-11-04 15:00:03] bot → a: ooh teal's a great choice, so calming\n\nyou doing it yourself or roping someone in to help?",
+        "[2026-11-04 15:00:03] bot → a: (reacted 🎨)",
+        "[2026-11-04 15:00:03] bot → a: hey i'm your personal assistant, i remember what you tell me across days, set reminders, read photos and voice notes, check links, look stuff up when needed, and forget anything on request",
+        "[2026-11-04 15:00:05] bot → a: teal sounds bold for a bedroom, you excited for the weekend",
         "[2026-11-04 15:01:00] a: the landlord said it's fine as long as I paint it back before I move out",
         "[2026-11-04 15:01:03] bot → a: (reacted 👍)",
-        "[2026-11-04 15:01:03] bot → a: [2026-11-04 10:01] fair trade for a weekend of good vibes\n\ngot all the supplies ready?",
+        "[2026-11-04 15:01:03] bot → a: nicer than a hard no. enjoy the teal while youre there",
         "[2026-11-04 15:03:00] a: also need new curtains",
-        "[2026-11-04 15:03:03] bot → a: (reacted 🛍️)",
-        "[2026-11-04 15:03:03] bot → a: [2026-11-04 10:04]\nwhat color are you thinking? something to pop against the teal or keep it muted?",
+        "[2026-11-04 15:03:03] bot → a: (reacted 🪟)",
+        "[2026-11-04 15:03:03] bot → a: thinking something to go with the teal or keeping it neutral?",
         "[2026-11-04 15:05:00] a: something light, linen maybe",
-        "[2026-11-04 15:05:03] bot → a: (reacted ❤️)",
-        "[2026-11-04 15:05:03] bot → a: oh linen would be gorgeous with teal, keeps it airy\n\nyou ordering online or planning a store run?",
+        "[2026-11-04 15:05:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:05:03] bot → a: linen would look great with teal, softens the whole room. already hunting or waiting til after the paint's up?",
         "[2026-11-04 15:07:00] a: and the hardware store closes at 5 on saturday which is annoying",
-        "[2026-11-04 15:07:03] bot → a: [2026-11-04 10:07] [2026-11-04 10:08]\noof that tightens things up, hope youve got saturday morning free\n\ndefinitely grab paint first thing so youre not stressed about it",
+        "[2026-11-04 15:07:03] bot → a: early close on a saturday is rough, gonna have to get there early if you need anything for the paint job",
         "[2026-11-04 15:10:00] a: ok so like I said, which colour am I going with? need to tell the shop",
-        "[2026-11-04 15:10:03] bot → a: [2026-11-04 10:10] teal! you told me earlier"
+        "[2026-11-04 15:10:03] bot → a: (reacted 🎨)",
+        "[2026-11-04 15:10:03] bot → a: teal. you said it at 10:00 this morning"
       ],
       "turns": [
         {
@@ -193,16 +217,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 276,
-          "ttft_ms": 561,
-          "ttfb_ms": 1095,
-          "total_ms": 1095,
+          "retrieval_ms": 158,
+          "ttft_ms": 7810,
+          "ttfb_ms": 8036,
+          "total_ms": 8066,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":884,\"output\":31,\"cached\":832,\"reasoning\":0,\"costTable\":0.00026431,\"costReported\":0.00026431,\"ms\":819.2507910000004,\"ttftMs\":561.0657499999998,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2189,\"output\":1517,\"cached\":2112,\"reasoning\":1455,\"costTable\":0.005539820000000001,\"costReported\":0.00553982,\"ms\":7906.811500000003,\"ttftMs\":7809.961833000001,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -210,95 +234,105 @@
           "id": 2,
           "started_at": 1793804463000,
           "wait_ms": 3000,
-          "retrieval_ms": 516,
-          "ttft_ms": 538,
-          "ttfb_ms": 1350,
-          "total_ms": 1350,
+          "retrieval_ms": 218,
+          "ttft_ms": 3027,
+          "ttfb_ms": 3260,
+          "total_ms": 3261,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1024,\"output\":35,\"cached\":704,\"reasoning\":0,\"costTable\":0.00043295000000000003,\"costReported\":0.00043295,\"ms\":832.7160409999997,\"ttftMs\":538.3216250000005,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07 to 2026-11-08) in teal\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2258,\"output\":488,\"cached\":1920,\"reasoning\":467,\"costTable\":0.0021717800000000003,\"costReported\":0.00217178,\"ms\":3040.8573749999996,\"ttftMs\":3027.0840000000026,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
         },
         {
           "contact": "a",
           "id": 3,
           "started_at": 1793804583000,
           "wait_ms": 3000,
-          "retrieval_ms": 463,
-          "ttft_ms": 721,
-          "ttfb_ms": 2164,
-          "total_ms": 2165,
+          "retrieval_ms": 311,
+          "ttft_ms": 1656,
+          "ttfb_ms": 1999,
+          "total_ms": 1999,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1137,\"output\":37,\"cached\":0,\"reasoning\":0,\"costTable\":0.00086522,\"costReported\":0.00086522,\"ms\":1700.8358750000007,\"ttftMs\":721.1515829999989,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Landlord allows the bedroom repaint on condition it is painted back before moving out\",\"Repainting the bedroom this weekend (2026-11-07 to 2026-11-08) in teal\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2379,\"output\":245,\"cached\":1920,\"reasoning\":224,\"costTable\":0.0014218000000000002,\"costReported\":0.0014218,\"ms\":1687.0296250000029,\"ttftMs\":1656.1744590000017,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07; landlord allows it as long as the walls are painted back before moving out\",\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
         },
         {
           "contact": "a",
           "id": 4,
           "started_at": 1793804703000,
           "wait_ms": 3000,
-          "retrieval_ms": 364,
-          "ttft_ms": 664,
-          "ttfb_ms": 2204,
-          "total_ms": 2204,
+          "retrieval_ms": 227,
+          "ttft_ms": 934,
+          "ttfb_ms": 1199,
+          "total_ms": 1199,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1215,\"output\":30,\"cached\":736,\"reasoning\":0,\"costTable\":0.00052405,\"costReported\":0.00052405,\"ms\":1839.7702499999978,\"ttftMs\":664.2673749999994,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07 to 2026-11-08) in teal\",\"Landlord allows the bedroom repaint on condition it is painted back before moving out\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2439,\"output\":85,\"cached\":1952,\"reasoning\":52,\"costTable\":0.0008992000000000001,\"costReported\":0.0008992,\"ms\":970.6400409999987,\"ttftMs\":934.3724159999983,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\",\"Repainting the bedroom teal on the weekend of 2026-11-07; landlord allows it as long as the walls are painted back before moving out\"]"
         },
         {
           "contact": "a",
           "id": 5,
           "started_at": 1793804823000,
           "wait_ms": 3000,
-          "retrieval_ms": 562,
-          "ttft_ms": 677,
-          "ttfb_ms": 1654,
-          "total_ms": 1654,
+          "retrieval_ms": 218,
+          "ttft_ms": 2575,
+          "ttfb_ms": 2898,
+          "total_ms": 2898,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1293,\"output\":53,\"cached\":736,\"reasoning\":0,\"costTable\":0.0006531800000000001,\"costReported\":0.00065318,\"ms\":1089.643583000001,\"ttftMs\":676.8585410000014,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07 to 2026-11-08) in teal\",\"Landlord allows the bedroom repaint on condition it is painted back before moving out\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2519,\"output\":476,\"cached\":2112,\"reasoning\":452,\"costTable\":0.0022045100000000002,\"costReported\":0.00220451,\"ms\":2677.9847079999963,\"ttftMs\":2575.291707999997,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07\",\"Repainting the bedroom teal on the weekend of 2026-11-07; landlord allows it as long as the walls are painted back before moving out\"]"
         },
         {
           "contact": "a",
           "id": 6,
           "started_at": 1793805003000,
           "wait_ms": 3000,
-          "retrieval_ms": 561,
-          "ttft_ms": 707,
-          "ttfb_ms": 1653,
-          "total_ms": 1653,
+          "retrieval_ms": 226,
+          "ttft_ms": 1452,
+          "ttfb_ms": 1735,
+          "total_ms": 1735,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1399,\"output\":19,\"cached\":896,\"reasoning\":0,\"costTable\":0.00052614,\"costReported\":0.00052614,\"ms\":1091.4309159999975,\"ttftMs\":706.755624999998,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Repainting the bedroom this weekend (2026-11-07 to 2026-11-08) in teal\",\"Landlord allows the bedroom repaint on condition it is painted back before moving out\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2596,\"output\":264,\"cached\":2112,\"reasoning\":242,\"costTable\":0.0015316400000000001,\"costReported\":0.00153164,\"ms\":1506.9944160000014,\"ttftMs\":1451.616541000003,\"finishReason\":\"stop\"}",
+          "recalled": "[\"Repainting the bedroom teal on the weekend of 2026-11-07; landlord allows it as long as the walls are painted back before moving out\",\"Repainting the bedroom teal on the weekend of 2026-11-07\"]"
         }
       ],
       "costByJob": {
-        "reply": 0.0032658500000000003,
-        "extract": 0.0024962000000000005
+        "reply": 0.013768750000000001,
+        "extract": 0.0011691800000000001
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 14380,
+          "cached": 12128
+        },
+        "extract": {
+          "input": 23619,
+          "cached": 21408
+        }
       },
       "judgeCostUsd": 0,
-      "costUsd": 0.005762050000000001,
+      "costUsd": 0.014937930000000002,
       "passed": true,
-      "at": "2026-11-05T20:41:11.054Z"
+      "at": "2026-11-05T22:59:19.846Z"
     },
     {
       "name": "short-photo-then-question",
@@ -307,19 +341,20 @@
         {
           "ask": "what colour is it?",
           "gold": "red",
-          "answer": "it’s a solid bright red, like pure RGB red haha you testing me?",
+          "answer": "hi, i'm your personal assistant. i remember things across days, set reminders, read photos and links, listen to voice notes, look stuff up on the web, and forget anything on request\nred",
           "label": "correct",
-          "reason": "The reply says the colour is red, which matches the gold; the extra description is only an embellishment of the same fact.",
-          "ttftMs": 482,
-          "ttfbMs": 857,
-          "totalMs": 857
+          "reason": "The reply says red, matching the gold; the self-introduction before it is just extra filler.",
+          "ttftMs": 4875,
+          "ttfbMs": 5073,
+          "totalMs": 5079
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] a: [photo photo.jpg] look",
         "[2026-11-04 15:00:01] a: what colour is it?",
-        "[2026-11-04 15:00:04] bot → a: it’s a solid bright red, like pure RGB red haha you testing me?"
+        "[2026-11-04 15:00:04] bot → a: hi, i'm your personal assistant. i remember things across days, set reminders, read photos and links, listen to voice notes, look stuff up on the web, and forget anything on request",
+        "[2026-11-04 15:00:06] bot → a: red"
       ],
       "turns": [
         {
@@ -327,27 +362,37 @@
           "id": 1,
           "started_at": 1793804404000,
           "wait_ms": 3000,
-          "retrieval_ms": 231,
-          "ttft_ms": 482,
-          "ttfb_ms": 857,
-          "total_ms": 857,
+          "retrieval_ms": 126,
+          "ttft_ms": 4875,
+          "ttfb_ms": 5073,
+          "total_ms": 5079,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1020,\"output\":22,\"cached\":832,\"reasoning\":0,\"costTable\":0.00032201999999999996,\"costReported\":0.00032202,\"ms\":625.7599590000027,\"ttftMs\":481.79475000000093,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2325,\"output\":1198,\"cached\":2112,\"reasoning\":1150,\"costTable\":0.004540430000000001,\"costReported\":0.00454043,\"ms\":4952.913124999999,\"ttftMs\":4874.503040999996,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.00032201999999999996,
-        "extract": 0.0004069
+        "reply": 0.004540430000000001,
+        "extract": 0.00018818
       },
-      "judgeCostUsd": 0.003516,
-      "costUsd": 0.00072892,
+      "tokensByJob": {
+        "reply": {
+          "input": 2325,
+          "cached": 2112
+        },
+        "extract": {
+          "input": 4003,
+          "cached": 3568
+        }
+      },
+      "judgeCostUsd": 0.001394,
+      "costUsd": 0.00472861,
       "passed": true,
-      "at": "2026-11-05T20:41:15.359Z"
+      "at": "2026-11-05T22:59:29.714Z"
     },
     {
       "name": "short-quoted-reply",
@@ -356,12 +401,12 @@
         {
           "ask": "how about this one?",
           "gold": "pizza: the option the person quoted (step 1), not sushi; the reply treats pizza as the one being asked about",
-          "answer": "pizza's always a good call. you thinking delivery or making it at home",
+          "answer": "pizza it is. any place in mind or doing delivery?",
           "label": "correct",
-          "reason": "Reply treats pizza as the option being asked about, matching the gold.",
-          "ttftMs": 562,
-          "ttfbMs": 1373,
-          "totalMs": 1373
+          "reason": "The reply treats pizza as the option being asked about, which matches the gold.",
+          "ttftMs": 1123,
+          "ttfbMs": 1649,
+          "totalMs": 1649
         }
       ],
       "checks": [],
@@ -369,9 +414,11 @@
         "[2026-11-04 15:00:00] a: dinner options tonight. A: pizza",
         "[2026-11-04 15:00:02] a: B: sushi",
         "[2026-11-04 15:00:05] bot → a: (reacted 🤔)",
-        "[2026-11-04 15:00:05] bot → a: both solid choices\n\npizza's cozy and easy, sushi feels more like a treat\n\nwhat kind of mood are you in tonight",
+        "[2026-11-04 15:00:05] bot → a: Hey! I'm your texting assistant. I remember what you tell me, set reminders, look things up, and forget anything on request.",
+        "[2026-11-04 15:00:07] bot → a: Pizza for comfort, sushi if you want something lighter. What's your mood tonight?",
         "[2026-11-04 15:01:00] a: (replying to step 1) how about this one?",
-        "[2026-11-04 15:01:03] bot → a: pizza's always a good call. you thinking delivery or making it at home"
+        "[2026-11-04 15:01:03] bot → a: (reacted 👍)",
+        "[2026-11-04 15:01:03] bot → a: pizza it is. any place in mind or doing delivery?"
       ],
       "turns": [
         {
@@ -379,16 +426,16 @@
           "id": 1,
           "started_at": 1793804405000,
           "wait_ms": 3000,
-          "retrieval_ms": 209,
-          "ttft_ms": 488,
-          "ttfb_ms": 1089,
-          "total_ms": 1089,
+          "retrieval_ms": 202,
+          "ttft_ms": 4977,
+          "ttfb_ms": 5181,
+          "total_ms": 5217,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":899,\"output\":34,\"cached\":832,\"reasoning\":0,\"costTable\":0.00028429,\"costReported\":0.00028429,\"ms\":879.3199999999997,\"ttftMs\":487.778916999996,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2204,\"output\":1194,\"cached\":2112,\"reasoning\":1141,\"costTable\":0.004448140000000001,\"costReported\":0.00444814,\"ms\":5014.623624999993,\"ttftMs\":4977.039999999994,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -396,27 +443,37 @@
           "id": 2,
           "started_at": 1793804463000,
           "wait_ms": 3000,
-          "retrieval_ms": 202,
-          "ttft_ms": 562,
-          "ttfb_ms": 1373,
-          "total_ms": 1373,
+          "retrieval_ms": 386,
+          "ttft_ms": 1123,
+          "ttfb_ms": 1649,
+          "total_ms": 1649,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":989,\"output\":21,\"cached\":704,\"reasoning\":0,\"costTable\":0.00036246000000000005,\"costReported\":0.00036246,\"ms\":1169.331250000003,\"ttftMs\":561.9822080000013,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2220,\"output\":98,\"cached\":1984,\"reasoning\":77,\"costTable\":0.00078518,\"costReported\":0.00078518,\"ms\":1263.596875000003,\"ttftMs\":1123.3884169999947,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.00064675,
-        "extract": 0.0007509000000000001
+        "reply": 0.0052333200000000005,
+        "extract": 0.00015016
       },
-      "judgeCostUsd": 0.003852,
-      "costUsd": 0.00139765,
+      "tokensByJob": {
+        "reply": {
+          "input": 4424,
+          "cached": 4096
+        },
+        "extract": {
+          "input": 7734,
+          "cached": 7136
+        }
+      },
+      "judgeCostUsd": 0.001942,
+      "costUsd": 0.00538348,
       "passed": true,
-      "at": "2026-11-05T20:41:21.158Z"
+      "at": "2026-11-05T22:59:39.829Z"
     },
     {
       "name": "short-second-one",
@@ -425,22 +482,21 @@
         {
           "ask": "ooh the second one. would that suit a girl?",
           "gold": "talks about the second of the three names the assistant suggested in its previous reply (by name)",
-          "answer": "[2026-11-04 10:02] Cinder? Totally works for a girl — it's got that cozy fireplace vibe. What does she look like when she's sleeping?",
+          "answer": "Slate totally works for a girl. It has that cool, understated vibe. Strong but not super masculine.",
           "label": "correct",
-          "reason": "The reply names Cinder, which is the second suggestion on the boy list and the natural reading of 'the second one', and says whether it suits a girl.",
-          "ttftMs": 465,
-          "ttfbMs": 1383,
-          "totalMs": 1383
+          "reason": "The reply names Slate, which is the second of the three suggested names, and answers whether it suits a girl.",
+          "ttftMs": 910,
+          "ttfbMs": 1082,
+          "totalMs": 1082
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] a: give me 3 name ideas for my new grey kitten",
-        "[2026-11-04 15:00:03] bot → a: (reacted 🐱)",
-        "[2026-11-04 15:00:03] bot → a: Ooh congrats on the new kitten! Is it a boy or girl?\n\nBoy: Ash, Cinder, Sterling\nGirl: Dove, Misty, Pearl\n\nAny of those feel right?",
+        "[2026-11-04 15:00:03] bot → a: Hey, I'm a personal assistant that remembers things across our chats. I can set reminders, read photos and voice notes, look stuff up when needed, and forget anything on request.",
+        "[2026-11-04 15:00:05] bot → a: Ash, Slate, and Nimbus. All good grey kitten energy.",
         "[2026-11-04 15:02:00] a: ooh the second one. would that suit a girl?",
-        "[2026-11-04 15:02:03] bot → a: (reacted 💙)",
-        "[2026-11-04 15:02:03] bot → a: [2026-11-04 10:02] Cinder? Totally works for a girl — it's got that cozy fireplace vibe. What does she look like when she's sleeping?"
+        "[2026-11-04 15:02:03] bot → a: Slate totally works for a girl. It has that cool, understated vibe. Strong but not super masculine."
       ],
       "turns": [
         {
@@ -448,16 +504,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 275,
-          "ttft_ms": 541,
-          "ttfb_ms": 1270,
-          "total_ms": 1270,
+          "retrieval_ms": 120,
+          "ttft_ms": 3749,
+          "ttfb_ms": 3910,
+          "total_ms": 3941,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":885,\"output\":48,\"cached\":832,\"reasoning\":0,\"costTable\":0.00032293,\"costReported\":0.00032293,\"ms\":994.4225409999999,\"ttftMs\":540.7327500000029,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2190,\"output\":889,\"cached\":2112,\"reasoning\":832,\"costTable\":0.00339899,\"costReported\":0.00339899,\"ms\":3819.546583000003,\"ttftMs\":3749.2470830000093,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -465,27 +521,37 @@
           "id": 2,
           "started_at": 1793804523000,
           "wait_ms": 3000,
-          "retrieval_ms": 520,
-          "ttft_ms": 465,
-          "ttfb_ms": 1383,
-          "total_ms": 1383,
+          "retrieval_ms": 145,
+          "ttft_ms": 910,
+          "ttfb_ms": 1082,
+          "total_ms": 1082,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1007,\"output\":44,\"cached\":704,\"reasoning\":0,\"costTable\":0.00045259000000000006,\"costReported\":0.00045259,\"ms\":862.3923330000034,\"ttftMs\":465.4473330000037,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Has a new grey kitten\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2198,\"output\":108,\"cached\":1984,\"reasoning\":81,\"costTable\":0.0008049800000000001,\"costReported\":0.00080498,\"ms\":936.757042000012,\"ttftMs\":909.7069590000028,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.00077552,
-        "extract": 0.0008121000000000001
+        "reply": 0.0042039700000000004,
+        "extract": 0.00016346
       },
-      "judgeCostUsd": 0.004504,
-      "costUsd": 0.00158762,
+      "tokensByJob": {
+        "reply": {
+          "input": 4388,
+          "cached": 4096
+        },
+        "extract": {
+          "input": 7767,
+          "cached": 7136
+        }
+      },
+      "judgeCostUsd": 0.002042,
+      "costUsd": 0.00436743,
       "passed": true,
-      "at": "2026-11-05T20:41:29.403Z"
+      "at": "2026-11-05T22:59:48.529Z"
     },
     {
       "name": "short-that-place",
@@ -494,24 +560,24 @@
         {
           "ask": "my sister wants to go, remind me where that place is so I can text her",
           "gold": "the cafe on Abay street (green door)",
-          "answer": "[2026-11-04 10:03] [2026-11-04 10:03]\n\nit's on Abay street, green door — can't miss it\n\ntell her to try the flat white (:",
+          "answer": "the one with the green door on Abay street",
           "label": "correct",
           "reason": "string checks passed",
-          "ttftMs": 510,
-          "ttfbMs": 1493,
-          "totalMs": 1493
+          "ttftMs": 909,
+          "ttfbMs": 1043,
+          "totalMs": 1043
         }
       ],
       "checks": [],
       "transcript": [
         "[2026-11-04 15:00:00] a: found a great little cafe on Abay street yesterday, the one with the green door",
-        "[2026-11-04 15:00:03] bot → a: (reacted ☕️)",
-        "[2026-11-04 15:00:03] bot → a: Oh nice, love finding spots like that. Was the coffee good or was it more about the vibe?",
+        "[2026-11-04 15:00:03] bot → a: (reacted ❤️)",
+        "[2026-11-04 15:00:03] bot → a: Hey, I'm your personal assistant. I remember what you tell me across days, can set reminders at a time you name, read photos and voice notes, look things up online, and forget anything on request.",
+        "[2026-11-04 15:00:05] bot → a: Love a good cafe find. How was the coffee?",
         "[2026-11-04 15:01:00] a: their flat white is unreal",
-        "[2026-11-04 15:01:03] bot → a: (reacted ❤️)",
-        "[2026-11-04 15:01:03] bot → a: [2026-11-04 10:01] that's the real test of a cafe gonna have to get over there soon\n\nare they friendly or one of those too-cool-for-you places?",
+        "[2026-11-04 15:01:03] bot → a: react: #2 ❤️\n\nneed to go back and try it next time you're around",
         "[2026-11-04 15:03:00] a: my sister wants to go, remind me where that place is so I can text her",
-        "[2026-11-04 15:03:03] bot → a: [2026-11-04 10:03] [2026-11-04 10:03]\n\nit's on Abay street, green door — can't miss it\n\ntell her to try the flat white (:"
+        "[2026-11-04 15:03:03] bot → a: the one with the green door on Abay street"
       ],
       "turns": [
         {
@@ -519,16 +585,16 @@
           "id": 1,
           "started_at": 1793804403000,
           "wait_ms": 3000,
-          "retrieval_ms": 177,
-          "ttft_ms": 499,
-          "ttfb_ms": 1028,
-          "total_ms": 1028,
+          "retrieval_ms": 126,
+          "ttft_ms": 4019,
+          "ttfb_ms": 4227,
+          "total_ms": 4235,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
-          "bubbles": 1,
+          "bubbles": 2,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":891,\"output\":30,\"cached\":832,\"reasoning\":0,\"costTable\":0.00026545000000000003,\"costReported\":0.00026545,\"ms\":850.7119590000002,\"ttftMs\":499.4586249999993,\"finishReason\":\"stop\"}",
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2196,\"output\":939,\"cached\":2112,\"reasoning\":876,\"costTable\":0.0035733900000000005,\"costReported\":0.00357339,\"ms\":4107.800750000009,\"ttftMs\":4018.5467500000086,\"finishReason\":\"stop\"}",
           "recalled": "[]"
         },
         {
@@ -536,44 +602,54 @@
           "id": 2,
           "started_at": 1793804463000,
           "wait_ms": 3000,
-          "retrieval_ms": 544,
-          "ttft_ms": 512,
-          "ttfb_ms": 1537,
-          "total_ms": 1538,
+          "retrieval_ms": 162,
+          "ttft_ms": 887,
+          "ttfb_ms": 1214,
+          "total_ms": 1214,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1010,\"output\":50,\"cached\":704,\"reasoning\":0,\"costTable\":0.000475,\"costReported\":0.000475,\"ms\":992.0819169999959,\"ttftMs\":512.0006670000002,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Found a favourite cafe on Abay street with a green door\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2207,\"output\":106,\"cached\":2016,\"reasoning\":74,\"costTable\":0.00078801,\"costReported\":0.00078801,\"ms\":1051.5966669999907,\"ttftMs\":887.4445419999975,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
         },
         {
           "contact": "a",
           "id": 3,
           "started_at": 1793804583000,
           "wait_ms": 3000,
-          "retrieval_ms": 620,
-          "ttft_ms": 510,
-          "ttfb_ms": 1493,
-          "total_ms": 1493,
+          "retrieval_ms": 126,
+          "ttft_ms": 909,
+          "ttfb_ms": 1043,
+          "total_ms": 1043,
           "model": "moonshotai/kimi-k2.6",
           "provider": "CoreWeave",
           "bubbles": 1,
           "regenerated": 0,
           "error": null,
-          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":1111,\"output\":46,\"cached\":832,\"reasoning\":0,\"costTable\":0.00046301,\"costReported\":0.00046301,\"ms\":871.7477910000016,\"ttftMs\":509.8889160000035,\"finishReason\":\"stop\"}",
-          "recalled": "[\"Found a favourite cafe on Abay street with a green door\"]"
+          "usage": "{\"job\":\"reply\",\"model\":\"moonshotai/kimi-k2.6\",\"provider\":\"CoreWeave\",\"input\":2279,\"output\":109,\"cached\":1984,\"reasoning\":98,\"costTable\":0.00086104,\"costReported\":0.00086104,\"ms\":914.567166000008,\"ttftMs\":909.2414580000041,\"finishReason\":\"stop\"}",
+          "recalled": "[]"
         }
       ],
       "costByJob": {
-        "reply": 0.00120346,
-        "extract": 0.0012054000000000001
+        "reply": 0.00522244,
+        "extract": 0.00029384
+      },
+      "tokensByJob": {
+        "reply": {
+          "input": 6682,
+          "cached": 6112
+        },
+        "extract": {
+          "input": 11587,
+          "cached": 10704
+        }
       },
       "judgeCostUsd": 0,
-      "costUsd": 0.00240886,
+      "costUsd": 0.00551628,
       "passed": true,
-      "at": "2026-11-05T20:41:36.391Z"
+      "at": "2026-11-05T22:59:58.957Z"
     }
   ]
 }

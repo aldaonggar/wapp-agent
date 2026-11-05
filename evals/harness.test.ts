@@ -288,15 +288,15 @@ test("evalConfig() builds the tag from the EVAL_* env", () => {
   for (const k of ["REPLY", "EXTRACT", "DERIVE", "EFFORT", "MEMORY", "RETRIEVAL", "FILTER"]) vi.stubEnv(`EVAL_${k}`, ""); // npm run eval sets them
   expect(evalConfig()).toMatchObject({ memory: true, retrieval: "hybrid", tag: "reply=deepseek_deepseek-v4.1-flash,memory=1,retrieval=hybrid" });
   vi.stubEnv("EVAL_REPLY", "z-ai/glm-5.2");
-  vi.stubEnv("EVAL_EXTRACT", "openai/gpt-6-luna");
+  vi.stubEnv("EVAL_EXTRACT", "anthropic/claude-haiku-5.5");
   vi.stubEnv("EVAL_EFFORT", "medium");
   vi.stubEnv("EVAL_MEMORY", "0");
   vi.stubEnv("EVAL_RETRIEVAL", "cosine");
   vi.stubEnv("EVAL_FILTER", "short");
   expect(evalConfig()).toEqual({
-    reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: undefined, effort: "medium", memory: false, retrieval: "cosine", filter: "short",
-    tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,extract=openai_gpt-6-luna,effort=medium",
-    models: { reply: "z-ai/glm-5.2", extract: "openai/gpt-6-luna", derive: JOBS.derive.default },
+    reply: "z-ai/glm-5.2", extract: "anthropic/claude-haiku-5.5", derive: undefined, effort: "medium", memory: false, retrieval: "cosine", filter: "short",
+    tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,extract=anthropic_claude-haiku-5.5,effort=medium",
+    models: { reply: "z-ai/glm-5.2", extract: "anthropic/claude-haiku-5.5", derive: JOBS.derive.default },
   });
   vi.stubEnv("EVAL_EXTRACT", JOBS.extract.default); // explicitly the default: no override, same tag and file as the default run
   expect(evalConfig()).toMatchObject({ extract: undefined, tag: "reply=z-ai_glm-5.2,memory=0,retrieval=cosine,effort=medium", models: { extract: JOBS.extract.default } });

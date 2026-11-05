@@ -25,8 +25,8 @@ export const JOBS = {
     compareByDefault: ["deepseek/deepseek-v4.1-flash", "moonshotai/kimi-k2.6", "z-ai/glm-5.2"],
   },
   vision: { default: "openai/gpt-6.1-terra", candidates: ["openai/gpt-6.1-terra", "anthropic/claude-sonnet-5.5"] },
-  // Measured 2026-11-05 (EVALS.md): haiku for extraction on reliability (flash's calls time out); v4-pro the cheapest of three insight models that tie.
-  extract: { default: "anthropic/claude-haiku-5.5", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
+  // Measured 2026-11-05 late evening with thinking on (EVALS.md): extraction candidates tie at 8/8 except haiku (7/8, a judge slip), luna is the cheapest; insight models: v4-pro 8/8 over two runs, sol 7/8, so v4-pro stays (sonnet ties it for less, one run).
+  extract: { default: "openai/gpt-6-luna", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
   derive: { default: "deepseek/deepseek-v4-pro", candidates: ["deepseek/deepseek-v4-pro", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5"] },
   judge: { default: "anthropic/claude-opus-5.5" as const },
 };
