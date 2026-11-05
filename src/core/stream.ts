@@ -33,6 +33,9 @@ function splitLong(text: string): string[] {
 
 // History lines are shown to the model as "[alias 2026-11-05 21:12] text"; some models copy the stamp into their own bubbles.
 const STAMP = /^\s*\[(?:[^\]\n]{0,40}\s)?\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}\]\s*/;
+// An em dash (or a spaced en dash) is the most recognisable machine tell in a chat; people type a comma.
+const DASH = /\s*\u2014\s*|\s+\u2013\s+/g;
+const untell = (s: string) => s.replace(DASH, ", ").replace(/^, /, "").replace(/, ([,.!?])/g, "$1");
 
 export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3): AsyncGenerator<ReplyEvent> {
   let tail = "";
@@ -50,7 +53,7 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
       quote = q[1];
       lines.shift();
     }
-    const parts = splitLong(lines.map((l) => l.replace(STAMP, "")).join("\n").trim());
+    const parts = splitLong(lines.map((l) => untell(l.replace(STAMP, ""))).join("\n").trim());
     if (parts.length) emitted++; // cap counts logical bubbles, not split pieces
     for (const [i, text] of parts.entries()) {
       yield quote && i === 0 ? { type: "bubble", text, quote } : { type: "bubble", text };
