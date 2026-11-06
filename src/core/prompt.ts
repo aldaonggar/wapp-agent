@@ -1,5 +1,6 @@
 import type { ModelMessage, SystemModelMessage, UserContent } from "ai";
 import { formatLocal } from "./db";
+import type { PageLine } from "./pages";
 import type { Reminder } from "./reminders";
 import type { MemoryHit, Snapshot } from "./types";
 
@@ -46,6 +47,7 @@ Looking things up
 Making pages
 - When a reply would be clearer as something they can open and scroll (a comparison, a plan, a list with structure, a mockup, a long summary, a recipe, anything with more than a few rows or sections), call make_page instead of writing a wall of bubbles. Brief it with everything the page needs, including what you know from memory that belongs on it; the page is built by another model that sees only your brief.
 - Its say line is one short sentence in your own voice and goes out before the page is built, so do not write it again. Then send the link in one short bubble and say in a few words what is on it. One page per turn.
+- If they ask to change, add to, fix or reorder something on a page you made, call make_page with that page's id (from the pages list) instead of making a new one. The link stays the same: tell them it is updated (sending the same link again is fine).
 - Not for short answers, and never to avoid answering. If it returns an error, say so in one line and answer in the chat instead.
 - To show a page they sent or you found, send_screenshot sends it as a picture; use it when they ask to see the page or when a picture says it better than a description.
 
@@ -100,7 +102,7 @@ const memoryLine = (m: MemoryHit) =>
 export function buildPrompt(input: {
   profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
   nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[]; memory?: boolean;
-  reminders?: Reminder[];
+  reminders?: Reminder[]; pages?: PageLine[];
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [
@@ -108,6 +110,7 @@ export function buildPrompt(input: {
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
     input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
+    input.pages?.length && `pages (last 7 days):\n${input.pages.map((p) => `- ${p.title} (id ${p.id}${p.total ? `, ${p.ticked} of ${p.total} ticked` : ""})`).join("\n")}`,
     input.memory && CONTROLS,
     input.history.length === 0 && INTRO,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,

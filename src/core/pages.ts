@@ -35,6 +35,21 @@ pre, code { font-family: ui-monospace, monospace; font-size: 0.95em; }
 pre { overflow-x: auto; padding: 0.75rem; border: 1px solid currentColor; }
 `;
 
+// The one script any page runs (hash-allowed in the CSP, injected at serve time for pages with checkboxes): saves the ticks, debounced.
+export const PAGE_SCRIPT = `let t;
+addEventListener("change", (e) => {
+  if (!e.target.matches("input[data-i]")) return;
+  clearTimeout(t);
+  t = setTimeout(() => {
+    const checked = [...document.querySelectorAll("input[data-i]")].filter((c) => c.checked).map((c) => +c.dataset.i);
+    fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ checked }), keepalive: true }).catch(() => {});
+  }, 300);
+});`;
+export const SCRIPT_HASH = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PAGE_SCRIPT)))));
+
+const BOX = /<input type="checkbox"(?: checked)?>/g;
+const countBoxes = (html: string) => html.match(BOX)?.length ?? 0;
+
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
 export const wrap = (title: string, content: string) => `<!doctype html>
@@ -82,17 +97,20 @@ export function sanitize(html: string): string {
   for (let s = html; ; ) { const n = once(s); if (n === s) return n; s = n; }
 }
 
-const dayCount = (db: Db, now: number) => db.all<{ n: number }>("SELECT COUNT(*) AS n FROM pages WHERE created_at > ?", now - 86_400_000)[0].n;
+const dayCount = (db: Db, now: number) => db.all<{ n: number }>("SELECT COUNT(*) AS n FROM pages WHERE created_at > ?1 OR updated_at > ?1", now - 86_400_000)[0].n;
 export const pagesLeftToday = (db: Db, now: number) => dayCount(db, now) < MAX_PAGES_PER_DAY;
 
 // 16 random bytes in base64url: 22 characters, 128 bits.
 const newId = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 
 /** One call to the page model, then sanitise, size-check and store. Errors come back as text the reply model can relay. */
-export async function buildPage(deps: Deps, title: string, brief: string): Promise<{ url: string; title: string } | { error: string }> {
+export async function buildPage(deps: Deps, title: string, brief: string, pageId?: string): Promise<{ url: string; title: string } | { error: string }> {
   const { llm, models, db, clock } = deps;
+  const prev = pageId === undefined ? undefined : db.all<{ source: string | null }>("SELECT source FROM pages WHERE id=?", pageId)[0];
+  if (pageId !== undefined && !prev) return { error: "no page with that id: make a new one instead" };
+  if (pageId !== undefined && !prev!.source) return { error: "that page was made before edits were possible: make a new one instead" };
   const r = await llm.text({
-    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: `Title: ${title}\n\nBrief:\n${brief}` }],
+    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: prev ? `Title: ${title}\n\nHere is the current page (Markdown):\n${prev.source}\n\nApply these changes and return the full updated page:\n${brief}` : `Title: ${title}\n\nBrief:\n${brief}` }],
     maxOutputTokens: PAGE_MAX_OUTPUT, reasoning: reasoningFor(models.page, EFFORT.page), sessionId: deps.contactKey, timeoutMs: PAGE_TIMEOUT_MS,
   });
   const text = r.text.trim().replace(/^```(?:markdown|md|html)?\s*\n?|\n?```\s*$/gi, ""); // some models fence the document anyway
@@ -102,10 +120,43 @@ export async function buildPage(deps: Deps, title: string, brief: string): Promi
   const html = wrap(title, content);
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > MAX_PAGE_BYTES) return { error: "the page came out too big (over 64 KB): ask for something shorter" };
-  const id = newId();
-  db.run("INSERT INTO pages(id, title, html, bytes, created_at) VALUES (?,?,?,?,?)", id, title, html, bytes, clock.now());
+  const id = pageId ?? newId();
+  if (prev) { // same id and link; ticks survive for checkboxes that still exist
+    const n = countBoxes(html), old = JSON.parse(db.all<{ state: string | null }>("SELECT state FROM pages WHERE id=?", id)[0].state ?? "[]") as number[];
+    db.run("UPDATE pages SET title=?, html=?, bytes=?, source=?, updated_at=?, state=? WHERE id=?", title, html, bytes, text, clock.now(), JSON.stringify(old.filter((i) => i < n)), id);
+  } else { // boxes the model wrote as "[x]" start ticked
+    const first = [...html.matchAll(BOX)].flatMap((m, i) => (m[0].endsWith(" checked>") ? [i] : []));
+    db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?,?,?,?,?,?,?)", id, title, html, bytes, clock.now(), text, JSON.stringify(first));
+  }
   return { url: `${deps.publicUrl}/p/${deps.contactKey}/${id}`, title };
 }
 
-export const getPage = (db: Db, id: string): { html: string; title: string } | null =>
-  db.all<{ html: string; title: string }>("SELECT html, title FROM pages WHERE id=?", id)[0] ?? null;
+const MAX_TICKS = 500;
+
+/** The page as served: every checkbox gets its data-i and the stored ticks; the saving script rides along when there are boxes. Content can hold neither (the cleaner strips both). */
+export function getPage(db: Db, id: string): { html: string; title: string } | null {
+  const r = db.all<{ html: string; title: string; state: string | null }>("SELECT html, title, state FROM pages WHERE id=?", id)[0];
+  if (!r) return null;
+  const on = new Set(JSON.parse(r.state ?? "[]") as number[]);
+  let i = 0;
+  const html = r.html.replace(BOX, () => `<input type="checkbox" data-i="${i}"${on.has(i++) ? " checked" : ""}>`);
+  const at = html.lastIndexOf("</body>");
+  return { html: i && at >= 0 ? `${html.slice(0, at)}<script>${PAGE_SCRIPT}</script>\n${html.slice(at)}` : html, title: r.title };
+}
+
+/** Store which checkboxes (by order of appearance) are ticked. False for an unknown page or indexes that are not whole numbers inside the page's checkbox count. */
+export function setPageState(db: Db, id: string, checked: number[]): boolean {
+  const r = db.all<{ html: string }>("SELECT html FROM pages WHERE id=?", id)[0];
+  if (!r || !Array.isArray(checked) || checked.length > MAX_TICKS) return false;
+  const n = countBoxes(r.html);
+  if (!checked.every((i) => Number.isInteger(i) && i >= 0 && i < n)) return false;
+  db.run("UPDATE pages SET state=? WHERE id=?", JSON.stringify([...new Set(checked)].sort((a, b) => a - b)), id);
+  return true;
+}
+
+export interface PageLine { id: string; title: string; ticked: number; total: number }
+/** Pages from the last 7 days, newest first (made or updated), for the prompt. One query. */
+export function recentPages(db: Db, now: number): PageLine[] {
+  return db.all<{ id: string; title: string; html: string; state: string | null }>("SELECT id, title, html, state FROM pages WHERE MAX(created_at, COALESCE(updated_at, 0)) > ? ORDER BY MAX(created_at, COALESCE(updated_at, 0)) DESC LIMIT 5", now - 7 * 86_400_000)
+    .map((r) => ({ id: r.id, title: r.title, ticked: (JSON.parse(r.state ?? "[]") as number[]).length, total: countBoxes(r.html) }));
+}

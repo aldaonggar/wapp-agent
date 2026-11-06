@@ -1,3 +1,4 @@
+import { SCRIPT_HASH } from "./core/pages";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { Inbound } from "./core/types";
 import worker from "./index";
@@ -111,9 +112,25 @@ test("GET /p/<key>/<id> serves the page with the locked-down headers; 404 for an
   expect(await ok.text()).toBe("<h1>hi</h1>");
   expect(Object.fromEntries(ok.headers)).toMatchObject({
     "content-type": "text/html; charset=utf-8",
-    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'",
-    "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
+    "content-security-policy": `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'`,
+    "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "no-store",
   });
   for (const path of [`/p/${KA}/${"B".repeat(22)}`, `/p/${KB}/${ID}`, `/p/${"c".repeat(64)}/${ID}`, `/p/short/${ID}`, `/p/${KA}/short`, `/p/${KA}/${ID}/x`]) expect([path, (await get(path)).status]).toEqual([path, 404]);
-  expect((await get(`/p/${KA}/${ID}`, "POST")).status).toBe(404);
+  expect((await get(`/p/${KA}/${ID}`, "PUT")).status).toBe(404);
+});
+
+test("POST /p/<key>/<id> stores ticks (204); bad JSON, wrong type, oversize and rejected state are 400; wrong key or id is 404", async () => {
+  const K = "a".repeat(64), ID = "A".repeat(22);
+  const saved: number[][] = [];
+  const env = { CONTACT: {
+    idFromString: (k: string) => { if (k !== K) throw new Error("invalid id"); return k; },
+    get: () => ({ page: async (id: string) => (id === ID ? { html: "", title: "" } : null), setPageState: async (_: string, c: number[]) => { if (c.some((i) => i > 2)) return false; saved.push(c); return true; } }),
+  } } as unknown as Env;
+  const post = (path: string, body: string, type = "application/json") => worker.fetch(new Request("https://x" + path, { method: "POST", body, headers: { "content-type": type } }), env, ctx);
+  const p = `/p/${K}/${ID}`;
+  expect((await post(p, '{"checked":[0,2]}')).status).toBe(204);
+  expect(saved).toEqual([[0, 2]]);
+  for (const [b, t] of [["{nope", "application/json"], ['{"checked":"x"}', "application/json"], ['{"checked":[9]}', "application/json"], ['{"checked":[0]}', "text/plain"], [JSON.stringify({ checked: [], pad: "x".repeat(5000) }), "application/json"]]) expect([b.slice(0, 12), (await post(p, b, t)).status]).toEqual([b.slice(0, 12), 400]);
+  expect((await post(`/p/${"b".repeat(64)}/${ID}`, '{"checked":[]}')).status).toBe(404);
+  expect((await post(`/p/${K}/${"B".repeat(22)}`, '{"checked":[]}')).status).toBe(404);
 });
