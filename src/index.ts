@@ -94,9 +94,9 @@ export default {
       if (!stub || !(await stub.page(pageLink[2]))) return new Response("not found", { status: 404 });
       if (!request.headers.get("content-type")?.startsWith("application/json")) return new Response("bad request", { status: 400 });
       const body = await request.text();
-      let d: { i?: unknown; checked?: unknown } = {};
+      let d: { i?: unknown; checked?: unknown; seq?: unknown } = {};
       try { if (body.length <= 200) d = (JSON.parse(body) ?? {}) as typeof d; } catch { /* bad JSON */ }
-      return typeof d.i === "number" && typeof d.checked === "boolean" && await stub.setPageState(pageLink[2], d.i, d.checked) ? new Response(null, { status: 204 }) : new Response("bad request", { status: 400 });
+      return typeof d.i === "number" && typeof d.checked === "boolean" && typeof d.seq === "number" && Number.isSafeInteger(d.seq) && d.seq >= 0 && await stub.setPageState(pageLink[2], d.i, d.checked, d.seq) ? new Response(null, { status: 204 }) : new Response("bad request", { status: 400 });
     }
     if (pageLink) {
       let page: { html: string; title: string } | null = null;
