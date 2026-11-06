@@ -3,7 +3,10 @@ export type ReplyEvent =
   | { type: "voice" } // the model asked for this reply to go out as a voice note
   | { type: "bubble"; text: string; quote?: string };
 
-const LIMIT = 4096;
+const LIMIT = 4096; // the transport's hard limit
+const SOFT = 350; // a bubble longer than this reads like an email: split at paragraph, else sentence, breaks
+const MAX_SOFT_PIECES = 6; // after that, only the hard limit splits (a wall of text stays a wall rather than a flood)
+const MIN_TAIL = 40; // never leave a dangling fragment
 
 // Exactly one emoji: a flag, or a pictograph with variation selectors / skin tones, ZWJ-joined to more.
 const EMOJI = /^(?:\p{Regional_Indicator}{2}|\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*(?:\u200D\p{Extended_Pictographic}[\u{FE0E}\u{FE0F}\p{Emoji_Modifier}]*)*)$/u;
@@ -15,16 +18,26 @@ function header(l: string): ReplyEvent | null {
   return EMOJI.test(emoji) ? { type: "react", target: m[1] ?? "", emoji } : null;
 }
 
-// Split at the last paragraph, else sentence, boundary before the limit.
-function splitLong(text: string): string[] {
+// Soft split at the last paragraph, else sentence, boundary before SOFT; hard split before LIMIT when nothing else works.
+function cutPoint(text: string, limit: number, hard: boolean): number {
+  const win = text.slice(0, limit);
+  const para = win.lastIndexOf("\n\n");
+  if (para > 0) return para;
+  const m = [...win.matchAll(/[.!?](?=\s)/g)].pop();
+  if (m) return m.index! + 1;
+  return hard ? (win.lastIndexOf(" ") > 0 ? win.lastIndexOf(" ") : limit) : -1;
+}
+
+export function splitLong(text: string): string[] {
   const out: string[] = [];
-  while (text.length > LIMIT) {
-    const win = text.slice(0, LIMIT);
-    let cut = win.lastIndexOf("\n\n");
-    if (cut <= 0) {
-      const m = [...win.matchAll(/[.!?](?=\s)/g)].pop();
-      cut = m ? m.index! + 1 : LIMIT;
+  for (;;) {
+    let cut = -1;
+    if (out.length < MAX_SOFT_PIECES - 1 && text.length > SOFT) { // chat-sized pieces first
+      cut = cutPoint(text, SOFT, false);
+      if (cut > 0 && text.length - cut < MIN_TAIL) cut = -1;
     }
+    if (cut <= 0 && text.length > LIMIT) cut = cutPoint(text, LIMIT, true); // then only the transport limit
+    if (cut <= 0) break;
     out.push(text.slice(0, cut).trim());
     text = text.slice(cut).trim();
   }
@@ -69,16 +82,19 @@ export async function* parseReply(chunks: AsyncIterable<string>, maxBubbles = 3)
       if (head && yes) yield { type: "voice" };
       return;
     }
-    const isHeader = /^\s*react:/i.test(l);
-    // A tool step makes the model write its header again: a react line before any bubble text is still the header.
-    if (!started || (isHeader && emitted === 0 && !cur.some((x) => x.trim()))) {
-      if (!l.trim()) return;
+    // A standalone header line is never bubble text, wherever a tool step made the model write it again;
+    // it counts as a reaction only before any bubble text.
+    if (/^\s*react:\s*(#\d+\s*|\d+\s+)?\S*\s*$/i.test(l)) {
       started = true;
-      if (isHeader) {
+      if (emitted === 0 && !cur.some((x) => x.trim())) {
         const r = header(l);
         if (r) yield r;
-        return;
       }
+      return;
+    }
+    if (!started) {
+      if (!l.trim()) return;
+      started = true;
     }
     if (l.trim() === "---") {
       if (emitted < maxBubbles - 1) yield* flush();

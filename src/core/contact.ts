@@ -168,7 +168,14 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, says = 0;
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, says = 0, sayText = "";
+    // Some models write their say line again after the tool step; it already went out.
+    const norm = (s: string) => s.trim().toLowerCase().replace(/[.,!?…]+$/, "");
+    const unsaid = (text: string): string => {
+      if (!sayText) return text;
+      const [first, ...rest] = text.split("\n");
+      return norm(first) === norm(sayText) ? rest.join("\n").trim() : text;
+    };
     const outIds: string[] = [];
 
     try {
@@ -252,6 +259,7 @@ export class ContactCore {
             if (searched) return { error: "one search per turn" };
             searched = true;
             says++;
+            sayText = say;
             await deliver(say); // before the search starts: they see it at the usual first-bubble time
             wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
             const t = performance.now(), results = (await search(query)).slice(0, 3).map((r) => ({ ...r, text: r.text.slice(0, 3000) }));
@@ -305,8 +313,10 @@ export class ContactCore {
               voiceReply = false;
               for (const b of held.splice(0)) await deliver(b.text, b.quote);
             }
-            if (voiceReply) held.push({ text: ev.text, quote });
-            else await deliver(ev.text, quote);
+            const text = unsaid(ev.text);
+            if (!text) continue; // the bubble was only the repeated say line
+            if (voiceReply) held.push({ text, quote });
+            else await deliver(text, quote);
           }
         } catch (e) {
           for (const b of held.splice(0)) await deliver(b.text, b.quote); // the stream died: the complete bubbles go out as text, like the text path

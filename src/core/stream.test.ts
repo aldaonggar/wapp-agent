@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { parseReply, type ReplyEvent } from "./stream";
+import { parseReply, splitLong, type ReplyEvent } from "./stream";
 
 async function* whole(s: string) { yield s; }
 async function* chars(s: string) { for (const c of s) yield c; }
@@ -82,12 +82,12 @@ test("long final bubble splits without counting toward the cap", async () => {
   expect(pieces.join("\n\n")).toBe(final);
 });
 
-test("splits at a sentence end when there is no paragraph break", async () => {
+test("splits at sentence ends when there is no paragraph break: a few short pieces, then the hard limit", async () => {
   const para = "Hello there friend. ".repeat(250).trim(); // ~5,000 chars
   const t = texts(await collect(whole(para)));
-  expect(t.length).toBe(2);
-  for (const p of t) expect(p.length).toBeLessThanOrEqual(4096);
-  expect(t[0].endsWith(".")).toBe(true);
+  expect(t.length).toBeGreaterThan(2);
+  for (const p of t) { expect(p.length).toBeLessThanOrEqual(4096); expect(p.endsWith(".")).toBe(true); }
+  expect(t[0].length).toBeLessThanOrEqual(360); // the opening pieces read like chat bubbles
   expect(t.join(" ")).toBe(para);
 });
 
@@ -99,6 +99,27 @@ test("quote only on the first piece of a split bubble", async () => {
   expect(ev[1]).not.toHaveProperty("quote");
 });
 
-test("react line after the first non-empty line is content", async () => {
-  expect(await collect(whole("hi\nreact: none"))).toEqual([b("hi\nreact: none")]);
+test("a standalone react line after text is dropped, never shown (a model re-emits it after tool steps)", async () => {
+  expect(await collect(whole("hi\nreact: none"))).toEqual([b("hi")]);
+  expect(await collect(whole("hi\nreact: #2 \u2764\ufe0f\nmore"))).toEqual([b("hi\nmore")]); // too late to react, still never text
+});
+
+test("a header line repeated after a tool step never leaks into a bubble", async () => {
+  const input = "react: none\nsec, let me check that\nreact: none\nyou're right, i stand corrected.";
+  expect(await collect(whole(input))).toEqual([b("sec, let me check that\nyou're right, i stand corrected.")]);
+  expect(await collect(whole("react: not sure about that\nok"))).toEqual([b("react: not sure about that\nok")]); // two words: content, not a header
+});
+
+test("a long bubble is split into messages at paragraph, then sentence, breaks", () => {
+  const para = "First paragraph that is long enough to matter. ".repeat(4).trim();
+  const three = [para, para, para].join("\n\n");
+  const pieces = splitLong(three);
+  expect(pieces).toEqual([para, para, para]);
+  const sentences = "This is a sentence of modest length that goes on a bit. ".repeat(12).trim();
+  const bySentence = splitLong(sentences);
+  expect(bySentence.length).toBeGreaterThan(1);
+  for (const p of bySentence) expect(p.length).toBeLessThanOrEqual(360);
+  expect(bySentence.join(" ")).toBe(sentences);
+  expect(splitLong("x".repeat(500))).toEqual(["x".repeat(500)]); // one unbreakable sentence stays whole under the hard limit
+  expect(splitLong("short reply")).toEqual(["short reply"]);
 });
