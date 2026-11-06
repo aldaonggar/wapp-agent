@@ -1,4 +1,5 @@
 import { parseUpdate } from "./telegram";
+import { SCRIPT_HASH } from "./core/pages";
 import { parseWebhook, verifySignature } from "./whatsapp";
 
 let warnedRegular = false; // once per isolate
@@ -6,7 +7,7 @@ let warnedRegular = false; // once per isolate
 // Nothing a page holds may run or load: the model wrote it. form-action and base-uri are not covered by default-src.
 const PAGE_HEADERS = {
   "content-type": "text/html; charset=utf-8",
-  "content-security-policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'",
+  "content-security-policy": `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'`,
   "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
 };
 
@@ -87,7 +88,16 @@ export default {
     }
 
     // A page the agent built: the unguessable id in the link is the whole access control (PRIVACY.md says so).
-    const pageLink = request.method === "GET" && url.pathname.match(/^\/p\/([0-9a-f]{64})\/([\w-]{22})$/);
+    const pageLink = (request.method === "GET" || request.method === "POST") && url.pathname.match(/^\/p\/([0-9a-f]{64})\/([\w-]{22})$/);
+    if (pageLink && request.method === "POST") { // tick state from the page's own script; JSON only, so a cross-origin form or fetch cannot send it
+      const stub = (() => { try { return env.CONTACT.get(env.CONTACT.idFromString(pageLink[1])); } catch { return null; } })();
+      if (!stub || !(await stub.page(pageLink[2]))) return new Response("not found", { status: 404 });
+      if (!request.headers.get("content-type")?.startsWith("application/json")) return new Response("bad request", { status: 400 });
+      const body = await request.text();
+      let checked: unknown;
+      try { checked = body.length <= 4096 ? (JSON.parse(body) as { checked?: unknown }).checked : null; } catch { /* bad JSON */ }
+      return Array.isArray(checked) && await stub.setPageState(pageLink[2], checked as number[]) ? new Response(null, { status: 204 }) : new Response("bad request", { status: 400 });
+    }
     if (pageLink) {
       let page: { html: string; title: string } | null = null;
       try { page = await env.CONTACT.get(env.CONTACT.idFromString(pageLink[1])).page(pageLink[2]); } catch { /* a key that is not one of ours */ }

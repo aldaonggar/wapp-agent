@@ -8,7 +8,7 @@ import { formatLocal } from "./db";
 import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
-import { buildPage, pagesLeftToday } from "./pages";
+import { buildPage, pagesLeftToday, recentPages } from "./pages";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
@@ -225,7 +225,7 @@ export class ContactCore {
 
         const prompt = buildPrompt({
           profile: features.memory ? memory.profileText(db) : "", memories: recalled.hits, history, pending: current, snapshots, memory: features.memory,
-          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db),
+          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db), pages: recentPages(db, clock.now()),
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
 
@@ -279,9 +279,10 @@ export class ContactCore {
           inputSchema: z.object({
             say: z.string().min(1).describe("one short sentence in your own voice telling them you are putting it together (\"give me a minute, putting that together\")"),
             title: z.string().min(1).max(120).describe("the page title"),
-            brief: z.string().min(1).max(8000).describe("everything the page must contain, written from the conversation and what you know (facts, rows, steps, preferences) and the kind of page it should be"),
+            brief: z.string().min(1).max(8000).describe("everything the page must contain, written from the conversation and what you know (facts, rows, steps, preferences) and the kind of page it should be; with page_id, only the changes to make"),
+            page_id: z.string().optional().describe("the id of an existing page to update in place, from the pages list"),
           }),
-          execute: async ({ say, title, brief }) => {
+          execute: async ({ say, title, brief, page_id }) => {
             if (pageMade) return { error: "one page per turn" };
             if (!pagesLeftToday(db, clock.now())) return { error: "10 pages made in the last 24 hours: tell them to ask again tomorrow" };
             pageMade = true;
@@ -289,7 +290,7 @@ export class ContactCore {
             sayText = say;
             await deliver(say); // before the build starts: the model call takes tens of seconds
             wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
-            try { return await buildPage(this.deps, title, brief); } catch (e) {
+            try { return await buildPage(this.deps, title, brief, page_id); } catch (e) {
               this.error("page_failed", e);
               return { error: "could not build the page" };
             }

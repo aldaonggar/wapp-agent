@@ -94,6 +94,14 @@ test("buildPrompt renders every memory status and adds the control sentences onl
   expect(buildPrompt({ ...base, memories: [] }).system[1].content).not.toMatch(/forget tool|know about them/); // the first-contact line may say "forget"
 });
 
+test("buildPrompt lists recent pages with ids, tick counts only when there are checkboxes; the rules say to update in place", () => {
+  const base = { profile: "", memories: [], history: [], pending: [], nowLocal: "x", tz: "UTC", tzConfirmed: true, snapshots: [] };
+  const dyn = buildPrompt({ ...base, pages: [{ id: "A".repeat(22), title: "Packing", ticked: 2, total: 5 }, { id: "B".repeat(22), title: "Trip", ticked: 0, total: 0 }] }).system[1].content;
+  expect(dyn).toContain(`pages (last 7 days):\n- Packing (id ${"A".repeat(22)}, 2 of 5 ticked)\n- Trip (id ${"B".repeat(22)})`);
+  expect(buildPrompt({ ...base, pages: [] }).system[1].content).not.toContain("pages (last");
+  expect(SYSTEM_PROMPT).toContain("call make_page with that page's id");
+});
+
 test("buildPrompt lists pending reminders in local time with their ids; the system prompt names the tools", () => {
   const base = { profile: "", memories: [], history: [], pending: [], nowLocal: "2026-11-04 14:05", tz: "Asia/Almaty", tzConfirmed: true, snapshots: [] };
   const dyn = buildPrompt({ ...base, reminders: [{ id: 3, text: "call the dentist", due_ts: Date.UTC(2026, 10, 5, 4, 0) }] }).system[1].content;

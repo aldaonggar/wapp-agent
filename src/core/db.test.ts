@@ -35,6 +35,17 @@ test("migrate adds reminders.attempted_at to a database created before it existe
   expect(db.all("SELECT status, attempted_at FROM reminders")).toEqual([{ status: "sending", attempted_at: 5 }]);
 });
 
+test("migrate adds pages.state, source and updated_at to an existing pages table and to a fresh database", () => {
+  db.batch("CREATE TABLE pages(id TEXT PRIMARY KEY, title TEXT, html TEXT, bytes INTEGER, created_at INTEGER)");
+  db.run("INSERT INTO pages(id, title) VALUES ('p', 't')");
+  migrate(db); migrate(db);
+  db.run("UPDATE pages SET state='[1]', source='s', updated_at=3");
+  expect(db.all("SELECT state, source, updated_at FROM pages")).toEqual([{ state: "[1]", source: "s", updated_at: 3 }]);
+  const fresh = fromNode(new DatabaseSync(":memory:"));
+  migrate(fresh);
+  expect(fresh.all("SELECT name FROM pragma_table_info('pages') WHERE name IN ('state','source','updated_at')")).toHaveLength(3);
+});
+
 test("blob round trip keeps float32 values", () => {
   migrate(db);
   db.run("INSERT INTO facts(text, embedding) VALUES ('a', ?)", vecToBlob(new Float32Array([0.1, -2, 3.5])));

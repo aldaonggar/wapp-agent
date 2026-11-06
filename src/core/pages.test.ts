@@ -1,7 +1,7 @@
 import { expect, test } from "vitest";
 import { FakeClock, FakeWa, makeEvalDeps, stubLlm } from "../../evals/harness";
 import { JOBS } from "../models";
-import { MAX_PAGE_BYTES, PAGE_SYSTEM, TEMPLATE_CSS, buildPage, getPage, render, sanitize, wrap } from "./pages";
+import { MAX_PAGE_BYTES, PAGE_SYSTEM, TEMPLATE_CSS, buildPage, PAGE_SCRIPT, SCRIPT_HASH, getPage, recentPages, render, setPageState, sanitize, wrap } from "./pages";
 
 const MD = "# Phones\n\n| Model | Price |\n|---|---|\n| A | 10 |\n\nSee [the review](https://example.com/r?a=1&b=2) and **buy** *soon*.";
 
@@ -71,8 +71,9 @@ test("the template CSS is black and white only: no colour value besides #000 and
   expect(TEMPLATE_CSS.replace(/#(000|fff)\b/gi, "")).not.toMatch(/\b(red|blue|green|gray|grey|orange|purple|pink|yellow|teal|navy)\b/i);
 });
 
-const mk = (text: string) => {
-  const llm = stubLlm({ text: () => text });
+const mk = (first: string) => {
+  let text = first;
+  const llm = Object.assign(stubLlm({ text: () => text }), { next: (t: string) => { text = t; } });
   const clock = new FakeClock();
   return { llm, deps: makeEvalDeps({ clock: clock.forContact("a"), wa: new FakeWa(clock), llm, contactKey: "abc" }) };
 };
@@ -110,4 +111,70 @@ test("buildPage refuses over 64 KB and an empty reply, and stores nothing", asyn
   expect(await buildPage(none.deps, "T", "b")).toEqual({ error: expect.stringContaining("no page") });
   expect(big.deps.db.all("SELECT 1 FROM pages")).toHaveLength(0);
   expect(none.deps.db.all("SELECT 1 FROM pages")).toHaveLength(0);
+});
+
+const BOXES = "## Pack\n\n- [ ] a\n- [x] b\n- [ ] c";
+const idOf = (r: unknown) => (r as { url: string }).url.split("/").pop()!;
+
+test("getPage numbers every checkbox with data-i, applies stored ticks over the model's own, and adds the one script only when there are boxes", async () => {
+  const { deps } = mk(BOXES);
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  expect(getPage(deps.db, id)!.html).toContain('<input type="checkbox" data-i="1" checked>'); // b is ticked in the source: only the stored state counts once there is one
+  expect(setPageState(deps.db, id, [0, 2])).toBe(true);
+  const html = getPage(deps.db, id)!.html;
+  expect(html).toContain('<input type="checkbox" data-i="0" checked>');
+  expect(html).toContain('<input type="checkbox" data-i="1">');
+  expect(html).toContain('<input type="checkbox" data-i="2" checked>');
+  expect(html.match(/<script>/g)).toHaveLength(1);
+  expect(html).toContain(`<script>${PAGE_SCRIPT}</script>`);
+  expect(PAGE_SCRIPT.split("\n").length).toBeLessThan(25);
+  expect(getPage(mk("x").deps.db, "nope")).toBeNull();
+});
+
+test("a page without checkboxes is served without the script; content cannot bring its own data-i", async () => {
+  const { deps } = mk("# Hi\n\ntext");
+  expect(getPage(deps.db, idOf(await buildPage(deps, "T", "b")))!.html).not.toContain("<script");
+  expect(render('<input type="checkbox" data-i="9" onclick="x()">')).toBe('<input type="checkbox">');
+});
+
+test("the CSP hash covers the exact script text", async () => {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PAGE_SCRIPT));
+  expect(SCRIPT_HASH).toBe(Buffer.from(digest).toString("base64"));
+});
+
+test("setPageState rejects an unknown id, out-of-range, fractional or negative indexes and more than the cap; dedupes and sorts", async () => {
+  const { deps } = mk(BOXES);
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  expect(setPageState(deps.db, "nope", [])).toBe(false);
+  for (const bad of [[3], [-1], [0.5], [NaN], Array(501).fill(0)]) expect(setPageState(deps.db, id, bad)).toBe(false);
+  expect(setPageState(deps.db, id, [2, 0, 2])).toBe(true);
+  expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[0,2]" }]);
+});
+
+test("recentPages lists pages of the last 7 days with ids and tick counts, newest first, at most 5", async () => {
+  const { deps } = mk(BOXES);
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  setPageState(deps.db, id, [0, 1]);
+  expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 2, total: 3 }]);
+  expect(recentPages(deps.db, deps.clock.now() + 8 * 86_400_000)).toEqual([]);
+  for (let i = 0; i < 6; i++) deps.db.run("INSERT INTO pages(id, title, html, created_at) VALUES (?, 't', '', ?)", `x${i}`, deps.clock.now() + i);
+  expect(recentPages(deps.db, deps.clock.now())).toHaveLength(5);
+});
+
+test("buildPage with a page_id updates in place: same id, new content and source, ticks kept only for boxes that remain, updated_at bumped, cap counts it; unknown or source-less id is an error", async () => {
+  const { llm, deps } = mk(BOXES);
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  setPageState(deps.db, id, [0, 2]);
+  llm.next("## Pack\n\n- [ ] only");
+  expect(await buildPage(deps, "Pack2", "drop two", id)).toBeDefined();
+  expect(deps.db.all("SELECT 1 FROM pages")).toHaveLength(1);
+  const row = deps.db.all<{ title: string; state: string; source: string; updated_at: number }>("SELECT title, state, source, updated_at FROM pages WHERE id=?", id)[0];
+  expect(row).toMatchObject({ title: "Pack2", state: "[0]", source: "## Pack\n\n- [ ] only", updated_at: deps.clock.now() });
+  expect(getPage(deps.db, id)!.html).toContain('data-i="0" checked');
+  expect(JSON.stringify(llm.textCalls.at(-1))).toContain("current page");
+  deps.db.run("UPDATE pages SET created_at=0 WHERE id=?", id);
+  expect(deps.db.all("SELECT 1 FROM pages WHERE created_at > ?1 OR updated_at > ?1", deps.clock.now() - 86_400_000)).toHaveLength(1);
+  expect(await buildPage(deps, "T", "b", "nope")).toEqual({ error: expect.stringContaining("no page") });
+  deps.db.run("UPDATE pages SET source=NULL WHERE id=?", id);
+  expect(await buildPage(deps, "T", "b", id)).toEqual({ error: expect.stringContaining("before edits") });
 });
