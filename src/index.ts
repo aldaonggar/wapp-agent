@@ -8,7 +8,7 @@ let warnedRegular = false; // once per isolate
 const PAGE_HEADERS = {
   "content-type": "text/html; charset=utf-8",
   "content-security-policy": `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'`,
-  "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
+  "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "no-store",
 };
 
 // A transport is on when every secret it needs is set; the app runs with either one, and /health says which (503 with none).

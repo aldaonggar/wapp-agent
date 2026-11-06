@@ -113,7 +113,7 @@ test("GET /p/<key>/<id> serves the page with the locked-down headers; 404 for an
   expect(Object.fromEntries(ok.headers)).toMatchObject({
     "content-type": "text/html; charset=utf-8",
     "content-security-policy": `default-src 'none'; script-src 'sha256-${SCRIPT_HASH}'; connect-src 'self'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'`,
-    "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
+    "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "no-store",
   });
   for (const path of [`/p/${KA}/${"B".repeat(22)}`, `/p/${KB}/${ID}`, `/p/${"c".repeat(64)}/${ID}`, `/p/short/${ID}`, `/p/${KA}/short`, `/p/${KA}/${ID}/x`]) expect([path, (await get(path)).status]).toEqual([path, 404]);
   expect((await get(`/p/${KA}/${ID}`, "PUT")).status).toBe(404);
