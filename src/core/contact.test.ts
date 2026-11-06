@@ -6,6 +6,8 @@ import { bubblePauseMs } from "./cadence";
 import { ContactCore, FALLBACK } from "./contact";
 import { STUB_PAGE } from "../../evals/harness";
 import { vecToBlob } from "./db";
+import { editPage } from "./page-edit";
+import { render, wrap } from "./pages";
 import type { Deps, Features, Inbound, ObjectCall, StreamCall, TextCall } from "./types";
 
 const FROM = "15550000001";
@@ -1264,6 +1266,25 @@ test("make_page passes page_id to the builder and the prompt lists pages; an id 
   expect(t.llm.textCalls).toHaveLength(1);
   expect(t.llm.calls.at(-1)!.system[1].content).toContain("- L (not editable");
   expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["one sec", "ok", "ok"]);
+});
+
+test("page changes: what they did on a page since the last reply is in the next prompt and in the extractor's input, then gone", async () => {
+  const t = setup({ features: { memory: true }, object: () => ({ ops: [] }) });
+  const id = "B".repeat(22), src = "## Trip\n\n[field: Budget]\n\n- [ ] socks";
+  t.db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?, 'Trip', ?, 1, ?, ?, '[]')", id, wrap("Trip", render(src)), t.clock.t, src);
+  editPage(t.db, t.clock.t, id, { field: { key: "budget:0", value: "400" } }, 1);
+  editPage(t.db, t.clock.t, id, { add: { list: 0, text: "insurance card" } }, 2);
+  await t.say("how is it going");
+  await t.run();
+  const lines = ['set Budget to "400" on Trip', 'added "insurance card" to Trip'];
+  expect(t.llm.calls[0].system[1].content).toContain(`since your last message they changed pages (on the page itself, not in chat):\n- ${lines.join("\n- ")}`);
+  expect(JSON.stringify(t.llm.objectCalls[0].messages)).toContain(JSON.stringify(`(since their last message they changed their pages: ${lines.join("; ")})`).slice(1, -1));
+  expect(t.db.all("SELECT 1 FROM page_events")).toHaveLength(0);
+  t.clock.t += 60_000;
+  await t.say("and now");
+  await t.run();
+  expect(t.llm.calls[1].system[1].content).not.toContain("since your last message");
+  expect(JSON.stringify(t.llm.objectCalls[1].messages)).not.toContain("changed their pages");
 });
 
 test("make_page: a page model failure is relayed as an error and logged; the say line still counts as sent", async () => {

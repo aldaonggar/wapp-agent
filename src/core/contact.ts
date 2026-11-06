@@ -8,6 +8,7 @@ import { formatLocal } from "./db";
 import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
+import { pageChanges } from "./page-edit";
 import { buildPage, pageEditError, pagesLeftToday, recentPages } from "./pages";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
@@ -169,7 +170,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, pageMade = false, says = 0, sayText = "";
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, pageMade = false, says = 0, sayText = "", changes = { lines: [] as string[], upTo: 0 };
     // Some models write their say line again after the tool step; it already went out.
     const norm = (s: string) => s.trim().toLowerCase().replace(/[.,!?…]+$/, "");
     const unsaid = (text: string): string => {
@@ -223,9 +224,10 @@ export class ContactCore {
         }
         const resolve = (tag: string) => alias.get(tag.startsWith("#") ? tag : `#${tag}`);
 
+        changes = pageChanges(db); // what they changed on pages since the last reply: shown to the model and, once the turn is done, handed to the extractor and dropped
         const prompt = buildPrompt({
           profile: features.memory ? memory.profileText(db) : "", memories: recalled.hits, history, pending: current, snapshots, memory: features.memory,
-          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db), pages: recentPages(db, clock.now()),
+          nowLocal: formatLocal(clock.now(), tz), tz, tzConfirmed: contact.timezone_confirmed === 1, name: contact.name ?? undefined, reminders: pendingReminders(db), pages: recentPages(db, clock.now()), pageChanges: changes.lines,
         });
         model = replyModelFor(models, [...files.values()].some(Boolean) || snapshots.some((p) => p.jpeg.length > 0));
 
@@ -404,6 +406,7 @@ export class ContactCore {
     const keys = Object.keys(row);
     const turnId = db.all<{ id: number }>(`INSERT INTO turns(${keys}) VALUES (${keys.map(() => "?")}) RETURNING id`, ...Object.values(row))[0].id;
     db.run("UPDATE messages SET status='handled', turn_id=? WHERE id IN (SELECT value FROM json_each(?))", turnId, JSON.stringify(pending.map((r) => r.id)));
+    if (changes.upTo) db.run("DELETE FROM page_events WHERE rowid <= ?", changes.upTo); // later changes (higher rowid) wait for the next turn
     // A failed turn that showed them no text and has no retry left: one fixed line instead of a typing indicator and silence.
     // After the rows are handled, so it can never go out twice for the same burst. A search's say line is not an answer.
     db.run("UPDATE state SET turn_attempts=0"); // before the send: a reset during it must not leave the next burst without its retry
@@ -429,12 +432,12 @@ export class ContactCore {
     }
     this.deps.log({ event: "turn", contact: this.deps.contactKey, ...row, recalled: recalledTexts.length, usage }); // never the phone number or memory texts
     // Not awaited: turnRunning is released now, so the next reply never waits for this extraction.
-    const finished = { pending, cachedPages, outIds, images, tz };
+    const finished = { pending, cachedPages, outIds, images, tz, pageChanges: changes.lines };
     this.afterTurn = this.afterTurn.then(() => this.postTurn(finished)).catch((e) => this.error("post_turn_failed", e));
   }
 
   // Remember the turn (failed turns too: what they said still counts), then re-arm for any plan it stored.
-  private async postTurn(t: { pending: Msg[]; cachedPages: (Promise<Snapshot | null> | undefined)[]; outIds: string[]; images: memory.TurnForMemory["images"]; tz: string }): Promise<void> {
+  private async postTurn(t: { pending: Msg[]; cachedPages: (Promise<Snapshot | null> | undefined)[]; outIds: string[]; images: memory.TurnForMemory["images"]; tz: string; pageChanges: string[] }): Promise<void> {
     const { db, clock, features } = this.deps;
     if (features.memory) {
       try {
@@ -442,6 +445,7 @@ export class ContactCore {
           const p = await t.cachedPages[i];
           return p ? `${r.text} (shared a link: ${p.title} ${p.finalUrl})` : r.text ?? "";
         }));
+        if (t.pageChanges.length) noted[noted.length - 1] += `\n(since their last message they changed their pages: ${t.pageChanges.join("; ")})`; // the extractor reads it like anything they said
         const sent = db.all<{ id: string; text: string }>("SELECT id, text FROM messages WHERE id IN (SELECT value FROM json_each(?)) ORDER BY ts, rowid", JSON.stringify(t.outIds));
         await memory.remember(this.deps, {
           messages: [...t.pending.map((r, i) => ({ role: "user" as const, text: noted[i], id: r.id })), ...sent.map((r) => ({ role: "assistant" as const, ...r }))],

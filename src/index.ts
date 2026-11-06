@@ -89,14 +89,24 @@ export default {
 
     // A page the agent built: the unguessable id in the link is the whole access control (PRIVACY.md says so).
     const pageLink = (request.method === "GET" || request.method === "POST") && url.pathname.match(/^\/p\/([0-9a-f]{64})\/([\w-]{22})$/);
-    if (pageLink && request.method === "POST") { // tick state from the page's own script; JSON only, so a cross-origin form or fetch cannot send it
+    if (pageLink && request.method === "POST") { // saves from the page's own script; JSON only, so a cross-origin form or fetch cannot send it
       const stub = (() => { try { return env.CONTACT.get(env.CONTACT.idFromString(pageLink[1])); } catch { return null; } })();
-      if (!stub || !(await stub.page(pageLink[2]))) return new Response("not found", { status: 404 });
+      const page = stub && await stub.page(pageLink[2]);
+      if (!stub || !page) return new Response("not found", { status: 404 });
       if (!request.headers.get("content-type")?.startsWith("application/json")) return new Response("bad request", { status: 400 });
       const body = await request.text();
-      let d: { i?: unknown; checked?: unknown; seq?: unknown } = {};
-      try { if (body.length <= 200) d = (JSON.parse(body) ?? {}) as typeof d; } catch { /* bad JSON */ }
-      return typeof d.i === "number" && typeof d.checked === "boolean" && typeof d.seq === "number" && Number.isSafeInteger(d.seq) && d.seq >= 0 && await stub.setPageState(pageLink[2], d.i, d.checked, d.seq) ? new Response(null, { status: 204 }) : new Response("bad request", { status: 400 });
+      let d: { i?: unknown; checked?: unknown; seq?: unknown; rev?: unknown; op?: unknown } = {};
+      try { if (body.length <= 4096) d = (JSON.parse(body) ?? {}) as typeof d; } catch { /* bad JSON */ }
+      const seq = d.seq, rev = typeof d.rev === "number" && Number.isSafeInteger(d.rev) ? d.rev : undefined;
+      if (typeof seq !== "number" || !Number.isSafeInteger(seq) || seq < 0) return new Response("bad request", { status: 400 });
+      const json = (o: object, status: number) => new Response(JSON.stringify(o), { status, headers: { "content-type": "application/json", "cache-control": "no-store" } });
+      if (d.op && typeof d.op === "object") { // a field value, or an item added, removed or noted
+        const r = await stub.editPage(pageLink[2], d.op as never, seq, rev);
+        return r.ok ? json({ html: r.body ?? null, rev: r.rev }, 200) : json({ error: r.error, html: r.body ?? null, rev: r.rev }, r.status);
+      }
+      if (body.length > 200 || typeof d.i !== "number" || typeof d.checked !== "boolean") return new Response("bad request", { status: 400 });
+      const ok = await stub.setPageState(pageLink[2], d.i, d.checked, seq, rev);
+      return ok === "stale" ? json({ html: page.body ?? null, rev: page.rev }, 409) : ok ? new Response(null, { status: 204 }) : new Response("bad request", { status: 400 });
     }
     if (pageLink) {
       let page: { html: string; title: string } | null = null;

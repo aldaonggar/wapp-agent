@@ -2,23 +2,55 @@
 export const PAGE_SCRIPT = String.raw`const $ = (s, r = document) => [...r.querySelectorAll(s)];
 const root = () => document.querySelector("main") || document.body;
 
-// Saving: ticks, one request at a time and in order, keepalive so a tick just before closing still lands. The seq rises per target and across reloads, so the server drops a save older than one it has.
+// Saving: ticks, field values and list edits go to the page's own address, one request at a time and in order (keepalive, so a save just before closing still lands). The seq rises per target and across reloads, so the server drops a save older than one it has.
+// rev is the page's version as loaded; a save for a page that has since changed shape comes back 409 with the current body, and an edit comes back with the new body. Either way the page body is swapped in without a reload.
 const last = {};
 const seqFor = (k) => last[k] = Math.max((last[k] || 0) + 1, Date.now());
-let queue = Promise.resolve();
-const save = (key, body) => queue = queue.then(() => fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, seq: seqFor(key) }), keepalive: true }).catch(() => {}));
+let queue = Promise.resolve(), rev = (root().dataset || {}).rev;
+const show = (d) => {
+  if (!d.html) return location.reload();
+  root().innerHTML = d.html;
+  root().dataset.rev = rev = d.rev;
+  enhance();
+};
+const save = (key, body) => queue = queue.then(() => fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, seq: seqFor(key), rev: rev === undefined ? undefined : +rev }), keepalive: true })
+  .then((r) => r.status === 200 || r.status === 409 ? r.json().then((d) => r.status === 409 ? show(d) : (rev = d.rev, d.html && show(d))) : 0)
+  .catch(() => {}));
 
 // "n of m done" above the first checklist, kept live as boxes are ticked.
 const progress = () => {
   const p = $(".progress")[0], b = $("input[data-i]");
   if (p) p.textContent = b.filter((c) => c.checked).length + " of " + b.length + " done";
 };
+// A field changed: send its whole value (the checked options for "multi"). A tick: send the box.
+const field = (f, value) => save("f" + f.dataset.f, { op: { field: { key: f.dataset.f, value } } });
 addEventListener("change", (e) => {
-  const c = e.target;
-  if (!c.matches("input[data-i]")) return;
-  progress();
-  save("t" + c.dataset.i, { i: +c.dataset.i, checked: c.checked });
+  const c = e.target, f = c.closest(".f");
+  if (f) field(f, f.dataset.kind === "multi" ? $("input:checked", f).map((x) => x.value) : c.value);
+  else if (c.matches("input[data-i]")) {
+    progress();
+    save("t" + c.dataset.i, { i: +c.dataset.i, checked: c.checked });
+  }
 });
+
+// Checklists: where an item sits is its list's number (on the add box after the list) and its place among the list's items.
+const where = (li) => ({ list: +li.parentNode.nextElementSibling.dataset.list, index: [...li.parentNode.children].indexOf(li) });
+const addItem = (add) => {
+  const i = add.querySelector("input"), text = i.value.trim();
+  if (!text) return;
+  i.value = "";
+  save("l", { op: { add: { list: +add.dataset.list, text } } });
+};
+const noteBox = (li) => {
+  if (li.querySelector(":scope > input.note")) return;
+  const old = li.querySelector(":scope > ul > li.note"), i = document.createElement("input");
+  i.type = "text"; i.className = "note"; i.maxLength = 300; i.placeholder = "note"; i.setAttribute("aria-label", "note");
+  i.value = old ? old.textContent : "";
+  i.addEventListener("change", () => save("l", { op: { note: { ...where(li), text: i.value } } })); // Enter or leaving the box, only if it changed
+  i.addEventListener("blur", () => i.remove());
+  li.querySelector(":scope > .ctl").after(i);
+  i.focus();
+};
 
 // Sorting: a click on a header sorts that column, again to reverse; numbers when every cell reads as one, else natural text order.
 const NUM = /^[^\d-]*-?\d[\d,]*(\.\d+)?[^\d]*$/;
@@ -36,17 +68,43 @@ const sortBy = (th) => {
 addEventListener("click", (e) => {
   const th = e.target.closest && e.target.closest("th");
   if (th && th.closest("table")) sortBy(th);
-  const b = e.target.closest && e.target.closest("button.copy");
+  const x = e.target.closest && e.target.closest("button");
+  if (!x) return;
+  const f = x.closest(".f"), li = x.closest("li");
+  if (x.closest(".add")) addItem(x.closest(".add"));
+  else if (f && x.dataset.d) { // the +/- stepper of a count, kept between 0 and 9999
+    const o = f.querySelector("output"), n = Math.min(9999, Math.max(0, (+o.textContent || 0) + +x.dataset.d));
+    o.textContent = n;
+    field(f, String(n));
+  } else if (x.dataset.act === "note") noteBox(li);
+  else if (x.dataset.act === "remove") { // two taps: the first asks
+    if (x.textContent !== "sure?") { x.textContent = "sure?"; setTimeout(() => x.textContent = "remove", 3000); return; }
+    save("l", { op: { remove: where(li) } });
+  }
+  const b = x.matches("button.copy") && x;
   if (b) navigator.clipboard.writeText(b.previousElementSibling.textContent).then(() => {
     b.textContent = "copied";
     setTimeout(() => b.textContent = "copy", 1000);
   }).catch(() => {});
 });
-addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches && e.target.matches("th")) sortBy(e.target); });
+addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  if (e.target.matches("th")) sortBy(e.target);
+  else if (e.target.matches(".add input")) addItem(e.target.closest(".add"));
+});
 
-// Run on load: a filter box above any table or list of more than 15 rows, a "copy" button after every code block and after inline code of 8+ characters.
+// Run on load, and again after a body swap: item controls, a filter box above any table or list of more than 15 rows, a "copy" button after every code block and after inline code of 8+ characters.
 const enhance = () => {
   $("th").forEach((th) => th.tabIndex = 0);
+  $(".add", root()).forEach((add) => { // "note" and "remove" on each item of the list before an add box
+    if (!add.previousElementSibling || !add.previousElementSibling.matches("ul, ol")) return;
+    [...add.previousElementSibling.children].forEach((li) => {
+      const c = document.createElement("span");
+      c.className = "ctl";
+      c.innerHTML = '<button type="button" data-act="note">note</button><button type="button" data-act="remove">remove</button>';
+      li.insertBefore(c, li.querySelector(":scope > ul, :scope > ol"));
+    });
+  });
   $("table, ul, ol", root()).forEach((el) => {
     const rows = el.matches("table") ? [...el.rows].filter((r) => !r.querySelector("th")) : [...el.children].filter((c) => c.matches("li"));
     if (rows.length <= 15) return;

@@ -48,6 +48,7 @@ Making pages
 - When a reply would be clearer as something they can open and scroll (a comparison, a plan, a list with structure, a mockup, a long summary, a recipe, anything with more than a few rows or sections), call make_page instead of writing a wall of bubbles. Brief it with everything the page needs, including what you know from memory that belongs on it; the page is built by another model that sees only your brief.
 - Its say line is one short sentence in your own voice and goes out before the page is built, so do not write it again. Then send the link in one short bubble and say in a few words what is on it. One page per turn.
 - If they ask to change, add to, fix or reorder something on a page you made, call make_page with that page's id (from the pages list) instead of making a new one. The link stays the same: tell them it is updated (sending the same link again is fine).
+- A page can hold things they fill in or edit themselves: fields, a choice among options, a number, notes on list items, items they add to a checklist. Ask for them in the brief when the page is something to plan together, collect answers on or keep using (a packing list, a trip with choices to make, a form-like plan), and say so when you send the link. What they change comes back to you in the pages list (values, notes, what is left) and in "since your last message they changed pages"; use it, and never tell them to type it in the chat as well. When you change such a page, the page model keeps their entries.
 - Not for short answers, and never to avoid answering. If it returns an error, say so in one line and answer in the chat instead.
 - To show a page they sent or you found, send_screenshot sends it as a picture; use it when they ask to see the page or when a picture says it better than a description.
 
@@ -102,7 +103,7 @@ const memoryLine = (m: MemoryHit) =>
 export function buildPrompt(input: {
   profile: string; memories: MemoryHit[]; history: HistoryRow[]; pending: HistoryRow[];
   nowLocal: string; tz: string; tzConfirmed: boolean; name?: string; snapshots: Snapshot[]; memory?: boolean;
-  reminders?: Reminder[]; pages?: PageLine[];
+  reminders?: Reminder[]; pages?: PageLine[]; pageChanges?: string[];
 }): { system: SystemModelMessage[]; messages: ModelMessage[] } {
   const { tz } = input;
   const dynamic = [
@@ -110,7 +111,8 @@ export function buildPrompt(input: {
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
     input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
-    input.pages?.length && `pages (last 7 days):\n${input.pages.map((p) => `- ${p.title} (${[p.editable ? `id ${p.id}` : "not editable", p.total && `${p.ticked} of ${p.total} ticked${p.left.length ? `; left: ${p.left.join(", ")}` : ""}`].filter(Boolean).join(", ")})`).join("\n")}`,
+    input.pages?.length && `pages (last 7 days):\n${input.pages.map((p) => `- ${p.title} (${[p.editable ? `id ${p.id}` : "not editable", [p.total && `${p.ticked} of ${p.total} ticked`, p.left.length && `left: ${p.left.join(", ")}`, p.notes?.length && `notes: ${p.notes.join("; ")}`, p.fields?.length && `fields: ${p.fields.join("; ")}`].filter(Boolean).join("; ")].filter(Boolean).join(", ")})`).join("\n")}`,
+    input.pageChanges?.length && `since your last message they changed pages (on the page itself, not in chat):\n${input.pageChanges.map((c) => `- ${c}`).join("\n")}`,
     input.memory && CONTROLS,
     input.history.length === 0 && INTRO,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,

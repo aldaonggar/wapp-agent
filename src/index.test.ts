@@ -134,3 +134,34 @@ test("POST /p/<key>/<id> stores ticks (204); bad JSON, wrong type, oversize and 
   expect((await post(`/p/${"b".repeat(64)}/${ID}`, '{"i":0,"checked":true,"seq":1}')).status).toBe(404);
   expect((await post(`/p/${K}/${"B".repeat(22)}`, '{"i":0,"checked":true,"seq":1}')).status).toBe(404);
 });
+
+test("POST /p/<key>/<id> with an op goes to editPage (200 with the new body, 4 KB cap), a stale tick is 409 with the current body, and editPage's refusals keep their status", async () => {
+  const K = "a".repeat(64), ID = "A".repeat(22);
+  const calls: unknown[][] = [];
+  const results: Record<string, unknown> = { add: { ok: true, body: "<p>new</p>", rev: 4 }, field: { ok: true, rev: 4 }, stale: { ok: false, status: 409, error: "stale", body: "<p>now</p>", rev: 5 }, rate: { ok: false, status: 429, error: "slow down" } };
+  const env = { CONTACT: {
+    idFromString: (k: string) => { if (k !== K) throw new Error("invalid id"); return k; },
+    get: () => ({
+      page: async (id: string) => (id === ID ? { html: "", title: "", body: "<p>current</p>", rev: 5 } : null),
+      setPageState: async (_: string, i: number, __: boolean, ___: number, rev?: number) => (rev === 3 ? "stale" : i < 3),
+      editPage: async (...a: unknown[]) => { calls.push(a); return results[Object.keys((a[1] as object))[0] === "add" ? "add" : (a[1] as { x?: string }).x ?? "field"]; },
+    }),
+  } } as unknown as Env;
+  const post = (body: string) => worker.fetch(new Request(`https://x/p/${K}/${ID}`, { method: "POST", body, headers: { "content-type": "application/json" } }), env, ctx);
+  const add = await post('{"op":{"add":{"list":0,"text":"x"}},"seq":9,"rev":4}');
+  expect([add.status, await add.json(), add.headers.get("content-type")]).toEqual([200, { html: "<p>new</p>", rev: 4 }, "application/json"]);
+  expect(calls).toEqual([[ID, { add: { list: 0, text: "x" } }, 9, 4]]);
+  const field = await post('{"op":{"field":{"key":"a:0","value":"v"}},"seq":10}');
+  expect([field.status, await field.json()]).toEqual([200, { html: null, rev: 4 }]);
+  expect(calls[1]).toEqual([ID, { field: { key: "a:0", value: "v" } }, 10, undefined]);
+  results.field = results.stale;
+  expect(await (await post('{"op":{"field":{"key":"a:0","value":"v"}},"seq":11}')).json()).toEqual({ error: "stale", html: "<p>now</p>", rev: 5 });
+  results.field = results.rate;
+  expect((await post('{"op":{"field":{"key":"a:0","value":"v"}},"seq":12}')).status).toBe(429);
+  const tick = await post('{"i":0,"checked":true,"seq":1,"rev":3}');
+  expect([tick.status, await tick.json()]).toEqual([409, { html: "<p>current</p>", rev: 5 }]);
+  expect((await post('{"i":0,"checked":true,"seq":1,"rev":5}')).status).toBe(204);
+  expect((await post(JSON.stringify({ op: { add: { list: 0, text: "x".repeat(5000) } }, seq: 1 }))).status).toBe(400); // over 4 KB
+  expect((await post(JSON.stringify({ op: { add: { list: 0, text: "x".repeat(3000) } }, seq: 1 }))).status).toBe(200);
+  for (const b of ['{"op":{"add":{}}}', '{"op":"x","seq":1}', '{"op":null,"seq":1}']) expect([b, (await post(b)).status]).toEqual([b, 400]);
+});

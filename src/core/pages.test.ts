@@ -94,7 +94,7 @@ test("buildPage calls the page model with the content-only system prompt, low ef
   expect(stored.html).toContain("<h1>Phones</h1>");
   expect(stored.html).not.toMatch(/<script/i);
   expect(getPage(deps.db, id)).toMatchObject({ title: "Trip", body: expect.stringContaining("<h1>Phones</h1>") });
-  expect(getPage(deps.db, id)!.html.replace(/<script>[\s\S]*<\/script>\n/, "")).toBe(stored.html);
+  expect(getPage(deps.db, id)!.html.replace(/<script>[\s\S]*<\/script>\n/, "").replace(' data-rev="0"', "")).toBe(stored.html);
   expect(getPage(deps.db, "nope")).toBeNull();
 });
 
@@ -159,7 +159,7 @@ test("recentPages lists pages of the last 7 days with ids, tick counts and untic
   const { llm, deps } = mk("- [ ] socks\n- [ ] **charger** & cable\n- [ ] " + "x".repeat(80));
   const id = idOf(await buildPage(deps, "Pack", "b"));
   ps(deps.db, id, 0, true);
-  expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 1, total: 3, left: ["charger & cable", "x".repeat(60)], editable: true }]);
+  expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 1, total: 3, left: ["charger & cable", "x".repeat(60)], editable: true, notes: [], fields: [] }]);
   expect(recentPages(deps.db, deps.clock.now() + 8 * 86_400_000)).toEqual([]);
   llm.next(Array.from({ length: 12 }, (_, i) => `- [ ] i${i}`).join("\n"));
   await buildPage(deps, "Many", "b");
