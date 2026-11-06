@@ -6,7 +6,7 @@ import { makeSnapshot } from "../src/browser";
 import { MAX_WAIT_MS } from "../src/core/cadence";
 import { ContactCore, FALLBACK } from "../src/core/contact";
 import { fromNode, migrate, vecToBlob } from "../src/core/db";
-import type { Clock, Deps, Features, Inbound, Llm, ModelChoice, ObjectCall, StreamCall, Usage, WaClient } from "../src/core/types";
+import type { Clock, Deps, Features, Inbound, Llm, ModelChoice, ObjectCall, StreamCall, TextCall, Usage, WaClient } from "../src/core/types";
 import { MODELS, pickModels } from "../src/models";
 import { WaError } from "../src/whatsapp";
 import { embedViaRest, rerankViaRest } from "../src/workers-ai";
@@ -34,7 +34,7 @@ export class FakeClock {
   }
 }
 
-export interface Sent { at: number; kind: "text" | "reaction" | "typing" | "audio"; to: string; body?: string; quote?: string; previewUrl?: boolean; target?: string; emoji?: string; bytes?: Uint8Array; mime?: string; id: string }
+export interface Sent { at: number; kind: "text" | "reaction" | "typing" | "audio" | "image"; to: string; body?: string; quote?: string; previewUrl?: boolean; target?: string; emoji?: string; bytes?: Uint8Array; mime?: string; caption?: string; id: string }
 
 export class FakeWa implements WaClient {
   sent: Sent[] = [];
@@ -59,6 +59,11 @@ export class FakeWa implements WaClient {
     if (e) { this.failNext = undefined; throw e; }
     return { id: this.rec({ kind: "audio", to, bytes, mime, ...(opts?.quote ? { quote: opts.quote } : {}) }) };
   }
+  async sendImage(to: string, bytes: Uint8Array, mime: string, opts?: { caption?: string; quote?: string }) {
+    const e = this.failNext;
+    if (e) { this.failNext = undefined; throw e; }
+    return { id: this.rec({ kind: "image", to, bytes, mime, ...(opts?.caption ? { caption: opts.caption } : {}), ...(opts?.quote ? { quote: opts.quote } : {}) }) };
+  }
   async sendReaction(to: string, messageId: string, emoji: string) { this.rec({ kind: "reaction", to, target: messageId, emoji }); }
   async markReadTyping(messageId: string) { this.rec({ kind: "typing", to: "", target: messageId }); }
   async fetchMedia(mediaId: string) {
@@ -68,6 +73,8 @@ export class FakeWa implements WaClient {
   }
 }
 
+/** What the page model "writes" in tests and in real-model eval runs: a real run never reaches the page model. */
+export const STUB_PAGE = "# stub page\n\nhello";
 const zeroUsage = (job: string, model: string): Usage => ({ job, model, input: 0, output: 0, cached: 0, reasoning: 0, costTable: 0, ms: 0 });
 
 /** A reply hook result: the full text, or chunks followed by a stream error (text throws after them, done rejects). */
@@ -77,12 +84,19 @@ export type StubReply = string | { chunks: string[]; error: Error };
 export function stubLlm(o: {
   reply?: (call: StreamCall) => StubReply | Promise<StubReply>;
   object?: (call: ObjectCall<unknown>) => unknown;
-} = {}): Llm & { calls: StreamCall[]; objectCalls: ObjectCall<unknown>[] } {
+  text?: (call: TextCall) => string;
+} = {}): Llm & { calls: StreamCall[]; objectCalls: ObjectCall<unknown>[]; textCalls: TextCall[] } {
   const calls: StreamCall[] = [];
   const objectCalls: ObjectCall<unknown>[] = [];
+  const textCalls: TextCall[] = [];
   return {
     calls,
     objectCalls,
+    textCalls,
+    async text(call) {
+      textCalls.push(call);
+      return { text: o.text ? o.text(call) : STUB_PAGE, usage: zeroUsage(call.job, call.modelId) };
+    },
     stream(call) {
       calls.push(call);
       const reply = Promise.resolve().then((): StubReply | Promise<StubReply> => (o.reply ? o.reply(call) : "react: none\nok"));
@@ -157,6 +171,11 @@ export function makeEvalDeps(o: {
       ledger(r.usage);
       return r;
     },
+    async text(call) {
+      const r = await o.llm.text(call);
+      ledger(r.usage);
+      return r;
+    },
   };
   return {
     db, clock: o.clock, wa: o.wa, llm,
@@ -169,6 +188,7 @@ export function makeEvalDeps(o: {
     models: { ...pickModels({}), ...o.models },
     features: { memory: false, retrieval: "hybrid", ...o.features },
     contactKey: o.contactKey ?? "test",
+    publicUrl: "https://wapp-agent.test",
     log,
   };
 }
@@ -328,7 +348,7 @@ export async function runScenario(sc: Scenario, cfg: EvalConfig, realLlm: Llm, e
       const view = clock.forContact(id), wa = new FakeWa(clock), errors: Contact["errors"] = [];
       // Every logged failure goes into the transcript (turn attempts, extraction, insights, sends); the turns table alone would miss a retried first attempt and background work.
       const log = (e: Record<string, unknown>) => { if (e.error != null && e.event !== "turn") errors.push({ at: clock.t, line: `bot → ${id}: (${e.event}: ${e.error})` }); }; // the turn summary repeats a failure already logged as turn_failed
-      const deps = makeEvalDeps({ clock: view, wa, llm: realLlm, features, models, ...embedders, snapshot, contactKey: id, log });
+      const deps = makeEvalDeps({ clock: view, wa, llm: { ...realLlm, text: stubLlm().text }, features, models, ...embedders, snapshot, contactKey: id, log });
       contacts.set(id, (c = { id, phone: "1555" + String(id.charCodeAt(0) - 96).padStart(7, "0"), view, wa, deps, core: new ContactCore(deps), shown: 0, checked: 0, errors }));
     }
     return c;

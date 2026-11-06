@@ -17,6 +17,7 @@ interface Env {
   MODEL_VISION?: string;
   MODEL_EXTRACT?: string;
   MODEL_DERIVE?: string;
+  MODEL_PAGE?: string;
   REPLY_EFFORT?: string; // low | medium | high; unset = the reply model's cheapest reasoning setting
   // Telegram secrets: here, not in Cloudflare.Env above, because only this interface reaches `env`; unset at runtime keeps /telegram dark.
   TELEGRAM_BOT_TOKEN: string;

@@ -9,6 +9,7 @@ For each person who texts it, kept in a separate store that no other person's co
 - The messages you send and the replies it sends, with timestamps, identified by your WhatsApp phone number.
 - For photos and voice notes: a short text description or transcript. The file itself is held in memory only while the reply is being written and is not kept.
 - For links you send: the text of the page, used for that reply.
+- Web pages it builds for you when something reads better that way (the content you asked for, laid out as a page). A page is stored in your own store and is readable by anyone who holds its link, with no login; the link is long and random, and the page carries no tracking or scripts. Ask the owner to delete it.
 - Facts it has decided are worth remembering about you (for example a plan, a preference, where you live), insights it derives from several such facts, and a short profile built from them.
 - Timing and cost of each reply, with no message content.
 

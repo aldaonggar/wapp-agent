@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS state(id INTEGER PRIMARY KEY CHECK(id=1), turn_due IN
 CREATE TABLE IF NOT EXISTS reminders(id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT, due_ts INTEGER, created_at INTEGER, source_message_id TEXT, status TEXT DEFAULT 'pending', relative INTEGER DEFAULT 0, attempted_at INTEGER);
 CREATE TABLE IF NOT EXISTS turns(id INTEGER PRIMARY KEY AUTOINCREMENT, started_at INTEGER, wait_ms INTEGER, retrieval_ms INTEGER, ttft_ms INTEGER, ttfb_ms INTEGER, total_ms INTEGER, model TEXT, provider TEXT, bubbles INTEGER, regenerated INTEGER DEFAULT 0, error TEXT, usage TEXT, recalled TEXT);
 CREATE TABLE IF NOT EXISTS calls(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, job TEXT, model TEXT, usage TEXT);
+CREATE TABLE IF NOT EXISTS pages(id TEXT PRIMARY KEY, title TEXT, html TEXT, bytes INTEGER, created_at INTEGER);
 INSERT OR IGNORE INTO state(id) VALUES (1);
 `;
 

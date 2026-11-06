@@ -199,3 +199,22 @@ describe("llm.object", () => {
     expect(JSON.stringify(bodies[1].messages[0])).not.toContain("cache_control");
   });
 });
+
+describe("llm.text", () => {
+  const json = (v: string) => () => new Response(JSON.stringify({ id: "gen-3", provider: "X", choices: [{ index: 0, message: { role: "assistant", content: v }, finish_reason: "stop" }], usage: { prompt_tokens: 80, completion_tokens: 9, total_tokens: 89, cost: 0.001 } }));
+  const call = { job: "page" as const, modelId: "anthropic/claude-sonnet-5.5", system: "s", messages: base.messages, maxOutputTokens: 8000, reasoning: { effort: "medium" as const }, sessionId: "s", timeoutMs: 45000 };
+
+  it("returns the plain completion with usage, sends the token budget and effort, caches the system prompt for anthropic, and does not retry", async () => {
+    const { f, bodies } = fake([json("<html></html>"), () => new Response("bad", { status: 500 }), json("x")]);
+    const logged: Usage[] = [];
+    const llm = makeLlm("k", { fetch: f, log: (u) => logged.push(u) });
+    const r = await llm.text(call);
+    expect(r.text).toBe("<html></html>");
+    expect(r.usage).toMatchObject({ job: "page", model: "anthropic/claude-sonnet-5.5", input: 80, output: 9, costReported: 0.001 });
+    expect(logged).toHaveLength(1);
+    expect(bodies[0]).toMatchObject({ max_tokens: 8000, reasoning: { effort: "medium" } });
+    expect(JSON.stringify(bodies[0].messages[0])).toContain("cache_control");
+    await expect(llm.text(call)).rejects.toBeTruthy();
+    expect(bodies).toHaveLength(2);
+  });
+});

@@ -7,9 +7,10 @@ export interface WaClient {
   markReadTyping(messageId: string): Promise<void>;
   fetchMedia(mediaId: string): Promise<{ bytes: Uint8Array; mime: string }>;
   sendAudio?(to: string, bytes: Uint8Array, mime: string, opts?: { quote?: string }): Promise<{ id: string }>; // optional: a transport without it gets text replies
+  sendImage?(to: string, bytes: Uint8Array, mime: string, opts?: { caption?: string; quote?: string }): Promise<{ id: string }>; // optional: a transport without it cannot send screenshots
   window24h?(to: string): boolean; // optional: Meta's 24-hour reply window applies unless the transport answers false (Telegram has none)
 }
-export type { Usage, Llm, StreamCall, ObjectCall } from "../llm";
+export type { Usage, Llm, StreamCall, ObjectCall, TextCall } from "../llm";
 export type { ReasoningSetting, ModelChoice } from "../models";
 export type Param = string | number | null | Uint8Array;
 export type Row = Record<string, string | number | null | Uint8Array>;
@@ -30,6 +31,7 @@ export interface Deps {
   snapshot(url: string): Promise<Snapshot | null>;
   search?(query: string): Promise<{ title: string; url: string; text: string }[]>; // optional: without it there is no search_web tool
   models: ModelChoice; features: Features;
+  publicUrl: string; // the Worker's own origin, the base of page links (no trailing slash)
   contactKey: string; // opaque per-contact id for logs and OpenRouter session_id/user; never the phone number
   log(event: Record<string, unknown>): void;
 }

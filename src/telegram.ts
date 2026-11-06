@@ -123,6 +123,17 @@ export function makeTgClient(cfg: { token: string; fetch?: typeof fetch; sleep?:
       if (mid === undefined) throw new WaError(0, 502, "sendVoice: no message_id");
       return { id: `tg:${chat_id}:${mid}` };
     },
+    async sendImage(to, bytes, mime, opts) {
+      const chat_id = chatOf(to);
+      const form = new FormData();
+      form.set("chat_id", String(chat_id));
+      form.set("photo", new Blob([bytes as BlobPart], { type: mime }), "screenshot.jpg"); // shortcut: the name assumes the JPEG the snapshot produces
+      if (opts?.caption) form.set("caption", opts.caption.slice(0, 1024));
+      if (opts?.quote) form.set("reply_parameters", JSON.stringify({ message_id: messageOf(opts.quote), allow_sending_without_reply: true }));
+      const mid = num(obj(await call("sendPhoto", form)).message_id);
+      if (mid === undefined) throw new WaError(0, 502, "sendPhoto: no message_id");
+      return { id: `tg:${chat_id}:${mid}` };
+    },
     window24h: () => false, // a bot may message a private chat at any time
     async sendReaction(to, messageId, emoji) {
       // Telegram's reaction set lists ❤ without the variation selector that models usually emit.
@@ -158,6 +169,11 @@ export function routeTransports(wa: WaClient, tg: WaClient): WaClient {
     const c = pick(to);
     if (!c.sendAudio) throw new WaError(0, 0, "sendAudio: not supported by this transport");
     return c.sendAudio(to, bytes, mime, opts);
+  };
+  if (wa.sendImage || tg.sendImage) r.sendImage = async (to, bytes, mime, opts) => {
+    const c = pick(to);
+    if (!c.sendImage) throw new WaError(0, 0, "sendImage: not supported by this transport");
+    return c.sendImage(to, bytes, mime, opts);
   };
   return r;
 }

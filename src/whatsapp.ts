@@ -192,6 +192,16 @@ export function makeWaClient(cfg: {
       if (opts?.quote) payload.context = { message_id: opts.quote };
       return send(payload);
     },
+    async sendImage(to, bytes, mime, opts) {
+      const form = new FormData();
+      form.set("messaging_product", "whatsapp");
+      form.set("type", mime);
+      form.set("file", new Blob([bytes as BlobPart], { type: mime }), "screenshot.jpg"); // shortcut: the name assumes the JPEG the snapshot produces
+      const media = await check(await doFetch(`${GRAPH}/${cfg.phoneNumberId}/media`, { method: "POST", headers: auth, body: form }));
+      const payload: Obj = { recipient_type: "individual", to: "+" + to, type: "image", image: { id: str(media.id), ...(opts?.caption ? { caption: opts.caption.slice(0, 1024) } : {}) } };
+      if (opts?.quote) payload.context = { message_id: opts.quote };
+      return send(payload);
+    },
     window24h: () => true,
     async sendReaction(to, messageId, emoji) {
       await post({

@@ -4,18 +4,19 @@ import { routeTransports } from "../telegram";
 import { WaError } from "../whatsapp";
 import { bubblePauseMs } from "./cadence";
 import { ContactCore, FALLBACK } from "./contact";
+import { STUB_PAGE } from "../../evals/harness";
 import { vecToBlob } from "./db";
-import type { Deps, Features, Inbound, ObjectCall, StreamCall } from "./types";
+import type { Deps, Features, Inbound, ObjectCall, StreamCall, TextCall } from "./types";
 
 const FROM = "15550000001";
 type State = { turn_due: number | null; insights_due: number | null; followup_due: number | null; reminder_due: number | null; burst_started_at: number | null; generation: number; turn_attempts: number };
 
 type Reply = string | { chunks: string[]; error: Error };
-function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"]; search?: Deps["search"] } = {}) {
+function setup(o: { reply?: (c: StreamCall) => Reply | Promise<Reply>; object?: (c: ObjectCall<unknown>) => unknown; features?: Partial<Features>; snapshot?: Deps["snapshot"]; search?: Deps["search"]; text?: (c: TextCall) => string } = {}) {
   const clock = new FakeClock();
   const view = clock.forContact(FROM);
   const wa = new FakeWa(clock);
-  const llm = stubLlm({ reply: o.reply, object: o.object });
+  const llm = stubLlm({ reply: o.reply, object: o.object, text: o.text });
   const deps = makeEvalDeps({ clock: view, wa, llm, features: o.features, snapshot: o.snapshot, search: o.search });
   const core = new ContactCore(deps);
   const { db } = deps;
@@ -77,8 +78,8 @@ test("runTurn sends reaction then bubbles with the pacing and marks pending hand
   const texts = t.wa.sent.filter((s) => s.kind === "text");
   expect(texts.map((s) => s.body)).toEqual(["hi", "second"]);
   expect(texts[1].at - texts[0].at).toBe(bubblePauseMs(2));
-  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder", "view_page", "search_web"]); // memory off: no forget tool
-  expect(t.llm.calls[0].activeTools!()).toEqual(["set_reminder", "cancel_reminder", "search_web"]); // view_page waits for a link or a search
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder", "make_page", "view_page", "send_screenshot", "search_web"]); // memory off: no forget tool
+  expect(t.llm.calls[0].activeTools!()).toEqual(["set_reminder", "cancel_reminder", "make_page", "search_web"]); // view_page and send_screenshot wait for a link or a search
   expect(t.db.all("SELECT recalled FROM turns")).toEqual([{ recalled: "[]" }]);
   expect(t.llm.calls[0].system[1].content).not.toContain("forget tool"); // memory off: no control sentences (the first-contact line may say "forget")
   expect(t.rows("direction = 'in'").map((r) => r.status)).toEqual(["handled"]);
@@ -801,8 +802,8 @@ test("view_page is offered from the step after a search, so the model can open a
   const t = setup({ features: { memory: true }, object: () => ({ ops: [] }), reply: async (c) => { before = c.activeTools!(); await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
   await t.say("no link here");
   await t.run();
-  expect(before).toEqual(["set_reminder", "cancel_reminder", "forget", "search_web"]);
-  expect(after).toEqual(["set_reminder", "view_page"]); // a fetched page must not be able to talk the model into deleting anything
+  expect(before).toEqual(["set_reminder", "cancel_reminder", "forget", "make_page", "search_web"]);
+  expect(after).toEqual(["set_reminder", "make_page", "view_page", "send_screenshot"]); // a fetched page must not be able to talk the model into deleting anything
 });
 
 test("without a search dependency there is no search_web tool and view_page keeps its link-only rule", async () => {
@@ -810,7 +811,7 @@ test("without a search dependency there is no search_web tool and view_page keep
   t.deps.search = undefined;
   await t.say("no link here");
   await t.run();
-  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder"]);
+  expect(Object.keys(t.llm.calls[0].tools!)).toEqual(["set_reminder", "cancel_reminder", "make_page"]);
 });
 
 test("a stream that dies after only the say line still gets the fallback: the say line is not an answer", async () => {
@@ -1191,4 +1192,126 @@ test("a reminder whose send returns an empty id counts as sent in both the remin
   await t.run(ny("2026-11-04 10:30"));
   expect(t.db.all("SELECT status FROM reminders")).toEqual([{ status: "sent" }]);
   expect(outs(t).at(-1)).toMatchObject({ text: "Reminder: call the dentist", status: "sent" });
+});
+
+// make_page: the say line first, then the page model, then the link in the reply model's own bubble.
+const pageCall = (c: StreamCall, input = { say: "give me a minute, putting that together", title: "Lisbon plan", brief: "three days in Lisbon" }) => c.tools!.make_page.execute!(input, { toolCallId: "p", messages: [] } as never);
+
+test("make_page sends `say` before the page model runs; the link comes back in a normal bubble and a row lands in pages", async () => {
+  const order: string[] = [];
+  const t = setup({
+    text: () => { order.push("generate"); return STUB_PAGE; },
+    reply: async (c) => {
+      const out = (await pageCall(c)) as { url: string; title: string };
+      order.push("result");
+      return `react: none\nhere: ${out.url}`;
+    },
+  });
+  const send = t.wa.sendText.bind(t.wa);
+  t.wa.sendText = async (...a) => { order.push(`send:${a[1].slice(0, 20)}`); return send(...a); };
+  await t.say("plan me three days in lisbon");
+  await t.run();
+  const id = t.db.all<{ id: string }>("SELECT id FROM pages")[0].id;
+  expect(id).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  expect(order).toEqual(["send:give me a minute, pu", "generate", "result", `send:here: https://wapp-a`]);
+  const texts = t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body);
+  expect(texts).toEqual(["give me a minute, putting that together", `here: https://wapp-agent.test/p/test/${id}`]);
+  expect(t.llm.textCalls[0].messages[0].content).toBe("Title: Lisbon plan\n\nBrief:\nthree days in Lisbon");
+  expect(t.turns()[0].bubbles).toBe(2);
+});
+
+test("make_page: one page per turn, and the repeated say line is not sent twice", async () => {
+  const t = setup({ reply: async (c) => `react: none\n${JSON.stringify([Object.keys((await pageCall(c)) as object), await pageCall(c)])}` });
+  await t.say("plan it");
+  await t.run();
+  expect(t.llm.textCalls).toHaveLength(1);
+  expect(t.db.all("SELECT 1 FROM pages")).toHaveLength(1);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["give me a minute, putting that together", '[["url","title"],{"error":"one page per turn"}]']);
+});
+
+test("make_page: the 11th page in 24 hours is refused with no say line and no model call; a day later it works again", async () => {
+  let out: unknown;
+  const t = setup({ reply: async (c) => { out = await pageCall(c); return "react: none\nok"; } });
+  for (let i = 0; i < 10; i++) t.db.run("INSERT INTO pages(id, title, html, bytes, created_at) VALUES (?, 't', 'h', 1, ?)", `id${i}`, t.clock.t - 3_600_000 * i);
+  await t.say("plan it");
+  await t.run();
+  expect(out).toEqual({ error: expect.stringContaining("10 pages") });
+  expect(t.llm.textCalls).toHaveLength(0);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["ok"]);
+  t.clock.t += 24 * 3_600_000;
+  await t.say("again");
+  await t.run();
+  expect(out).toMatchObject({ title: "Lisbon plan" });
+});
+
+test("make_page: a page model failure is relayed as an error and logged; the say line still counts as sent", async () => {
+  const t = setup({ text: () => { throw new Error("boom"); }, reply: async (c) => `react: none\n${JSON.stringify(await pageCall(c))}` });
+  const log = vi.fn();
+  t.deps.log = log;
+  await t.say("plan it");
+  await t.run();
+  expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: "page_failed", error: "boom" }));
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["give me a minute, putting that together", '{"error":"could not build the page"}']);
+  expect(t.db.all("SELECT 1 FROM pages")).toHaveLength(0);
+});
+
+test("make_page stays offered after a search ran (a sandboxed page cannot delete anything)", async () => {
+  let after: string[] = [];
+  const t = setup({ reply: async (c) => { await searchCall(c); after = c.activeTools!(); return "react: none\nok"; } });
+  await t.say("no link here");
+  await t.run();
+  expect(after).toContain("make_page");
+});
+
+// send_screenshot: the cached snapshot's JPEG goes out as an image through the transport.
+const shotCall = (c: StreamCall, input: { url: string; caption?: string }) => c.tools!.send_screenshot.execute!(input, { toolCallId: "s", messages: [] } as never);
+
+test("send_screenshot sends the snapshot's JPEG with the caption and stores an outbound image row; one snapshot serves both tools", async () => {
+  const snapshot = vi.fn(async () => PAGE);
+  let out: unknown;
+  const t = setup({ snapshot, reply: async (c) => { out = await shotCall(c, { url: "https://a.com/x", caption: "the page" }); return "react: none\nthere"; } });
+  await t.say("show me https://a.com/x");
+  await t.run();
+  expect(out).toEqual({ sent: true });
+  expect(snapshot).toHaveBeenCalledTimes(1);
+  const img = t.wa.sent.find((s) => s.kind === "image")!;
+  expect(img).toMatchObject({ to: FROM, mime: "image/jpeg", caption: "the page", bytes: PAGE.jpeg });
+  expect(t.rows("kind = 'image'").map((r) => [r.text, r.status])).toEqual([["[screenshot of https://a.com/x] the page", "sent"]]);
+  expect(t.turns()[0].bubbles).toBe(2);
+});
+
+test("send_screenshot retakes a cached snapshot that has no picture, and says so when there is still none", async () => {
+  const snapshot = vi.fn(async () => ({ ...PAGE, jpeg: new Uint8Array() }));
+  let out: unknown;
+  const t = setup({ snapshot, reply: async (c) => { out = await shotCall(c, { url: "https://a.com/x" }); return "react: none\nsorry"; } });
+  await t.say("show me https://a.com/x");
+  await t.run();
+  expect(out).toEqual({ error: "could not take a screenshot" });
+  expect(snapshot).toHaveBeenCalledTimes(2);
+  expect(t.wa.sent.some((s) => s.kind === "image")).toBe(false);
+});
+
+test("send_screenshot after a search only takes thread links and results; any other URL is refused", async () => {
+  const outs: unknown[] = [];
+  const t = setup({
+    snapshot: async () => PAGE, search: async () => [{ title: "R", url: "https://r.example/", text: "x" }],
+    reply: async (c) => { await searchCall(c); for (const url of ["https://evil.example/", "https://r.example/"]) outs.push(await shotCall(c, { url })); return "react: none\nok"; },
+  });
+  await t.say("is the louvre open");
+  await t.run();
+  expect(outs).toEqual([{ error: "could not open the page" }, { sent: true }]);
+  expect(t.wa.sent.filter((s) => s.kind === "image")).toHaveLength(1);
+});
+
+test("send_screenshot reports a transport without sendImage and a failed send", async () => {
+  const outs: unknown[] = [];
+  const t = setup({ snapshot: async () => PAGE, reply: async (c) => { outs.push(await shotCall(c, { url: "https://a.com/x" })); return "react: none\nok"; } });
+  (t.deps.wa as { sendImage?: unknown }).sendImage = async () => { throw new WaError(0, 500, "nope"); };
+  await t.say("see https://a.com/x");
+  await t.run();
+  (t.deps.wa as { sendImage?: unknown }).sendImage = undefined;
+  t.clock.t += 60_000;
+  await t.say("again https://a.com/x");
+  await t.run();
+  expect(outs).toEqual([{ error: "could not send the screenshot" }, { error: "images cannot be sent here" }]);
 });

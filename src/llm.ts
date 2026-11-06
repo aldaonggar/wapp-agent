@@ -9,10 +9,12 @@ export interface StreamCall {
   activeTools?: () => string[]; // asked before every step: which of `tools` the model is offered (one can open up after another ran)
 }
 export interface ObjectCall<T> { job: "extract" | "derive" | "judge"; modelId: string; system: string; messages: ModelMessage[]; schema: z.ZodType<T>; reasoning?: ReasoningSetting; sessionId: string }
+export interface TextCall { job: "page"; modelId: string; system: string; messages: ModelMessage[]; maxOutputTokens: number; reasoning: ReasoningSetting; sessionId: string; timeoutMs: number }
 export interface Llm {
   // On a stream error `text` throws after the last delta and `done` rejects (pre-handled, but `await done` still throws).
   stream(call: StreamCall): { text: AsyncIterable<string>; done: Promise<Usage & { ttftMs: number; finishReason: string }> };
   object<T>(call: ObjectCall<T>): Promise<{ value: T; usage: Usage }>;
+  text(call: TextCall): Promise<{ text: string; usage: Usage }>; // plain completion: a page is 20 KB of HTML, which a JSON string field would only make fragile
 }
 
 type RawUsage = { raw?: Record<string, unknown> } | undefined;
@@ -37,6 +39,10 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
     opts.log?.(u);
     return u;
   };
+
+  // Anthropic caches only a prefix that carries the marker.
+  const cached = (modelId: string, system: string): string | SystemModelMessage[] =>
+    modelId.startsWith("anthropic/") ? [{ role: "system", content: system, providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } }] : system;
 
   return {
     stream(call) {
@@ -103,10 +109,7 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
 
     async object<T>(call: ObjectCall<T>) {
       const t0 = performance.now();
-      // Same cache marker as stream(): Anthropic caches only a prefix that carries it, and the extraction prompt is 2k tokens on every turn.
-      const instructions: string | SystemModelMessage[] = call.modelId.startsWith("anthropic/")
-        ? [{ role: "system", content: call.system, providerOptions: { openrouter: { cacheControl: { type: "ephemeral" } } } }]
-        : call.system;
+      const instructions = cached(call.modelId, call.system); // the extraction prompt is 2k tokens on every turn
       let lastErr: unknown;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
@@ -128,6 +131,21 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
         }
       }
       throw lastErr;
+    },
+
+    async text(call) {
+      const t0 = performance.now();
+      const r = await generateText({
+        model: model(call.modelId, call.reasoning),
+        instructions: cached(call.modelId, call.system),
+        messages: call.messages,
+        maxOutputTokens: call.maxOutputTokens,
+        maxRetries: 0, // the turn watchdog is 60 s: a retry would not fit
+        timeout: call.timeoutMs,
+        providerOptions: callOptions(call.sessionId),
+      });
+      const provider = (r.providerMetadata?.openrouter as { provider?: string } | undefined)?.provider;
+      return { text: r.text, usage: usageOf(call.job, call.modelId, r.usage, provider, rawCost(r.usage), t0) };
     },
   };
 }

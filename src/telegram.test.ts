@@ -105,6 +105,34 @@ test("sendAudio posts multipart sendVoice: chat id, the bytes as voice.ogg with 
   await expect(tg.sendAudio!("tg:123456789", bytes, "audio/ogg")).rejects.toMatchObject({ code: 0, status: 502 });
 });
 
+test("sendImage posts multipart sendPhoto: chat id, the JPEG as screenshot.jpg, caption cut at 1024, reply params; returns tg:<chat>:<message_id>", async () => {
+  const s = stub(ok({ message_id: 47 }), ok({ message_id: 48 }), ok({}));
+  const tg = makeTgClient({ token: "TOK", fetch: s.f });
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff]);
+  expect(await tg.sendImage!("tg:123456789", bytes, "image/jpeg", { caption: "x".repeat(2000), quote: "tg:123456789:40" })).toEqual({ id: "tg:123456789:47" });
+  expect(s.calls[0].url).toBe(`${TG}/botTOK/sendPhoto`);
+  const form = s.calls[0].init?.body as FormData;
+  expect(form.get("chat_id")).toBe("123456789");
+  expect((form.get("caption") as string).length).toBe(1024);
+  expect(JSON.parse(form.get("reply_parameters") as string)).toEqual({ message_id: 40, allow_sending_without_reply: true });
+  const photo = form.get("photo") as File;
+  expect([photo.name, photo.type, new Uint8Array(await photo.arrayBuffer())]).toEqual(["screenshot.jpg", "image/jpeg", bytes]);
+  expect(await tg.sendImage!("tg:123456789", bytes, "image/jpeg")).toEqual({ id: "tg:123456789:48" });
+  const bare = s.calls[1].init?.body as FormData;
+  expect([bare.has("caption"), bare.has("reply_parameters")]).toEqual([false, false]);
+  await expect(tg.sendImage!("tg:123456789", bytes, "image/jpeg")).rejects.toMatchObject({ code: 0, status: 502 });
+});
+
+test("routeTransports dispatches sendImage by prefix and fails it for a transport without one", async () => {
+  const sent: string[] = [];
+  const base = { sendText: async () => ({ id: "" }), sendReaction: async () => {}, markReadTyping: async () => {}, fetchMedia: async () => ({ bytes: new Uint8Array(), mime: "" }) };
+  const r = routeTransports(base, { ...base, sendImage: async (to) => { sent.push(to); return { id: "" }; } });
+  await r.sendImage!("tg:1", new Uint8Array(), "image/jpeg");
+  await expect(r.sendImage!("15550000001", new Uint8Array(), "image/jpeg")).rejects.toMatchObject({ code: 0, status: 0 });
+  expect(sent).toEqual(["tg:1"]);
+  expect(routeTransports(base, base).sendImage).toBeUndefined();
+});
+
 test("sendReaction (variation selector stripped) and markReadTyping send the documented bodies", async () => {
   const s = stub(ok(true), ok(true));
   const tg = makeTgClient({ token: "TOK", fetch: s.f });
