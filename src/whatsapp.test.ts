@@ -164,6 +164,20 @@ test("sendAudio uploads the bytes as multipart, then sends an audio message with
   expect(bad.calls).toHaveLength(1);
 });
 
+test("sendImage uploads the JPEG as multipart, then sends an image message with the media id and caption", async () => {
+  const { calls, f } = stub(json({ id: "MEDIA2" }), json(OK), json({ id: "MEDIA3" }), json(OK));
+  const wa = makeWaClient({ token: "tok", phoneNumberId: "PN", fetch: f });
+  expect(await wa.sendImage!("16505551234", new Uint8Array([255, 216]), "image/jpeg", { caption: "x".repeat(2000), quote: "wamid.Q" })).toEqual({ id: "wamid.OUT" });
+  expect(calls[0].url).toBe(`${GRAPH}/PN/media`);
+  const form = calls[0].init?.body as FormData;
+  expect([form.get("messaging_product"), form.get("type")]).toEqual(["whatsapp", "image/jpeg"]);
+  const file = form.get("file") as File;
+  expect([file.name, file.type, new Uint8Array(await file.arrayBuffer())]).toEqual(["screenshot.jpg", "image/jpeg", new Uint8Array([255, 216])]);
+  expect(JSON.parse(calls[1].init?.body as string)).toEqual({ messaging_product: "whatsapp", recipient_type: "individual", to: "+16505551234", type: "image", image: { id: "MEDIA2", caption: "x".repeat(1024) }, context: { message_id: "wamid.Q" } });
+  await wa.sendImage!("16505551234", new Uint8Array([255, 216]), "image/jpeg");
+  expect(JSON.parse(calls[3].init?.body as string).image).toEqual({ id: "MEDIA3" });
+});
+
 test("sendReaction and markReadTyping send the documented bodies", async () => {
   const { calls, f } = stub(json(OK), json({ success: true }));
   const wa = makeWaClient({ token: "t", phoneNumberId: "PN", fetch: f });

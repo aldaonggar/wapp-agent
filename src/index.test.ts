@@ -97,3 +97,23 @@ test("POST /webhook is 404 while WhatsApp is not fully configured", async () => 
   expect(res.status).toBe(404);
   expect(f.ingested).toEqual([]);
 });
+
+test("GET /p/<key>/<id> serves the page with the locked-down headers; 404 for an unknown id, another contact's id, a malformed key or id, and non-GET", async () => {
+  const KA = "a".repeat(64), KB = "b".repeat(64), ID = "A".repeat(22);
+  const stores: Record<string, Record<string, { html: string; title: string }>> = { [KA]: { [ID]: { html: "<h1>hi</h1>", title: "T" } }, [KB]: {} };
+  const env = { CONTACT: {
+    idFromString: (k: string) => { if (!stores[k]) throw new Error("invalid id"); return k; },
+    get: (k: string) => ({ page: async (id: string) => stores[k][id] ?? null }),
+  } } as unknown as Env;
+  const get = (path: string, method = "GET") => worker.fetch(new Request("https://x" + path, { method }), env, ctx);
+  const ok = await get(`/p/${KA}/${ID}`);
+  expect(ok.status).toBe(200);
+  expect(await ok.text()).toBe("<h1>hi</h1>");
+  expect(Object.fromEntries(ok.headers)).toMatchObject({
+    "content-type": "text/html; charset=utf-8",
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'",
+    "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
+  });
+  for (const path of [`/p/${KA}/${"B".repeat(22)}`, `/p/${KB}/${ID}`, `/p/${"c".repeat(64)}/${ID}`, `/p/short/${ID}`, `/p/${KA}/short`, `/p/${KA}/${ID}/x`]) expect([path, (await get(path)).status]).toEqual([path, 404]);
+  expect((await get(`/p/${KA}/${ID}`, "POST")).status).toBe(404);
+});

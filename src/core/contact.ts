@@ -8,6 +8,7 @@ import { formatLocal } from "./db";
 import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
+import { buildPage, pagesLeftToday } from "./pages";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
@@ -27,7 +28,7 @@ const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
 export const FALLBACK = "sorry, something broke on my side. can you send that again in a bit?";
-const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
+const SPEAKABLE = /^(?!.*https?:\/\/)[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}\n]*$/su; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
@@ -168,7 +169,7 @@ export class ContactCore {
     let to = "", pending: Msg[] = [], waitMs: number | null = null, retrievalMs = 0, model = "";
     let regenerated = 0, sends = 0, bubbles = 0, ttfb: number | null = null, lastSendAt = 0, prevChars = 0;
     let usage: (Usage & { ttftMs: number; finishReason: string }) | null = null, error: string | null = null;
-    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, says = 0, sayText = "";
+    let tz = "UTC", images: memory.TurnForMemory["images"] = [], recalledTexts: string[] = [], reacted = false, searched = false, pageMade = false, says = 0, sayText = "";
     // Some models write their say line again after the tool step; it already went out.
     const norm = (s: string) => s.trim().toLowerCase().replace(/[.,!?…]+$/, "");
     const unsaid = (text: string): string => {
@@ -248,7 +249,52 @@ export class ContactCore {
         const { search } = this.deps;
         // After a search, view_page opens only the thread's links and the results: a result page must not pick where the bot goes.
         const allowed = new Set([...history.slice(-5), ...pending].flatMap((r) => extractUrls(r.text ?? "")));
-        const viewPage = { ...this.viewPageTool, execute: (a: { url: string }, o: never) => searched && !allowed.has(a.url) ? Promise.resolve({ error: "could not open the page" }) : this.viewPageTool.execute!(a, o) } as typeof this.viewPageTool;
+        const blocked = (url: string) => searched && !allowed.has(url);
+        const viewPage = { ...this.viewPageTool, execute: (a: { url: string }, o: never) => blocked(a.url) ? Promise.resolve({ error: "could not open the page" }) : this.viewPageTool.execute!(a, o) } as typeof this.viewPageTool;
+        // Same allowlist as view_page. The snapshot is the cached one; a cached snapshot without a picture is retaken once.
+        const screenshotTool = tool({
+          description: "Send the person a screenshot of a web page as an image, with an optional caption",
+          inputSchema: z.object({ url: z.string().url(), caption: z.string().max(1000).optional() }),
+          execute: async ({ url, caption }) => {
+            if (!wa.sendImage) return { error: "images cannot be sent here" };
+            if (blocked(url)) return { error: "could not open the page" };
+            let p = await this.page(url);
+            if (p && !p.jpeg.length) { this.pages.delete(url); p = await this.page(url); }
+            if (!p?.jpeg.length) { this.pages.delete(url); return { error: "could not take a screenshot" }; }
+            try {
+              const id = (await wa.sendImage(to, p.jpeg, "image/jpeg", { caption })).id || `local.${crypto.randomUUID()}`;
+              sends++; bubbles++;
+              lastSendAt = clock.now(); prevChars = (caption ?? "").length;
+              db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'image', ?, ?, 'sent')", id, `[screenshot of ${url}]${caption ? " " + caption : ""}`, lastSendAt);
+              outIds.push(id);
+              return { sent: true };
+            } catch (e) {
+              this.error("send_failed", e, { kind: "image" });
+              return { error: "could not send the screenshot" };
+            }
+          },
+        });
+        const pageTool = tool({
+          description: "Build a small web page and get its link, for content that reads better as a page than as chat bubbles. Sends `say` to them first (building takes up to a minute). One page per turn.",
+          inputSchema: z.object({
+            say: z.string().min(1).describe("one short sentence in your own voice telling them you are putting it together (\"give me a minute, putting that together\")"),
+            title: z.string().min(1).max(120).describe("the page title"),
+            brief: z.string().min(1).max(8000).describe("everything the page must contain, written from the conversation and what you know (facts, rows, steps, preferences) and the kind of page it should be"),
+          }),
+          execute: async ({ say, title, brief }) => {
+            if (pageMade) return { error: "one page per turn" };
+            if (!pagesLeftToday(db, clock.now())) return { error: "10 pages made in the last 24 hours: tell them to ask again tomorrow" };
+            pageMade = true;
+            says++;
+            sayText = say;
+            await deliver(say); // before the build starts: the model call takes tens of seconds
+            wa.markReadTyping(newest.id).catch((e) => this.error("typing_failed", e));
+            try { return await buildPage(this.deps, title, brief); } catch (e) {
+              this.error("page_failed", e);
+              return { error: "could not build the page" };
+            }
+          },
+        });
         const searchTool = search && tool({
           description: "Look something up on the web: current or outside information you do not have. Sends `say` to them first, then returns the top results' main pages.",
           inputSchema: z.object({
@@ -270,14 +316,14 @@ export class ContactCore {
         });
         const hasUrl = [...history.slice(-5), ...pending].some((r) => extractUrls(r.text ?? "").length > 0);
         const tools = {
-          set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}),
-          ...(hasUrl || searchTool ? { view_page: viewPage } : {}), ...(searchTool ? { search_web: searchTool } : {}),
+          set_reminder: this.setReminderTool, cancel_reminder: this.cancelReminderTool, ...(features.memory ? { forget: this.forgetTool } : {}), make_page: pageTool,
+          ...(hasUrl || searchTool ? { view_page: viewPage, send_screenshot: screenshotTool } : {}), ...(searchTool ? { search_web: searchTool } : {}),
         };
         this.abort = new AbortController();
         const { text, done } = llm.stream({
           job: "reply", modelId: model, system: prompt.system, messages: prompt.messages, tools,
           // view_page opens up once a search ran; search results are untrusted text, so the tools that delete close then.
-          activeTools: () => Object.keys(tools).filter((k) => (k === "view_page" ? hasUrl || searched : !(searched && (k === "forget" || k === "cancel_reminder" || k === "search_web")))),
+          activeTools: () => Object.keys(tools).filter((k) => (k === "view_page" || k === "send_screenshot" ? hasUrl || searched : !(searched && (k === "forget" || k === "cancel_reminder" || k === "search_web")))),
           maxOutputTokens: maxOutputTokensFor(model, features.replyEffort ?? EFFORT.reply), reasoning: reasoningFor(model, features.replyEffort ?? EFFORT.reply),
           sessionId: this.deps.contactKey, abortSignal: this.abort.signal,
         });

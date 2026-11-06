@@ -28,19 +28,22 @@ export const JOBS = {
   // Measured 2026-11-05 late evening with thinking on (EVALS.md): extraction candidates tie at 8/8 except haiku (7/8, a judge slip), luna is the cheapest; insight models: v4-pro 8/8 over two runs, sol 7/8, so v4-pro stays (sonnet ties it for less, one run).
   extract: { default: "openai/gpt-6-luna", candidates: ["deepseek/deepseek-v4.1-flash", "openai/gpt-6-luna", "anthropic/claude-haiku-5.5"] },
   derive: { default: "deepseek/deepseek-v4-pro", candidates: ["deepseek/deepseek-v4-pro", "openai/gpt-6.1-sol", "anthropic/claude-sonnet-5.5"] },
+  // Pages are one long HTML completion the person opens on a phone: the strongest layout/writing models, no measurements yet (design 4.22).
+  page: { default: "anthropic/claude-sonnet-5.5", candidates: ["anthropic/claude-sonnet-5.5", "openai/gpt-6.1-sol", "moonshotai/kimi-k2.6"] },
   judge: { default: "anthropic/claude-opus-5.5" as const },
 };
 
 export const CHINA_HOSTS = ["deepseek", "moonshotai", "z-ai", "alibaba", "baidu", "siliconflow", "streamlake"];
 
-export interface ModelChoice { reply: string; vision: string; extract: string; derive: string; judge: string }
+export interface ModelChoice { reply: string; vision: string; extract: string; derive: string; page: string; judge: string }
 
-export function pickModels(env: Partial<Record<"MODEL_REPLY" | "MODEL_VISION" | "MODEL_EXTRACT" | "MODEL_DERIVE", string>>): ModelChoice {
+export function pickModels(env: Partial<Record<"MODEL_REPLY" | "MODEL_VISION" | "MODEL_EXTRACT" | "MODEL_DERIVE" | "MODEL_PAGE", string>>): ModelChoice {
   return {
     reply: env.MODEL_REPLY || JOBS.reply.default,
     vision: env.MODEL_VISION || JOBS.vision.default,
     extract: env.MODEL_EXTRACT || JOBS.extract.default,
     derive: env.MODEL_DERIVE || JOBS.derive.default,
+    page: env.MODEL_PAGE || JOBS.page.default,
     judge: JOBS.judge.default,
   };
 }
@@ -62,7 +65,7 @@ export function costUsd(id: string, u: { input: number; output: number; cached: 
 
 export type Effort = "low" | "medium" | "high";
 /** Per-job thinking, chosen 2026-11-05 evening after the no-thinking reply model proved careless about tools and its own history. REPLY_EFFORT overrides reply. */
-export const EFFORT: { reply: Effort; extract: Effort; derive: Effort; judge: Effort } = { reply: "medium", extract: "medium", derive: "medium", judge: "medium" };
+export const EFFORT: { reply: Effort; extract: Effort; derive: Effort; page: Effort; judge: Effort } = { reply: "medium", extract: "medium", derive: "medium", page: "medium", judge: "medium" };
 
 export function maxOutputTokensFor(id: string, effort?: Effort): number {
   return spec(id).mandatoryThinking || effort !== undefined ? 2048 : 400; // thinking shares the output budget on most routes

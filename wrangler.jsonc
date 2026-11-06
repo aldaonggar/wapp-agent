@@ -8,5 +8,5 @@
   "ai": { "binding": "AI", "remote": true },
   "durable_objects": { "bindings": [{ "name": "CONTACT", "class_name": "ContactAgent" }] },
   "exports": { "ContactAgent": { "type": "durable-object", "storage": "sqlite" } },
-  "vars": { "CLOUDFLARE_ACCOUNT_ID": "ca2eab2f1e6412d4da10548be926c8fa" }
+  "vars": { "CLOUDFLARE_ACCOUNT_ID": "ca2eab2f1e6412d4da10548be926c8fa", "PUBLIC_URL": "https://wapp-agent.alda-onggar.workers.dev" }
 }

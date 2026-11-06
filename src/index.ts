@@ -3,6 +3,13 @@ import { parseWebhook, verifySignature } from "./whatsapp";
 
 let warnedRegular = false; // once per isolate
 
+// Nothing a page holds may run or load: the model wrote it. form-action and base-uri are not covered by default-src.
+const PAGE_HEADERS = {
+  "content-type": "text/html; charset=utf-8",
+  "content-security-policy": "default-src 'none'; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data:; form-action 'none'; base-uri 'none'",
+  "x-frame-options": "DENY", "referrer-policy": "no-referrer", "cache-control": "private, max-age=3600",
+};
+
 // A transport is on when every secret it needs is set; the app runs with either one, and /health says which (503 with none).
 export const transports = (env: Env) => ({
   whatsapp: !!(env.WHATSAPP_TOKEN && env.WHATSAPP_PHONE_NUMBER_ID && env.WHATSAPP_APP_SECRET && env.WHATSAPP_VERIFY_TOKEN),
@@ -77,6 +84,14 @@ export default {
         }
       } else if (u) console.log(JSON.stringify({ event: "dropped_sender", from: u.user.username ?? "…" + String(u.user.id).slice(-4) }));
       return new Response("ok");
+    }
+
+    // A page the agent built: the unguessable id in the link is the whole access control (PRIVACY.md says so).
+    const pageLink = request.method === "GET" && url.pathname.match(/^\/p\/([0-9a-f]{64})\/([\w-]{22})$/);
+    if (pageLink) {
+      let page: { html: string; title: string } | null = null;
+      try { page = await env.CONTACT.get(env.CONTACT.idFromString(pageLink[1])).page(pageLink[2]); } catch { /* a key that is not one of ours */ }
+      if (page) return new Response(page.html, { headers: PAGE_HEADERS });
     }
 
     return new Response("not found", { status: 404 });

@@ -17,6 +17,7 @@ Status (2026-11-05): the brief asked for WhatsApp, and the WhatsApp Cloud API tr
 - Remembers facts across days, works out things you did not say (insights), and forgets on request.
 - Checks in later about plans that have a date.
 - Sets reminders at an exact time: "remind me at 18:00 to call the dentist" gets a confirmation now and your own words back at 18:00; "what reminders do I have" lists them, and any can be cancelled.
+- Builds a small web page when something reads better that way (a comparison, a plan, a recipe, a mockup) and sends the link; sends a screenshot of a page you shared or it found.
 - Answers a voice note with a voice note (one, carrying the whole reply), or when you ask for one ("say it out loud"); any other text message gets text.
 
 To talk to it: open the owner's bot (the owner gives you its `t.me` link), press **Start**, and talk. The owner decides whether the bot is open to anyone who finds it or limited to a list of Telegram usernames or ids (`ALLOWED_TELEGRAM`, [SETUP.md section 9](SETUP.md)). Reminders and check-ins are delivered whenever they are due.
@@ -34,6 +35,8 @@ Things to try:
 9. Say "remind me in 20 minutes to ..." and wait; ask "what reminders do I have" or cancel one.
 10. Send a voice note and get a voice note back, or type "say that out loud" and get one.
 11. Ask something that needs a search ("is the Louvre open today?"): it says it is checking, then answers from what it found.
+12. Ask for a comparison or a plan ("compare these three phones in a table", "plan three days in Lisbon"): it says it is putting it together, then sends a link to a page you open on your phone.
+13. Send a link and ask "show me what it looks like": it sends a screenshot.
 
 ## Architecture
 
@@ -56,6 +59,7 @@ flowchart TB
     A["Workers AI<br/>embeddings, rerank<br/>Whisper, Aura-1 voice"]
     B["Browser Rendering<br/>page snapshots"]
   end
+  W -->|GET /p/key/id| D
   T -->|POST /telegram| W
   C --> O
   C --> A
@@ -67,7 +71,7 @@ The Worker is stateless: it checks Telegram's secret header and the allowlist, t
 
 - `src/worker.ts` re-exports `src/index.ts` (the Worker above) and the `ContactAgent` class.
 - `ContactAgent` ([src/contact-agent.ts](src/contact-agent.ts)) holds SQLite and one alarm. `ContactCore` ([src/core/contact.ts](src/core/contact.ts)) holds the logic and has no Cloudflare imports, so tests and evals run it in plain Node.
-- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links. Search: OpenRouter's web plugin (Exa engine) for three sources, then a plain fetch of each page, no Browser Rendering.
+- OpenRouter: reply, extraction, insights. Workers AI: bge-m3 embeddings and rerank, Whisper, Aura-1 text-to-speech for voice replies. Browser Rendering: `/snapshot` for links, also the screenshots it sends back. Search: OpenRouter's web plugin (Exa engine) for three sources, then a plain fetch of each page, no Browser Rendering.
 - Alarm loop: wait for the burst to end, run the turn, then remember (extract facts) off the reply path so the next reply never waits for it; derive insights after 30 minutes of quiet, then check follow-ups; send reminders at their time (no model call).
 
 ## Why the memory is in-house
@@ -79,7 +83,7 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 `src/`
 
 - [worker.ts](src/worker.ts): wrangler entry; re-exports the Worker and `ContactAgent`.
-- [index.ts](src/index.ts): `/telegram` POST, allowlist, fan-out to one Durable Object per contact, `/health`; the parked WhatsApp routes live here too.
+- [index.ts](src/index.ts): `/telegram` POST, allowlist, fan-out to one Durable Object per contact, `/health`, `GET /p/<contact>/<id>` (pages the agent built, locked-down headers); the parked WhatsApp routes live here too.
 - [contact-agent.ts](src/contact-agent.ts): Durable Object shell and dependency wiring.
 - [env.d.ts](src/env.d.ts): `Env` augmentation (secret names, `CONTACT` binding).
 - [models.ts](src/models.ts): model table, per-job defaults and candidates, prices, cost, host filter.
@@ -94,6 +98,7 @@ There are memory libraries and hosted memory services (mem0, Zep and others) tha
 
 - [types.ts](src/core/types.ts): shared types.
 - [db.ts](src/core/db.ts): schema, migrations, SQLite adapters, vector helpers.
+- [pages.ts](src/core/pages.ts): `make_page`: the page model's system prompt, the HTML sanitiser, storage in the `pages` table, the 64 KB and 10-a-day limits.
 - [cadence.ts](src/core/cadence.ts): when a burst is over; pauses between bubbles.
 - [stream.ts](src/core/stream.ts): parses the model's reply into bubbles.
 - [prompt.ts](src/core/prompt.ts): system prompt, history window, prompt assembly.
@@ -207,7 +212,7 @@ npm run eval:report                            # results -> EVALS.md
 
 Braintrust is optional and sits on top of the same harness: `--braintrust` runs the same scenarios and judge through its `Eval` and uploads one experiment per run, named after the configuration tag (a rerun of the same tag gets a new experiment with a derived name; `evals/results/<tag>.json` stays the merged record), so runs can be compared in its UI with per-scenario scores (`passed`, `probes_correct`, `checks_passed`) and cost metrics on each scenario. It needs `BRAINTRUST_API_KEY` in `.env.braintrust` (git-ignored; [SETUP.md section 8](SETUP.md)); without it the run still happens locally and uploads nothing. Either runner writes `evals/results/<tag>.json`, so [EVALS.md](EVALS.md) is the same whichever produced it.
 
-Tests that run today (offline): `npm test` is 266 tests in 17 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
+Tests that run today (offline): `npm test` is 296 tests in 18 files; `npx vitest run evals/harness.test.ts evals/cadence.test.ts evals/results.test.ts` is 42 tests in 3 files; `npm run types && npx tsc --noEmit` is clean (`npm run types` generates `worker-configuration.d.ts`, which is git-ignored, so run it first on a fresh clone).
 
 ## Model picks
 
@@ -219,6 +224,7 @@ Measured on 2026-11-05 late evening with thinking on (tables in [Evals](#evals);
 | Vision (photos) | `openai/gpt-6.1-terra` for every photo turn (the default reply model is marked `vision: false`; a reply model that reads images well, such as kimi-k2.6, would answer photos itself) | $1 / $5 for `openai/gpt-6.1-terra` | Not compared. Flash calls a plain red JPEG blank under the production prompt (0/4 in round 1); routed to `gpt-6.1-terra` the photo scenario passes (1/1, "red"), about $0.001 per photo turn |
 | Extract | `openai/gpt-6-luna` (was `anthropic/claude-haiku-5.5`) | $0.10 / $0.50 | Three-way 8/8 tie, the cheapest wins ($0.08 per 1,000 turns against $0.11 and $0.16); luna 16/16 over two runs, haiku 15/16 (a judge slip), no timeouts at medium thinking |
 | Derive insights | `deepseek/deepseek-v4-pro` | $1.60 / $3.20 | 8/8 over two runs against 7/8 for gpt-6.1-sol and 4/4 (one run) for claude-sonnet-5.5, which is cheaper ($0.40 against $0.53 per 1,000 turns) and a candidate for a second look; uncached |
+| Page builder (`make_page`) | `anthropic/claude-sonnet-5.5` at medium effort, 8,000 output tokens, 45 s; candidates `openai/gpt-6.1-sol`, `moonshotai/kimi-k2.6`; override with `MODEL_PAGE` | $2 / $10 | Not measured yet. One call writes one HTML page (a typical page is 3 to 8K output tokens, so about $0.03 to $0.09, thinking included); at most 10 pages a day per person |
 | Eval judge | `anthropic/claude-opus-5.5` at medium effort | $4 / $20 | about $0.05 of table cost per full run; one false negative seen (`long-dont-know`, the weekday of the launch) |
 | Web search | `openai/gpt-6-luna` with OpenRouter's web plugin (Exa engine), 3 results, no thinking | $0.10 / $0.50 plus the search fee | about $0.007 per search measured; only the search query and the results pass through it |
 
@@ -239,6 +245,8 @@ npm run eval
 
 ## Known limits
 
+- Pages the agent builds (`make_page`) are static pages: a separate model writes only the content (Markdown), and the Worker renders it ([marked](https://github.com/markedjs/marked), raw HTML escaped, then cleaned to a fixed list of content tags) into one template it owns. The template is strictly black on white (white on black in dark mode), one column, hairline rules, the Iceland font from Google Fonts for everything, and no other colour, shadow, card or icon, so every page looks the same and none looks like AI styling; structure (headings, nested lists, tick-able task lists, tables, quotes, code) comes from the content. No scripts, no forms, no images, at most 64 KB and 10 a day per person. The link is public to anyone who holds it (it is 128 bits of randomness, but it is not behind a login), and a page is never deleted. The sanitiser and the response headers (`Content-Security-Policy: default-src 'none'` plus Google Fonts' stylesheet and font hosts only) are defence in depth, not a promise that the model's layout is good. The page URL base is `PUBLIC_URL` in `wrangler.jsonc`: change it if the Worker's `workers.dev` address differs.
+- Screenshots (`send_screenshot`) reuse the snapshot taken when a link is read, which costs nothing extra; a page not yet opened takes one Browser Rendering request, and those are limited as above (10 minutes a day, one request per 10 seconds), so a screenshot can fail with "could not take a screenshot" and the agent says so.
 - Cloudflare Free plan: Browser Rendering is 10 minutes per day and one page request per 10 seconds; Workers AI is 10,000 neurons per day, shared by voice-note transcription and voice replies.
 - Voice replies go out only for a voice note, or when you ask for one in text, one voice note per reply, and the voice is English (Deepgram Aura-1 on Workers AI, OGG/Opus). Measured 2026-11-05 on a 25-word (126-character) reply: p50 0.58 s, max 0.93 s, 10 KB. Aura-1 bills 1,364 neurons per 1,000 characters, so roughly 8 to 25 full-length voice replies a day fit the Free plan; after that, and for a reply in a non-Latin script or any synthesis failure, the text bubbles go out instead.
 - Timezone starts as UTC (a Telegram id carries no country code) until the person says where they are; reminder times are resolved in that zone, and a reminder set before the zone was known is moved with it.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { costUsd, maxOutputTokensFor, pickModels, reasoningFor, replyEffortFrom, replyModelFor } from "./models";
+import { EFFORT, JOBS, MODELS, costUsd, maxOutputTokensFor, pickModels, reasoningFor, replyEffortFrom, replyModelFor } from "./models";
 
 describe("models", () => {
   it("costUsd splits cached input", () => {
@@ -15,6 +15,12 @@ describe("models", () => {
   it("reasoningFor", () => {
     expect(reasoningFor("moonshotai/kimi-k2.6")).toEqual({ enabled: false });
     expect(reasoningFor("moonshotai/kimi-k2.6", "high")).toEqual({ effort: "high" });
+  });
+  it("the page job defaults to sonnet-5.5 at medium effort, overridable with MODEL_PAGE, and every candidate is priced", () => {
+    expect(pickModels({}).page).toBe("anthropic/claude-sonnet-5.5");
+    expect(pickModels({ MODEL_PAGE: "moonshotai/kimi-k2.6" }).page).toBe("moonshotai/kimi-k2.6");
+    expect(EFFORT.page).toBe("medium");
+    for (const id of JOBS.page.candidates) expect(MODELS[id]).toBeDefined();
   });
   it("pickModels and replyModelFor", () => {
     expect(pickModels({ MODEL_REPLY: "z-ai/glm-5.2" }).reply).toBe("z-ai/glm-5.2");
