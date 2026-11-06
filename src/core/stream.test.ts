@@ -87,7 +87,7 @@ test("splits at sentence ends when there is no paragraph break: a few short piec
   const t = texts(await collect(whole(para)));
   expect(t.length).toBeGreaterThan(2);
   for (const p of t) { expect(p.length).toBeLessThanOrEqual(4096); expect(p.endsWith(".")).toBe(true); }
-  expect(t[0].length).toBeLessThanOrEqual(360); // the opening pieces read like chat bubbles
+  expect(t[0].length).toBeLessThanOrEqual(260); // the opening pieces read like chat bubbles
   expect(t.join(" ")).toBe(para);
 });
 
@@ -111,14 +111,14 @@ test("a header line repeated after a tool step never leaks into a bubble", async
 });
 
 test("a long bubble is split into messages at paragraph, then sentence, breaks", () => {
-  const para = "First paragraph that is long enough to matter. ".repeat(4).trim();
+  const para = "First paragraph that is long enough to matter. ".repeat(3).trim();
   const three = [para, para, para].join("\n\n");
   const pieces = splitLong(three);
   expect(pieces).toEqual([para, para, para]);
   const sentences = "This is a sentence of modest length that goes on a bit. ".repeat(12).trim();
   const bySentence = splitLong(sentences);
   expect(bySentence.length).toBeGreaterThan(1);
-  for (const p of bySentence) expect(p.length).toBeLessThanOrEqual(360);
+  for (const p of bySentence) expect(p.length).toBeLessThanOrEqual(260);
   expect(bySentence.join(" ")).toBe(sentences);
   expect(splitLong("x".repeat(500))).toEqual(["x".repeat(500)]); // one unbreakable sentence stays whole under the hard limit
   expect(splitLong("short reply")).toEqual(["short reply"]);

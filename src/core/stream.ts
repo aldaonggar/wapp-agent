@@ -4,7 +4,7 @@ export type ReplyEvent =
   | { type: "bubble"; text: string; quote?: string };
 
 const LIMIT = 4096; // the transport's hard limit
-const SOFT = 350; // a bubble longer than this reads like an email: split at paragraph, else sentence, breaks
+const SOFT = 250; // a bubble longer than this reads like an email: split at paragraph, else sentence, breaks
 const MAX_SOFT_PIECES = 6; // after that, only the hard limit splits (a wall of text stays a wall rather than a flood)
 const MIN_TAIL = 40; // never leave a dangling fragment
 
