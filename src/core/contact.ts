@@ -8,7 +8,7 @@ import { formatLocal } from "./db";
 import { followupDecision, scheduleFollowup } from "./followups";
 import { deriveInsights } from "./insights";
 import * as memory from "./memory";
-import { buildPage, pagesLeftToday, recentPages } from "./pages";
+import { buildPage, pageEditError, pagesLeftToday, recentPages } from "./pages";
 import { buildPrompt, windowHistory, type HistoryRow } from "./prompt";
 import { addReminder, cancelReminder, dueReminders, pendingReminders, scheduleReminder } from "./reminders";
 import { parseReply } from "./stream";
@@ -285,6 +285,8 @@ export class ContactCore {
           execute: async ({ say, title, brief, page_id }) => {
             if (pageMade) return { error: "one page per turn" };
             if (!pagesLeftToday(db, clock.now())) return { error: "10 pages made in the last 24 hours: tell them to ask again tomorrow" };
+            const editErr = page_id === undefined ? null : pageEditError(db, page_id);
+            if (editErr) return { error: editErr }; // before the say line: nothing to wait for
             pageMade = true;
             says++;
             sayText = say;

@@ -110,7 +110,7 @@ export function buildPrompt(input: {
     input.profile && `profile:\n${input.profile}`,
     input.memories.length > 0 && `memories:\n${input.memories.map(memoryLine).join("\n")}`,
     input.reminders?.length && `reminders (pending, local time):\n${[...input.reminders.slice(0, 10).map((r) => `- ${formatLocal(r.due_ts, tz)} ${r.text} (id ${r.id})`), ...(input.reminders.length > 10 ? [`- and ${input.reminders.length - 10} more`] : [])].join("\n")}`,
-    input.pages?.length && `pages (last 7 days):\n${input.pages.map((p) => `- ${p.title} (id ${p.id}${p.total ? `, ${p.ticked} of ${p.total} ticked` : ""})`).join("\n")}`,
+    input.pages?.length && `pages (last 7 days):\n${input.pages.map((p) => `- ${p.title} (${[p.editable ? `id ${p.id}` : "not editable", p.total && `${p.ticked} of ${p.total} ticked${p.left.length ? `; left: ${p.left.join(", ")}` : ""}`].filter(Boolean).join(", ")})`).join("\n")}`,
     input.memory && CONTROLS,
     input.history.length === 0 && INTRO,
     `now: ${input.nowLocal} (${tz}${input.tzConfirmed ? "" : ", unconfirmed guess from the phone number"})`,

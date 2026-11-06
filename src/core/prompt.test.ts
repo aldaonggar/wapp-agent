@@ -96,8 +96,8 @@ test("buildPrompt renders every memory status and adds the control sentences onl
 
 test("buildPrompt lists recent pages with ids, tick counts only when there are checkboxes; the rules say to update in place", () => {
   const base = { profile: "", memories: [], history: [], pending: [], nowLocal: "x", tz: "UTC", tzConfirmed: true, snapshots: [] };
-  const dyn = buildPrompt({ ...base, pages: [{ id: "A".repeat(22), title: "Packing", ticked: 2, total: 5 }, { id: "B".repeat(22), title: "Trip", ticked: 0, total: 0 }] }).system[1].content;
-  expect(dyn).toContain(`pages (last 7 days):\n- Packing (id ${"A".repeat(22)}, 2 of 5 ticked)\n- Trip (id ${"B".repeat(22)})`);
+  const dyn = buildPrompt({ ...base, pages: [{ id: "A".repeat(22), title: "Packing", ticked: 2, total: 5, left: ["socks", "charger", "adapter"], editable: true }, { id: "B".repeat(22), title: "Trip", ticked: 0, total: 0, left: [], editable: true }, { id: "C".repeat(22), title: "Old", ticked: 0, total: 0, left: [], editable: false }] }).system[1].content;
+  expect(dyn).toContain(`pages (last 7 days):\n- Packing (id ${"A".repeat(22)}, 2 of 5 ticked; left: socks, charger, adapter)\n- Trip (id ${"B".repeat(22)})\n- Old (not editable)`);
   expect(buildPrompt({ ...base, pages: [] }).system[1].content).not.toContain("pages (last");
   expect(SYSTEM_PROMPT).toContain("call make_page with that page's id");
 });
