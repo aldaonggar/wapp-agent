@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { makeSearch, makeSnapshot } from "./browser";
 import { ContactCore } from "./core/contact";
 import { fromDO, migrate } from "./core/db";
+import { editPage, type EditResult, type Op } from "./core/page-edit";
 import { getPage, setPageState } from "./core/pages";
 import type { Db, Deps, Inbound } from "./core/types";
 import { makeLlm } from "./llm";
@@ -53,7 +54,9 @@ export class ContactAgent extends DurableObject<Env> {
 
   alarm(): Promise<void> { return this.core.alarm(); }
 
-  page(id: string): { html: string; title: string } | null { return getPage(this.db, id); }
+  page(id: string): { html: string; title: string; body: string; rev: number } | null { return getPage(this.db, id); }
 
-  setPageState(id: string, i: number, checked: boolean, seq: number): boolean { return setPageState(this.db, id, i, checked, seq); }
+  setPageState(id: string, i: number, checked: boolean, seq: number, rev?: number): boolean | "stale" { return setPageState(this.db, id, i, checked, seq, rev); }
+
+  editPage(id: string, op: Op, seq: number, rev?: number): EditResult { return editPage(this.db, Date.now(), id, op, seq, rev); }
 }

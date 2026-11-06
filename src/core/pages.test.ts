@@ -93,7 +93,8 @@ test("buildPage calls the page model with the content-only system prompt, low ef
   expect(stored.html).toContain(TEMPLATE_CSS);
   expect(stored.html).toContain("<h1>Phones</h1>");
   expect(stored.html).not.toMatch(/<script/i);
-  expect(getPage(deps.db, id)).toEqual({ html: stored.html, title: "Trip" });
+  expect(getPage(deps.db, id)).toMatchObject({ title: "Trip", body: expect.stringContaining("<h1>Phones</h1>") });
+  expect(getPage(deps.db, id)!.html.replace(/<script>[\s\S]*<\/script>\n/, "").replace(' data-rev="0"', "")).toBe(stored.html);
   expect(getPage(deps.db, "nope")).toBeNull();
 });
 
@@ -117,7 +118,7 @@ let seqN = 0; const ps = (db: Parameters<typeof setPageState>[0], id: string, i:
 const BOXES = "## Pack\n\n- [ ] a\n- [x] b\n- [ ] c";
 const idOf = (r: unknown) => (r as { url: string }).url.split("/").pop()!;
 
-test("getPage numbers every checkbox with data-i, applies stored ticks over the model's own, and adds the one script only when there are boxes", async () => {
+test("getPage numbers every checkbox with data-i, applies stored ticks over the model's own, and adds the one script", async () => {
   const { deps } = mk(BOXES);
   const id = idOf(await buildPage(deps, "Pack", "b"));
   expect(getPage(deps.db, id)!.html).toContain('<input type="checkbox" data-i="1" checked>'); // b is ticked in the source: only the stored state counts once there is one
@@ -128,13 +129,13 @@ test("getPage numbers every checkbox with data-i, applies stored ticks over the 
   expect(html).toContain('<input type="checkbox" data-i="2" checked>');
   expect(html.match(/<script>/g)).toHaveLength(1);
   expect(html).toContain(`<script>${PAGE_SCRIPT}</script>`);
-  expect(PAGE_SCRIPT.split("\n").length).toBeLessThan(25);
+  expect(PAGE_SCRIPT.split("\n").length).toBeLessThan(200);
   expect(getPage(mk("x").deps.db, "nope")).toBeNull();
 });
 
-test("a page without checkboxes is served without the script; content cannot bring its own data-i", async () => {
+test("every page is served with the one script; content cannot bring its own data-i", async () => {
   const { deps } = mk("# Hi\n\ntext");
-  expect(getPage(deps.db, idOf(await buildPage(deps, "T", "b")))!.html).not.toContain("<script");
+  expect(getPage(deps.db, idOf(await buildPage(deps, "T", "b")))!.html.match(/<script>/g)).toHaveLength(1);
   expect(render('<input type="checkbox" data-i="9" onclick="x()">')).toBe('<input type="checkbox">');
 });
 
@@ -158,7 +159,7 @@ test("recentPages lists pages of the last 7 days with ids, tick counts and untic
   const { llm, deps } = mk("- [ ] socks\n- [ ] **charger** & cable\n- [ ] " + "x".repeat(80));
   const id = idOf(await buildPage(deps, "Pack", "b"));
   ps(deps.db, id, 0, true);
-  expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 1, total: 3, left: ["charger & cable", "x".repeat(60)], editable: true }]);
+  expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 1, total: 3, left: ["charger & cable", "x".repeat(60)], editable: true, notes: [], fields: [] }]);
   expect(recentPages(deps.db, deps.clock.now() + 8 * 86_400_000)).toEqual([]);
   llm.next(Array.from({ length: 12 }, (_, i) => `- [ ] i${i}`).join("\n"));
   await buildPage(deps, "Many", "b");
@@ -287,4 +288,75 @@ test("the fence strip removes a fence around the whole output only, never a lead
   const real = mk(code);
   await buildPage(real.deps, "T", "b");
   expect((real.deps.db.all("SELECT source FROM pages")[0] as { source: string }).source).toBe(code);
+});
+
+// ---- phase 1: read-only powers ----
+
+test("details and summary: bare, with open kept on details, from raw Markdown or a fragment; attributes, other raw tags and stray text stay refused", () => {
+  const html = render("## Day 1\n\n<details>\n<summary>Morning</summary>\n\n- museum\n\n**bold** text\n\n</details>\n\n<details open><summary>Open</summary>\n\nx\n\n</details>");
+  expect(html).toMatch(/<details>\s*<summary>Morning<\/summary>\s*<ul>\s*<li>museum<\/li>\s*<\/ul>\s*<p><strong>bold<\/strong> text<\/p>\s*<\/details>/);
+  expect(html).toContain("<details open><summary>Open</summary>");
+  const bad = render('<p>0</p><details onclick="x()" class="a"><summary style="color:red">T</summary><p>x</p></details><details><script>x()</script><b>no</b></details>');
+  expect(bad).toBe("<p>0</p><details><summary>T</summary><p>x</p></details><details><b>no</b></details>");
+  const md = render('# x\n\n<details class="a">\n<summary onclick="x()">T</summary>\n\n</details>\n\n<div>raw</div>');
+  expect(md).not.toMatch(/<(details|summary|div)[^>]*(class|onclick)/);
+  expect(md).toContain("&lt;details class=");
+  expect(md).toContain("&lt;div&gt;raw");
+});
+
+test("h2 and h3 get stable slug ids, repeats are de-duplicated, h1 and h4 stay bare; a generated id never collides with a heading that already has that text", () => {
+  const html = render("# Top\n\n## Food & Drink\n\n### Food & Drink\n\n## Food & Drink\n\n## Food Drink 2\n\n## Food & drink 2\n\n#### Deep\n\n## ünï ✓");
+  expect(html.match(/<h[1-6][^>]*>/g)).toEqual(['<h1>', '<h2 id="food-drink">', '<h3 id="food-drink-2">', '<h2 id="food-drink-3">', '<h2 id="food-drink-2-2">', '<h2 id="food-drink-2-3">', '<h4>', '<h2 id="ünï">']);
+  expect(render("## **Bold** `code`")).toBe('<h2 id="bold-code"><strong>Bold</strong> <code>code</code></h2>\n');
+});
+
+test("contents: 4 or more h2/h3 add a plain Contents list of anchors before the first of them; 3 do not", () => {
+  const sec = (n: number) => Array.from({ length: n }, (_, i) => `## Part ${i + 1}\n\ntext`).join("\n\n");
+  const four = wrap("T", render(sec(4)));
+  expect(four).toMatch(/<main>\n<nav><strong>Contents<\/strong><ul><li><a href="#part-1">Part 1<\/a><\/li>[\s\S]*<a href="#part-4">Part 4<\/a><\/li><\/ul><\/nav>\n?<h2 id="part-1">/);
+  expect(wrap("T", render(sec(3)))).not.toContain("<nav>");
+  const withH1 = wrap("T", render("# Mine\n\n" + sec(4)));
+  expect(withH1.indexOf("</h1>")).toBeLessThan(withH1.indexOf("<nav>")); // after the title
+  expect(withH1.indexOf("<nav>")).toBeLessThan(withH1.indexOf('<h2 id="part-1">'));
+  expect(wrap("T", render("## A & $& <b>\n\n## b\n\n### c\n\n## d"))).toContain('<a href="#a-b">A &amp; $&amp; &lt;b&gt;</a>'); // text escaped, no replacement patterns
+});
+
+test("progress: a page with checkboxes says 'n of m done' above the first checklist only", async () => {
+  const { deps } = mk("## Pack\n\n- [ ] a\n- [x] b\n\n## More\n\n- [ ] c");
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  let html = getPage(deps.db, id)!.html;
+  expect(html).toContain('<p class="progress">1 of 3 done</p><ul>');
+  expect(html.match(/class="progress"/g)).toHaveLength(1);
+  ps(deps.db, id, 0, true);
+  expect(getPage(deps.db, id)!.html).toContain("2 of 3 done");
+  expect(getPage(mk("# x").deps.db, "nope")).toBeNull();
+  const none = mk("# no boxes");
+  expect(getPage(none.deps.db, idOf(await buildPage(none.deps, "T", "b")))!.html).not.toContain('class="progress"');
+  html = getPage(deps.db, id)!.html;
+  expect(TEMPLATE_CSS).toContain("li:has(> input[type=checkbox]:checked) { text-decoration: line-through; }");
+});
+
+test("footnotes: [^1] becomes a numbered link, definitions a numbered list with back-links, numbered by first use; unknown refs, unused notes and code stay as text", () => {
+  const html = render("Fact[^b] and more[^a], again[^b], gone[^zz], `code [^a]`.\n\n[^a]: Note **A** <script>x()</script>\n[^b]: Note B\n[^unused]: never");
+  expect(html).toContain('Fact<sup><a href="#fn-1" id="fnref-1">1</a></sup> and more<sup><a href="#fn-2" id="fnref-2">2</a></sup>, again<sup><a href="#fn-1">1</a></sup>, gone[^zz], <code>code [^a]</code>.');
+  expect(html).toMatch(/<section class="footnotes"><ol><li id="fn-1">Note B <a href="#fnref-1">back<\/a><\/li><li id="fn-2">Note <strong>A<\/strong> [^<]*<a href="#fnref-2">back<\/a><\/li><\/ol><\/section>/);
+  expect(html).not.toMatch(/<script|never|\[\^[ab]\]:/);
+  expect(render("no notes[^1]")).toBe("<p>no notes[^1]</p>\n");
+  expect(render("a[^1]\n\n[^1]: [^1] self")).not.toMatch(/|/);
+});
+
+test("the print block hides controls, avoids breaks inside tables and items, and needs no network font", () => {
+  const print = /@media print \{([\s\S]*?)\n\}/.exec(TEMPLATE_CSS)![1];
+  expect(print).toMatch(/\.copy, \.filter[^{]*\{ display: none; \}/);
+  expect(print).toMatch(/table, tr, li[^{]*\{ break-inside: avoid; \}/);
+  expect(print).toMatch(/color: black/);
+  expect(print).not.toMatch(/googleapis|Iceland/);
+});
+
+test("the served script is the exact text the CSP hash covers and has no template placeholder or closing tag in it", async () => {
+  const { deps } = mk("## x");
+  const html = getPage(deps.db, idOf(await buildPage(deps, "T", "b")))!.html;
+  expect(html).toContain(`<script>${PAGE_SCRIPT}</script>`);
+  expect(PAGE_SCRIPT).not.toMatch(/<\/script|\$\{/i);
+  expect(() => new Function(PAGE_SCRIPT)).not.toThrow(); // compiles
 });
