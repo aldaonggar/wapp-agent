@@ -152,16 +152,18 @@ const withIds = (html: string) => {
   });
 };
 
+/** Footnote definition lines become blank lines of the same length (so offsets hold and the editor lexes what the renderer lexes); the notes are collected. */
+export const blankDefs = (src: string, notes = new Map<string, string>()) => src.replace(/^\[\^([\w-]+)\]:[ \t]*(.+)$/gm, (m, id: string, t: string) => (notes.set(id, t), " ".repeat(m.length)));
+
 /** Markdown (what the model is asked for) or, if it wrote an HTML fragment anyway, that fragment: either way cleaned to the content tags. */
 export function render(text: string): string {
   const src = text.replace(/[\uE000-\uE007]/g, ""); // that range is ours: placeholders below, never from the model
-  if (/^\s*<[a-z]/i.test(src)) return clean(src);
+  if (/^\s*<(?!\/?(?:details|summary)\b)[a-z]/i.test(src)) return clean(src); // a page may start with a fold
   // Fields and footnote definitions are taken out of the text first (placeholders in the private-use range), then put back as our own markup after the cleaner.
   const fields = scanFields(src);
   // shortcut: a "[^id]: text" line inside a code fence is also taken as a definition; upgrade if a page ever shows one.
   const notes = new Map<string, string>();
-  const body = fields.reduceRight((t, f, i) => t.slice(0, f.start) + `\uE002${i}\uE003` + t.slice(f.end), src)
-    .replace(/^\[\^([\w-]+)\]:[ \t]*(.+)\n?/gm, (_, id: string, t: string) => (notes.set(id, t), ""));
+  const body = blankDefs(fields.reduceRight((t, f, i) => t.slice(0, f.start) + `\uE002${i}\uE003` + t.slice(f.end), src), notes);
   const tokens = md.lexer(body);
   let k = 0;
   for (const t of tokens) if (t.type === "list" && (t as Tokens.List).items.some((i) => i.task)) (t as Tokens.List & { checklist?: number }).checklist = k++;
@@ -220,6 +222,8 @@ export async function buildPage(deps: Deps, title: string, brief: string, pageId
   let text = r.text.trim().replace(/^```(?:markdown|md|html)?[ \t]*\n([\s\S]*)\n```$/i, "$1").replace(/\r\n?/g, "\n").replace(/[\uE000-\uE007]/g, ""); // some models fence the whole document anyway; a leading code block of a real page stays. The private-use range is ours (placeholders)
   if (prev?.fields) text = fillFields(text, JSON.parse(prev.fields)); // a value the model dropped comes back
   if (new TextEncoder().encode(text).length > MAX_PAGE_BYTES) return { error: "the page came out too big (over 64 KB): ask for something shorter" };
+  const now = prev && db.all<{ source: string; state: string | null }>("SELECT source, state FROM pages WHERE id=?", pageId!)[0];
+  if (prev && (now?.source !== prev.source || now?.state !== prev.state)) return { error: "the page was changed on the page itself while it was being rebuilt: ask again" }; // nothing stored: their changes stay
   const content = render(text).trim();
   if (!content) return { error: "the page model returned no page" };
   const html = wrap(title, content);

@@ -7,15 +7,22 @@ const root = () => document.querySelector("main") || document.body;
 const last = {};
 const seqFor = (k) => last[k] = Math.max((last[k] || 0) + 1, Date.now());
 let queue = Promise.resolve(), rev = (root().dataset || {}).rev;
+// Unsaved typing in a field survives a body swap: it is put back and saved.
 const show = (d) => {
   if (!d.html) return location.reload();
+  const dirty = $(".f textarea, .f input[type=text]", root()).filter((x) => x.value !== x.defaultValue).map((x) => [x.closest(".f").dataset.f, x.value]);
   root().innerHTML = d.html;
   root().dataset.rev = rev = d.rev;
   enhance();
+  dirty.forEach(([key, v]) => { const f = $(".f", root()).find((x) => x.dataset.f === key); if (f) { f.querySelector("textarea, input").value = v; field(f, v); } });
 };
-const save = (key, body) => queue = queue.then(() => fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, seq: seqFor(key), rev: rev === undefined ? undefined : +rev }), keepalive: true })
-  .then((r) => r.status === 200 || r.status === 409 ? r.json().then((d) => r.status === 409 ? show(d) : (rev = d.rev, d.html && show(d))) : 0)
-  .catch(() => {}));
+// The rev is the one the person's view had when they acted, not when the request goes out. Resolves true when the server took it.
+const save = (key, body) => {
+  const r = rev === undefined ? undefined : +rev, s = seqFor(key);
+  return queue = queue.then(() => fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...body, seq: s, rev: r }), keepalive: true })
+    .then((res) => res.status === 409 ? res.json().then((d) => (show(d), false)) : res.status === 200 ? res.json().then((d) => (d.html && show(d), true)) : res.ok)
+    .catch(() => false));
+};
 
 // "n of m done" above the first checklist, kept live as boxes are ticked.
 const progress = () => {
@@ -39,7 +46,9 @@ const addItem = (add) => {
   const i = add.querySelector("input"), text = i.value.trim();
   if (!text) return;
   i.value = "";
-  save("l", { op: { add: { list: +add.dataset.list, text } } });
+  save("l", { op: { add: { list: +add.dataset.list, text } } }).then((ok) => { // refused or stale: the typed text comes back
+    if (!ok) { const box = $(".add input", root()).find((x) => x.closest(".add").dataset.list === add.dataset.list); if (box && !box.value) box.value = text; }
+  });
 };
 const noteBox = (li) => {
   if (li.querySelector(":scope > input.note")) return;
@@ -53,7 +62,7 @@ const noteBox = (li) => {
 };
 
 // Sorting: a click on a header sorts that column, again to reverse; numbers when every cell reads as one, else natural text order.
-const NUM = /^[^\d-]*-?\d[\d,]*(\.\d+)?[^\d]*$/;
+const NUM = /^[^\d\p{L}-]*-?\d[\d,]*(\.\d+)?[^\d]*$/u; // a letter before the digits ("A-1") makes it text
 const sortBy = (th) => {
   const table = th.closest("table"), i = [...th.parentNode.children].indexOf(th);
   const down = th.getAttribute("aria-sort") === "ascending";

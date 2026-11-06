@@ -6,8 +6,8 @@ export type FieldValue = string | string[] | null;
 export interface Field { kind: FieldKind; label: string; options: string[]; value: FieldValue; key: string; start: number; end: number }
 
 export const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-const wr = (s: string, comma = false) => s.replace(comma ? /[\\\]|=,]/g : /[\\\]|=]/g, "\\$&").replace(/\n/g, "\\n"); // a comma only needs escaping inside the values of a multi
-const unwr = (s: string) => s.replace(/\\(.)/gs, (_, c: string) => (c === "n" ? "\n" : c));
+const wr = (s: string, comma = false) => s.replace(comma ? /[\\\]|=,]/g : /[\\\]|=]/g, "\\$&").replace(/\n/g, "\\n").replace(/`/g, "\\u0060"); // a backtick would pair with another and hide the field as a code span; a comma only needs escaping inside the values of a multi
+const unwr = (s: string) => s.replace(/\\(u0060|.)/gs, (_, c: string) => (c === "n" ? "\n" : c === "u0060" ? "`" : c));
 /** Splits on a separator that is not backslash-escaped; the pieces stay escaped. */
 const splitU = (s: string, sep: string) => {
   const out = [""];

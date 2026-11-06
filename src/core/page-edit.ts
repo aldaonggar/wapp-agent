@@ -1,6 +1,6 @@
 import type { Tokens } from "marked";
 import { checkValue, fieldSource, fieldValues, scanFields } from "./page-fields";
-import { MAX_PAGE_BYTES, countBoxes, firstTicks, getPage, md, render, ticksOf, withTicks, wrap } from "./pages";
+import { MAX_PAGE_BYTES, blankDefs, countBoxes, firstTicks, getPage, md, render, ticksOf, withTicks, wrap } from "./pages";
 import type { Db } from "./types";
 
 // What a person changes on a page is an edit to its Markdown source, so the page model sees it on any later edit. editPage applies one op to the source with a small deterministic editor, renders it through the same pipeline as the model's own pages and stores it.
@@ -16,7 +16,7 @@ export const MAX_EDITS_PER_HOUR = 300, MAX_ITEM = 200, MAX_NOTE = 300;
 function checklists(src: string) {
   const out: { list: Tokens.List; at: number }[] = [];
   let at = 0;
-  for (const t of md.lexer(src)) {
+  for (const t of md.lexer(blankDefs(src))) {
     if (t.type === "list" && (t as Tokens.List).items.some((i) => i.task)) out.push({ list: t as Tokens.List, at });
     at += t.raw.length;
   }
@@ -33,7 +33,7 @@ function editList(src: string, op: { list: number; index?: number; text?: string
   const { list, at } = L, items = list.items;
   let p = at;
   const offs = items.map((i) => { const o = p; p += i.raw.length; return o; });
-  if (p !== at + list.raw.length) return "that list cannot be edited";
+  if (p > at + list.raw.length || list.raw.slice(p - at).trim()) return "that list cannot be edited";
   if (kind === "add") {
     const text = oneLine(op.text, MAX_ITEM);
     if (!text || text.length > MAX_ITEM) return `an item is 1 to ${MAX_ITEM} characters`;
@@ -55,13 +55,13 @@ function editList(src: string, op: { list: number; index?: number; text?: string
 function logEvent(db: Db, now: number, page: string, key: string | null, text: string): void {
   if (key) db.run("DELETE FROM page_events WHERE page_id=? AND key=?", page, key); // typing in one field twice is one change
   db.run("INSERT INTO page_events(page_id, key, text, at) VALUES (?,?,?,?)", page, key, text.slice(0, 200), now);
-  db.run("DELETE FROM page_events WHERE rowid NOT IN (SELECT rowid FROM page_events ORDER BY rowid DESC LIMIT 50)");
+  db.run("DELETE FROM page_events WHERE id NOT IN (SELECT id FROM page_events ORDER BY id DESC LIMIT 50)");
 }
 
 /** What people changed on their pages since the bot last answered (oldest first, at most 20), and the row to delete up to once the turn that used them succeeds. */
 export function pageChanges(db: Db): { lines: string[]; upTo: number } {
-  const r = db.all<{ rowid: number; text: string }>("SELECT rowid, text FROM page_events ORDER BY rowid LIMIT 20");
-  return { lines: r.map((x) => x.text), upTo: r.at(-1)?.rowid ?? 0 };
+  const r = db.all<{ id: number; text: string }>("SELECT id, text FROM page_events ORDER BY id LIMIT 20");
+  return { lines: r.map((x) => x.text), upTo: r.at(-1)?.id ?? 0 };
 }
 
 /**

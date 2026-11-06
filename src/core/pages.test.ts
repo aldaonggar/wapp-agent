@@ -296,8 +296,8 @@ test("details and summary: bare, with open kept on details, from raw Markdown or
   const html = render("## Day 1\n\n<details>\n<summary>Morning</summary>\n\n- museum\n\n**bold** text\n\n</details>\n\n<details open><summary>Open</summary>\n\nx\n\n</details>");
   expect(html).toMatch(/<details>\s*<summary>Morning<\/summary>\s*<ul>\s*<li>museum<\/li>\s*<\/ul>\s*<p><strong>bold<\/strong> text<\/p>\s*<\/details>/);
   expect(html).toContain("<details open><summary>Open</summary>");
-  const bad = render('<details onclick="x()" class="a"><summary style="color:red">T</summary><p>x</p></details><details><script>x()</script><b>no</b></details>');
-  expect(bad).toBe("<details><summary>T</summary><p>x</p></details><details><b>no</b></details>");
+  const bad = render('<p>0</p><details onclick="x()" class="a"><summary style="color:red">T</summary><p>x</p></details><details><script>x()</script><b>no</b></details>');
+  expect(bad).toBe("<p>0</p><details><summary>T</summary><p>x</p></details><details><b>no</b></details>");
   const md = render('# x\n\n<details class="a">\n<summary onclick="x()">T</summary>\n\n</details>\n\n<div>raw</div>');
   expect(md).not.toMatch(/<(details|summary|div)[^>]*(class|onclick)/);
   expect(md).toContain("&lt;details class=");
