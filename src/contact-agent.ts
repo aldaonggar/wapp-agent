@@ -55,5 +55,5 @@ export class ContactAgent extends DurableObject<Env> {
 
   page(id: string): { html: string; title: string } | null { return getPage(this.db, id); }
 
-  setPageState(id: string, checked: number[]): boolean { return setPageState(this.db, id, checked); }
+  setPageState(id: string, i: number, checked: boolean): boolean { return setPageState(this.db, id, i, checked); }
 }

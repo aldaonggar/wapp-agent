@@ -35,20 +35,21 @@ pre, code { font-family: ui-monospace, monospace; font-size: 0.95em; }
 pre { overflow-x: auto; padding: 0.75rem; border: 1px solid currentColor; }
 `;
 
-// The one script any page runs (hash-allowed in the CSP, injected at serve time for pages with checkboxes): saves the ticks, debounced.
-export const PAGE_SCRIPT = `let t;
-addEventListener("change", (e) => {
-  if (!e.target.matches("input[data-i]")) return;
-  clearTimeout(t);
-  t = setTimeout(() => {
-    const checked = [...document.querySelectorAll("input[data-i]")].filter((c) => c.checked).map((c) => +c.dataset.i);
-    fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ checked }), keepalive: true }).catch(() => {});
-  }, 300);
+// The one script any page runs (hash-allowed in the CSP, injected at serve time for pages with checkboxes): sends each tick as it happens (keepalive, so a tick just before closing still lands).
+export const PAGE_SCRIPT = `addEventListener("change", (e) => {
+  const c = e.target;
+  if (!c.matches("input[data-i]")) return;
+  fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ i: +c.dataset.i, checked: c.checked }), keepalive: true }).catch(() => {});
 });`;
 export const SCRIPT_HASH = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PAGE_SCRIPT)))));
 
 const BOX = /<input type="checkbox"(?: checked)?>/g;
 const countBoxes = (html: string) => html.match(BOX)?.length ?? 0;
+const firstTicks = (html: string) => [...html.matchAll(BOX)].flatMap((m, i) => (m[0].endsWith(" checked>") ? [i] : []));
+/** Ticked indexes: the stored state, or for a page made before state existed (NULL) the page's own marks. */
+const ticksOf = (html: string, state: string | null) => (state == null ? firstTicks(html) : (JSON.parse(state) as number[]));
+// shortcut: counts task markers in code blocks too, so a "- [ ]" inside a fence shifts the ticks; fine for chat-made pages.
+const withTicks = (source: string, on: Set<number>) => { let k = 0; return source.replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/gm, (_, pre: string) => `${pre}[${on.has(k++) ? "x" : " "}]`); };
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -97,8 +98,14 @@ export function sanitize(html: string): string {
   for (let s = html; ; ) { const n = once(s); if (n === s) return n; s = n; }
 }
 
-const dayCount = (db: Db, now: number) => db.all<{ n: number }>("SELECT COUNT(*) AS n FROM pages WHERE created_at > ?1 OR updated_at > ?1", now - 86_400_000)[0].n;
-export const pagesLeftToday = (db: Db, now: number) => dayCount(db, now) < MAX_PAGES_PER_DAY;
+// The cap counts page-model calls (builds and edits, failed or not: the call is what costs), not stored pages.
+export const pagesLeftToday = (db: Db, now: number) => db.all<{ n: number }>("SELECT COUNT(*) AS n FROM page_builds WHERE at > ?", now - 86_400_000)[0].n < MAX_PAGES_PER_DAY;
+
+/** Why a page cannot be edited, or null. Pages made before edits existed have no source. */
+export function pageEditError(db: Db, id: string): string | null {
+  const r = db.all<{ source: string | null }>("SELECT source FROM pages WHERE id=?", id)[0];
+  return !r ? "no page with that id: make a new one instead" : !r.source ? "that page was made before edits were possible: make a new one instead" : null;
+}
 
 // 16 random bytes in base64url: 22 characters, 128 bits.
 const newId = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -106,11 +113,12 @@ const newId = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8
 /** One call to the page model, then sanitise, size-check and store. Errors come back as text the reply model can relay. */
 export async function buildPage(deps: Deps, title: string, brief: string, pageId?: string): Promise<{ url: string; title: string } | { error: string }> {
   const { llm, models, db, clock } = deps;
-  const prev = pageId === undefined ? undefined : db.all<{ source: string | null }>("SELECT source FROM pages WHERE id=?", pageId)[0];
-  if (pageId !== undefined && !prev) return { error: "no page with that id: make a new one instead" };
-  if (pageId !== undefined && !prev!.source) return { error: "that page was made before edits were possible: make a new one instead" };
+  const err = pageId === undefined ? null : pageEditError(db, pageId);
+  if (err) return { error: err };
+  const prev = pageId === undefined ? undefined : db.all<{ source: string; html: string; state: string | null }>("SELECT source, html, state FROM pages WHERE id=?", pageId)[0];
+  db.run("INSERT INTO page_builds(at) VALUES (?)", clock.now());
   const r = await llm.text({
-    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: prev ? `Title: ${title}\n\nHere is the current page (Markdown):\n${prev.source}\n\nApply these changes and return the full updated page:\n${brief}` : `Title: ${title}\n\nBrief:\n${brief}` }],
+    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: prev ? `Title: ${title}\n\nHere is the current page (Markdown; [x] items are ticked, keep each item's mark as it is on every item you keep):\n${withTicks(prev.source, new Set(ticksOf(prev.html, prev.state)))}\n\nApply these changes and return the full updated page:\n${brief}` : `Title: ${title}\n\nBrief:\n${brief}` }],
     maxOutputTokens: PAGE_MAX_OUTPUT, reasoning: reasoningFor(models.page, EFFORT.page), sessionId: deps.contactKey, timeoutMs: PAGE_TIMEOUT_MS,
   });
   const text = r.text.trim().replace(/^```(?:markdown|md|html)?\s*\n?|\n?```\s*$/gi, ""); // some models fence the document anyway
@@ -120,43 +128,40 @@ export async function buildPage(deps: Deps, title: string, brief: string, pageId
   const html = wrap(title, content);
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > MAX_PAGE_BYTES) return { error: "the page came out too big (over 64 KB): ask for something shorter" };
-  const id = pageId ?? newId();
-  if (prev) { // same id and link; ticks survive for checkboxes that still exist
-    const n = countBoxes(html), old = JSON.parse(db.all<{ state: string | null }>("SELECT state FROM pages WHERE id=?", id)[0].state ?? "[]") as number[];
-    db.run("UPDATE pages SET title=?, html=?, bytes=?, source=?, updated_at=?, state=? WHERE id=?", title, html, bytes, text, clock.now(), JSON.stringify(old.filter((i) => i < n)), id);
-  } else { // boxes the model wrote as "[x]" start ticked
-    const first = [...html.matchAll(BOX)].flatMap((m, i) => (m[0].endsWith(" checked>") ? [i] : []));
-    db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?,?,?,?,?,?,?)", id, title, html, bytes, clock.now(), text, JSON.stringify(first));
-  }
+  const id = pageId ?? newId(), state = JSON.stringify(firstTicks(html)); // ticks follow the items the model kept, as it wrote them
+  if (prev) db.run("UPDATE pages SET title=?, html=?, bytes=?, source=?, updated_at=?, state=? WHERE id=?", title, html, bytes, text, clock.now(), state, id);
+  else db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?,?,?,?,?,?,?)", id, title, html, bytes, clock.now(), text, state);
   return { url: `${deps.publicUrl}/p/${deps.contactKey}/${id}`, title };
 }
-
-const MAX_TICKS = 500;
 
 /** The page as served: every checkbox gets its data-i and the stored ticks; the saving script rides along when there are boxes. Content can hold neither (the cleaner strips both). */
 export function getPage(db: Db, id: string): { html: string; title: string } | null {
   const r = db.all<{ html: string; title: string; state: string | null }>("SELECT html, title, state FROM pages WHERE id=?", id)[0];
   if (!r) return null;
-  const on = new Set(JSON.parse(r.state ?? "[]") as number[]);
+  const on = new Set(ticksOf(r.html, r.state));
   let i = 0;
   const html = r.html.replace(BOX, () => `<input type="checkbox" data-i="${i}"${on.has(i++) ? " checked" : ""}>`);
   const at = html.lastIndexOf("</body>");
   return { html: i && at >= 0 ? `${html.slice(0, at)}<script>${PAGE_SCRIPT}</script>\n${html.slice(at)}` : html, title: r.title };
 }
 
-/** Store which checkboxes (by order of appearance) are ticked. False for an unknown page or indexes that are not whole numbers inside the page's checkbox count. */
-export function setPageState(db: Db, id: string, checked: number[]): boolean {
-  const r = db.all<{ html: string }>("SELECT html FROM pages WHERE id=?", id)[0];
-  if (!r || !Array.isArray(checked) || checked.length > MAX_TICKS) return false;
-  const n = countBoxes(r.html);
-  if (!checked.every((i) => Number.isInteger(i) && i >= 0 && i < n)) return false;
-  db.run("UPDATE pages SET state=? WHERE id=?", JSON.stringify([...new Set(checked)].sort((a, b) => a - b)), id);
+/** Tick or untick one checkbox (by order of appearance); a delta merged here, so two viewers never overwrite each other. False for an unknown page, a bad index or a non-boolean. */
+export function setPageState(db: Db, id: string, i: number, checked: boolean): boolean {
+  const r = db.all<{ html: string; state: string | null }>("SELECT html, state FROM pages WHERE id=?", id)[0];
+  if (!r || typeof checked !== "boolean" || !Number.isInteger(i) || i < 0 || i >= countBoxes(r.html)) return false;
+  const on = new Set(ticksOf(r.html, r.state));
+  if (checked) on.add(i); else on.delete(i);
+  db.run("UPDATE pages SET state=? WHERE id=?", JSON.stringify([...on].sort((a, b) => a - b)), id);
   return true;
 }
 
-export interface PageLine { id: string; title: string; ticked: number; total: number }
+export interface PageLine { id: string; title: string; ticked: number; total: number; left: string[]; editable: boolean }
+const text = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
+/** Labels of the unticked boxes (the text after each, up to the end of its item), at most 8, 60 characters each. */
+const leftOver = (html: string, on: Set<number>) =>
+  html.split(BOX).slice(1).flatMap((seg, i) => (on.has(i) ? [] : [text(seg.split(/<\/li>|<[uo]l>|<input/)[0]).slice(0, 60)])).filter(Boolean).slice(0, 8);
 /** Pages from the last 7 days, newest first (made or updated), for the prompt. One query. */
 export function recentPages(db: Db, now: number): PageLine[] {
-  return db.all<{ id: string; title: string; html: string; state: string | null }>("SELECT id, title, html, state FROM pages WHERE MAX(created_at, COALESCE(updated_at, 0)) > ? ORDER BY MAX(created_at, COALESCE(updated_at, 0)) DESC LIMIT 5", now - 7 * 86_400_000)
-    .map((r) => ({ id: r.id, title: r.title, ticked: (JSON.parse(r.state ?? "[]") as number[]).length, total: countBoxes(r.html) }));
+  return db.all<{ id: string; title: string; html: string; state: string | null; source: string | null }>("SELECT id, title, html, state, source FROM pages WHERE MAX(created_at, COALESCE(updated_at, 0)) > ? ORDER BY MAX(created_at, COALESCE(updated_at, 0)) DESC LIMIT 5", now - 7 * 86_400_000)
+    .map((r) => { const on = new Set(ticksOf(r.html, r.state)); return { id: r.id, title: r.title, ticked: on.size, total: countBoxes(r.html), left: leftOver(r.html, on), editable: !!r.source }; });
 }

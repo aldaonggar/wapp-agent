@@ -1232,7 +1232,7 @@ test("make_page: one page per turn, and the repeated say line is not sent twice"
 test("make_page: the 11th page in 24 hours is refused with no say line and no model call; a day later it works again", async () => {
   let out: unknown;
   const t = setup({ reply: async (c) => { out = await pageCall(c); return "react: none\nok"; } });
-  for (let i = 0; i < 10; i++) t.db.run("INSERT INTO pages(id, title, html, bytes, created_at) VALUES (?, 't', 'h', 1, ?)", `id${i}`, t.clock.t - 3_600_000 * i);
+  for (let i = 0; i < 10; i++) t.db.run("INSERT INTO page_builds(at) VALUES (?)", t.clock.t - 3_600_000 * i); // edits of one page count as much as new pages
   await t.say("plan it");
   await t.run();
   expect(out).toEqual({ error: expect.stringContaining("10 pages") });
@@ -1242,6 +1242,28 @@ test("make_page: the 11th page in 24 hours is refused with no say line and no mo
   await t.say("again");
   await t.run();
   expect(out).toMatchObject({ title: "Lisbon plan" });
+});
+
+test("make_page passes page_id to the builder and the prompt lists pages; an id with no source is refused before the say line", async () => {
+  let out: unknown;
+  const t = setup({ reply: async (c) => { out = await c.tools!.make_page.execute!({ say: "one sec", title: "L", brief: "add x", page_id: id }, { toolCallId: "p", messages: [] } as never); return "react: none\nok"; } });
+  const id = "A".repeat(22);
+  t.db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?, 'L', '<input type=\"checkbox\"> socks', 1, ?, '- [ ] socks', '[]')", id, t.clock.t);
+  await t.say("add x to my list");
+  await t.run();
+  expect(out).toMatchObject({ title: "L", url: expect.stringContaining(id) });
+  expect(t.llm.textCalls[0].messages[0].content).toContain("Here is the current page");
+  expect(t.llm.calls[0].system[1].content).toContain(`- L (id ${id}, 0 of 1 ticked; left: socks)`);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["one sec", "ok"]);
+  t.db.run("UPDATE pages SET source=NULL"); // an old page: not editable
+  t.clock.t += 60_000;
+  out = undefined;
+  await t.say("again");
+  await t.run();
+  expect(out).toEqual({ error: expect.stringContaining("before edits") });
+  expect(t.llm.textCalls).toHaveLength(1);
+  expect(t.llm.calls.at(-1)!.system[1].content).toContain("- L (not editable");
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["one sec", "ok", "ok"]);
 });
 
 test("make_page: a page model failure is relayed as an error and logged; the say line still counts as sent", async () => {
