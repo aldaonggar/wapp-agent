@@ -28,7 +28,7 @@ const RETRY_MS = 30_000;
 const MAX_REGENERATIONS = 2;
 const WATCHDOG_MS = 60_000;
 export const FALLBACK = "sorry, something broke on my side. can you send that again in a bit?";
-const SPEAKABLE = /^[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}]*$/u; // Aura-1 is an English voice: a bubble in another script turns the reply into text
+const SPEAKABLE = /^(?!.*https?:\/\/)[\p{Script=Latin}\p{Script=Common}\p{Script=Inherited}\n]*$/su; // Aura-1 is an English voice: a bubble in another script turns the reply into text
 
 const excerpt = (t: string) => (t.length > 80 ? t.slice(0, 79) + "…" : t);
 const ms = (x: number | null | undefined) => (x == null ? null : Math.round(x));
@@ -262,7 +262,7 @@ export class ContactCore {
             if (p && !p.jpeg.length) { this.pages.delete(url); p = await this.page(url); }
             if (!p?.jpeg.length) { this.pages.delete(url); return { error: "could not take a screenshot" }; }
             try {
-              const id = (await wa.sendImage(to, p.jpeg, "image/jpeg", { caption })).id;
+              const id = (await wa.sendImage(to, p.jpeg, "image/jpeg", { caption })).id || `local.${crypto.randomUUID()}`;
               sends++; bubbles++;
               lastSendAt = clock.now(); prevChars = (caption ?? "").length;
               db.run("INSERT INTO messages(id, direction, kind, text, ts, status) VALUES (?, 'out', 'image', ?, ?, 'sent')", id, `[screenshot of ${url}]${caption ? " " + caption : ""}`, lastSendAt);

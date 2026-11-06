@@ -66,7 +66,10 @@ export function allowTags(html: string): string {
 const md = new Marked({ renderer: { html: ({ text }) => esc(text) } }); // raw HTML in Markdown is shown as text, never passed through
 
 /** Markdown (what the model is asked for) or, if it wrote an HTML fragment anyway, that fragment: either way cleaned to the content tags. */
-export const render = (text: string): string => sanitize(allowTags(/^\s*<[a-z]/i.test(text) ? text : (md.parse(text, { async: false }) as string)));
+export const render = (text: string): string =>
+  sanitize(allowTags(/^\s*<[a-z]/i.test(text) ? text : (md.parse(text, { async: false }) as string)))
+    // Last word: any `<` that is not one of allowTags' own output forms is text, so a tag the regexes misread (an odd quote) can never reach the browser.
+    .replace(/<(?!\/?(?:h[1-6]|p|br|hr|ul|ol|li|table|thead|tbody|tr|th|td|blockquote|pre|code|a|strong|em|b|i|del|dl|dt|dd)>|a href="[^"<>]*">|input type="checkbox"(?: checked)?>)/g, "&lt;");
 
 /** Defence in depth behind the response's CSP: no scripts, inline handlers, javascript: URLs or refresh tags in what is stored. Repeats until stable so a nested fragment cannot reassemble. */
 export function sanitize(html: string): string {

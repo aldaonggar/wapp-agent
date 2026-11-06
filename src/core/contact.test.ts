@@ -1315,3 +1315,11 @@ test("send_screenshot reports a transport without sendImage and a failed send", 
   await t.run();
   expect(outs).toEqual([{ error: "could not send the screenshot" }, { error: "images cannot be sent here" }]);
 });
+
+test("a voice-note turn whose bubble holds a link sends the link as text, not as speech", async () => {
+  const t = setup({ reply: () => "react: none\nhere: https://wapp-agent.test/p/k/abc" });
+  await voiceNote(t);
+  await t.run();
+  expect(t.wa.sent.filter((s) => s.kind === "audio")).toHaveLength(0);
+  expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["here: https://wapp-agent.test/p/k/abc"]);
+});

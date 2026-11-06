@@ -41,6 +41,12 @@ test("an HTML fragment is cleaned to the allowed tags: script, handlers, styles,
   expect(html).toBe('<h2>T</h2><p>x y <a>bad</a> <a href="https://ok.example/">ok</a></p>');
 });
 
+test("a tag the regexes misread (odd quote in an unquoted value) is escaped, never passed through", () => {
+  const html = render("<p>hi</p><meta content='0;url=https://evil.example/' x='>' http-equiv=refresh y=a\"b>");
+  expect(html).not.toMatch(/<meta/i);
+  expect(render('<a href=\'https://x/ onx=1"\'>l</a>')).not.toMatch(/\son\w+=|<a href="https:\/\/x\/>/);
+});
+
 test("sanitize removes script tags (closed, unclosed, nested), on* attributes, javascript: URLs and refresh tags", () => {
   expect(sanitize('<p>a</p><script>alert(1)</script><SCRIPT src="x.js"></SCRIPT >b')).toBe("<p>a</p>b");
   expect(sanitize("<scr<script></script>ipt>alert(1)</scr<script></script>ipt>")).not.toMatch(/<script/i);
