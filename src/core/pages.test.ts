@@ -77,12 +77,12 @@ const mk = (text: string) => {
   return { llm, deps: makeEvalDeps({ clock: clock.forContact("a"), wa: new FakeWa(clock), llm, contactKey: "abc" }) };
 };
 
-test("buildPage calls the page model with the content-only system prompt, medium effort, 8000 tokens and 45 s; stores the wrapped, cleaned page under a 22-character id", async () => {
+test("buildPage calls the page model with the content-only system prompt, low effort, 8000 tokens and 45 s; stores the wrapped, cleaned page under a 22-character id", async () => {
   const { llm, deps } = mk("```markdown\n" + MD + "\n\n<script>x()</script>\n```");
   const r = await buildPage(deps, "Trip", "three days in Lisbon");
   expect(llm.textCalls).toEqual([{
     job: "page", modelId: JOBS.page.default, system: PAGE_SYSTEM, messages: [{ role: "user", content: "Title: Trip\n\nBrief:\nthree days in Lisbon" }],
-    maxOutputTokens: 8000, reasoning: { effort: "medium" }, sessionId: "abc", timeoutMs: 45_000,
+    maxOutputTokens: 8000, reasoning: { effort: "low" }, sessionId: "abc", timeoutMs: 45_000,
   }]);
   expect(PAGE_SYSTEM).toMatch(/CONTENT[\s\S]*No CSS/);
   expect(r).toEqual({ url: expect.stringMatching(/^https:\/\/wapp-agent\.test\/p\/abc\/[A-Za-z0-9_-]{22}$/), title: "Trip" });

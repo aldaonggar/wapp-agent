@@ -16,10 +16,10 @@ describe("models", () => {
     expect(reasoningFor("moonshotai/kimi-k2.6")).toEqual({ enabled: false });
     expect(reasoningFor("moonshotai/kimi-k2.6", "high")).toEqual({ effort: "high" });
   });
-  it("the page job defaults to sonnet-5.5 at medium effort, overridable with MODEL_PAGE, and every candidate is priced", () => {
+  it("the page job defaults to sonnet-5.5 at low effort, overridable with MODEL_PAGE, and every candidate is priced", () => {
     expect(pickModels({}).page).toBe("anthropic/claude-sonnet-5.5");
     expect(pickModels({ MODEL_PAGE: "moonshotai/kimi-k2.6" }).page).toBe("moonshotai/kimi-k2.6");
-    expect(EFFORT.page).toBe("medium");
+    expect(EFFORT.page).toBe("low");
     for (const id of JOBS.page.candidates) expect(MODELS[id]).toBeDefined();
   });
   it("pickModels and replyModelFor", () => {

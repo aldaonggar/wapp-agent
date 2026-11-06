@@ -59,7 +59,7 @@ export function makeLlm(apiKey: string, opts: { fetch?: typeof fetch; log?: (u: 
         prepareStep: call.tools ? ({ stepNumber }) => ({ activeTools: call.activeTools?.(), toolChoice: stepNumber === 2 ? "none" : undefined }) : undefined,
         maxOutputTokens: call.maxOutputTokens,
         maxRetries: 1,
-        timeout: { firstChunkMs: 15000, totalMs: 60000 },
+        timeout: { firstChunkMs: 15000, totalMs: 120000 }, // a page build or a search inside the turn can take most of a minute,
         abortSignal: call.abortSignal,
         providerOptions: callOptions(call.sessionId),
       });
