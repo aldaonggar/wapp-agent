@@ -36,10 +36,12 @@ pre { overflow-x: auto; padding: 0.75rem; border: 1px solid currentColor; }
 `;
 
 // The one script any page runs (hash-allowed in the CSP, injected at serve time for pages with checkboxes): sends each tick as it happens (keepalive, so a tick just before closing still lands).
-export const PAGE_SCRIPT = `addEventListener("change", (e) => {
+export const PAGE_SCRIPT = `const last = {};
+addEventListener("change", (e) => {
   const c = e.target;
   if (!c.matches("input[data-i]")) return;
-  fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ i: +c.dataset.i, checked: c.checked }), keepalive: true }).catch(() => {});
+  const i = +c.dataset.i, seq = last[i] = Math.max((last[i] || 0) + 1, Date.now()); // per box, rising across reloads too: the server drops a save older than one it has
+  fetch(location.pathname, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ i, checked: c.checked, seq }), keepalive: true }).catch(() => {});
 });`;
 export const SCRIPT_HASH = btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(PAGE_SCRIPT)))));
 
@@ -48,8 +50,13 @@ const countBoxes = (html: string) => html.match(BOX)?.length ?? 0;
 const firstTicks = (html: string) => [...html.matchAll(BOX)].flatMap((m, i) => (m[0].endsWith(" checked>") ? [i] : []));
 /** Ticked indexes: the stored state, or for a page made before state existed (NULL) the page's own marks. */
 const ticksOf = (html: string, state: string | null) => (state == null ? firstTicks(html) : (JSON.parse(state) as number[]));
-// shortcut: counts task markers in code blocks too, so a "- [ ]" inside a fence shifts the ticks; fine for chat-made pages.
-const withTicks = (source: string, on: Set<number>) => { let k = 0; return source.replace(/^(\s*(?:[-*+]|\d+[.)])\s+)\[[ xX]\]/gm, (_, pre: string) => `${pre}[${on.has(k++) ? "x" : " "}]`); };
+/** Rewrites the task marks of a Markdown source from the ticks; null unless its markers (marked's task-list rule) number exactly `n`, i.e. match the page's boxes. */
+const withTicks = (source: string, on: Set<number>, n: number) => {
+  const MARK = /^((?:[ \t]*>)*[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+)\[[ xX]\](?=[ \t]+\S)/gm;
+  if ((source.match(MARK)?.length ?? 0) !== n) return null;
+  let k = 0;
+  return source.replace(MARK, (_, pre: string) => `${pre}[${on.has(k++) ? "x" : " "}]`);
+};
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -116,19 +123,20 @@ export async function buildPage(deps: Deps, title: string, brief: string, pageId
   const err = pageId === undefined ? null : pageEditError(db, pageId);
   if (err) return { error: err };
   const prev = pageId === undefined ? undefined : db.all<{ source: string; html: string; state: string | null }>("SELECT source, html, state FROM pages WHERE id=?", pageId)[0];
+  const oldOn = new Set(prev ? ticksOf(prev.html, prev.state) : []), tickedSource = prev ? withTicks(prev.source, oldOn, countBoxes(prev.html)) : null; // null: markers and boxes disagree, ticks then carry by position
   db.run("INSERT INTO page_builds(at) VALUES (?)", clock.now());
   const r = await llm.text({
-    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: prev ? `Title: ${title}\n\nHere is the current page (Markdown; [x] items are ticked, keep each item's mark as it is on every item you keep):\n${withTicks(prev.source, new Set(ticksOf(prev.html, prev.state)))}\n\nApply these changes and return the full updated page:\n${brief}` : `Title: ${title}\n\nBrief:\n${brief}` }],
+    job: "page", modelId: models.page, system: PAGE_SYSTEM, messages: [{ role: "user", content: prev ? `Title: ${title}\n\nHere is the current page (Markdown; [x] items are ticked, keep each item's mark as it is on every item you keep):\n${tickedSource ?? prev.source}\n\nApply these changes and return the full updated page:\n${brief}` : `Title: ${title}\n\nBrief:\n${brief}` }],
     maxOutputTokens: PAGE_MAX_OUTPUT, reasoning: reasoningFor(models.page, EFFORT.page), sessionId: deps.contactKey, timeoutMs: PAGE_TIMEOUT_MS,
   });
-  const text = r.text.trim().replace(/^```(?:markdown|md|html)?\s*\n?|\n?```\s*$/gi, ""); // some models fence the document anyway
+  const text = r.text.trim().replace(/^```(?:markdown|md|html)?[ \t]*\n([\s\S]*)\n```$/i, "$1"); // some models fence the whole document anyway; a leading code block of a real page stays
   if (new TextEncoder().encode(text).length > MAX_PAGE_BYTES) return { error: "the page came out too big (over 64 KB): ask for something shorter" };
   const content = render(text).trim();
   if (!content) return { error: "the page model returned no page" };
   const html = wrap(title, content);
   const bytes = new TextEncoder().encode(html).length;
   if (bytes > MAX_PAGE_BYTES) return { error: "the page came out too big (over 64 KB): ask for something shorter" };
-  const id = pageId ?? newId(), state = JSON.stringify(firstTicks(html)); // ticks follow the items the model kept, as it wrote them
+  const id = pageId ?? newId(), state = JSON.stringify(!prev || tickedSource != null ? firstTicks(html) : [...oldOn].filter((i) => i < countBoxes(html)).sort((a, b) => a - b)); // ticks follow the items the model kept, as it wrote them
   if (prev) db.run("UPDATE pages SET title=?, html=?, bytes=?, source=?, updated_at=?, state=? WHERE id=?", title, html, bytes, text, clock.now(), state, id);
   else db.run("INSERT INTO pages(id, title, html, bytes, created_at, source, state) VALUES (?,?,?,?,?,?,?)", id, title, html, bytes, clock.now(), text, state);
   return { url: `${deps.publicUrl}/p/${deps.contactKey}/${id}`, title };
@@ -145,18 +153,22 @@ export function getPage(db: Db, id: string): { html: string; title: string } | n
   return { html: i && at >= 0 ? `${html.slice(0, at)}<script>${PAGE_SCRIPT}</script>\n${html.slice(at)}` : html, title: r.title };
 }
 
-/** Tick or untick one checkbox (by order of appearance); a delta merged here, so two viewers never overwrite each other. False for an unknown page, a bad index or a non-boolean. */
-export function setPageState(db: Db, id: string, i: number, checked: boolean): boolean {
-  const r = db.all<{ html: string; state: string | null }>("SELECT html, state FROM pages WHERE id=?", id)[0];
-  if (!r || typeof checked !== "boolean" || !Number.isInteger(i) || i < 0 || i >= countBoxes(r.html)) return false;
+/** Tick or untick one checkbox (by order of appearance; a save whose seq is not above the box's last one is ignored); a delta merged here, so two viewers never overwrite each other. False for an unknown page, a bad index or a non-boolean. */
+export function setPageState(db: Db, id: string, i: number, checked: boolean, seq: number): boolean {
+  const r = db.all<{ html: string; state: string | null; seqs: string | null }>("SELECT html, state, seqs FROM pages WHERE id=?", id)[0];
+  if (!r || typeof checked !== "boolean" || !Number.isInteger(i) || i < 0 || i >= countBoxes(r.html) || !Number.isSafeInteger(seq) || seq < 0) return false;
+  const seqs = JSON.parse(r.seqs ?? "{}") as Record<string, number>; // newest save seen per box: saves race, the older one must not win
+  if (seq <= (seqs[i] ?? -1)) return true;
+  seqs[i] = seq;
   const on = new Set(ticksOf(r.html, r.state));
   if (checked) on.add(i); else on.delete(i);
-  db.run("UPDATE pages SET state=? WHERE id=?", JSON.stringify([...on].sort((a, b) => a - b)), id);
+  db.run("UPDATE pages SET state=?, seqs=? WHERE id=?", JSON.stringify([...on].sort((a, b) => a - b)), JSON.stringify(seqs), id);
   return true;
 }
 
 export interface PageLine { id: string; title: string; ticked: number; total: number; left: string[]; editable: boolean }
-const text = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").trim();
+const ENT: Record<string, string> = { quot: '"', lt: "<", gt: ">", amp: "&", nbsp: " ", apos: "'" };
+const text = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&(?:#(\d+)|#x([0-9a-f]+)|(\w+));/gi, (m, d, x, n) => (n ? ENT[n.toLowerCase()] : String.fromCodePoint(d ? +d : parseInt(x, 16))) ?? m).trim(); // one pass, so "&amp;lt;" stays "&lt;"
 /** Labels of the unticked boxes (the text after each, up to the end of its item), at most 8, 60 characters each. */
 const leftOver = (html: string, on: Set<number>) =>
   html.split(BOX).slice(1).flatMap((seg, i) => (on.has(i) ? [] : [text(seg.split(/<\/li>|<[uo]l>|<input/)[0]).slice(0, 60)])).filter(Boolean).slice(0, 8);

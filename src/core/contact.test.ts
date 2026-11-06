@@ -1275,6 +1275,7 @@ test("make_page: a page model failure is relayed as an error and logged; the say
   expect(log).toHaveBeenCalledWith(expect.objectContaining({ event: "page_failed", error: "boom" }));
   expect(t.wa.sent.filter((s) => s.kind === "text").map((s) => s.body)).toEqual(["give me a minute, putting that together", '{"error":"could not build the page"}']);
   expect(t.db.all("SELECT 1 FROM pages")).toHaveLength(0);
+  expect(t.db.all("SELECT 1 FROM page_builds")).toHaveLength(1); // a failed call still counts against the cap
 });
 
 test("make_page stays offered after a search ran (a sandboxed page cannot delete anything)", async () => {

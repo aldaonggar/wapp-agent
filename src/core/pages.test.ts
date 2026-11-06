@@ -113,6 +113,7 @@ test("buildPage refuses over 64 KB and an empty reply, and stores nothing", asyn
   expect(none.deps.db.all("SELECT 1 FROM pages")).toHaveLength(0);
 });
 
+let seqN = 0; const ps = (db: Parameters<typeof setPageState>[0], id: string, i: number, c: boolean) => setPageState(db, id, i, c, ++seqN);
 const BOXES = "## Pack\n\n- [ ] a\n- [x] b\n- [ ] c";
 const idOf = (r: unknown) => (r as { url: string }).url.split("/").pop()!;
 
@@ -120,7 +121,7 @@ test("getPage numbers every checkbox with data-i, applies stored ticks over the 
   const { deps } = mk(BOXES);
   const id = idOf(await buildPage(deps, "Pack", "b"));
   expect(getPage(deps.db, id)!.html).toContain('<input type="checkbox" data-i="1" checked>'); // b is ticked in the source: only the stored state counts once there is one
-  setPageState(deps.db, id, 0, true); setPageState(deps.db, id, 1, false); setPageState(deps.db, id, 2, true);
+  ps(deps.db, id, 0, true); ps(deps.db, id, 1, false); ps(deps.db, id, 2, true);
   const html = getPage(deps.db, id)!.html;
   expect(html).toContain('<input type="checkbox" data-i="0" checked>');
   expect(html).toContain('<input type="checkbox" data-i="1">');
@@ -145,18 +146,18 @@ test("the CSP hash covers the exact script text", async () => {
 test("setPageState merges one box at a time and rejects an unknown id, bad index or non-boolean", async () => {
   const { deps } = mk(BOXES);
   const id = idOf(await buildPage(deps, "Pack", "b")); // b starts ticked
-  expect(setPageState(deps.db, "nope", 0, true)).toBe(false);
-  for (const [i, c] of [[3, true], [-1, true], [0.5, true], [NaN, true], [0, "yes"]] as const) expect(setPageState(deps.db, id, i, c as boolean)).toBe(false);
-  expect(setPageState(deps.db, id, 2, true) && setPageState(deps.db, id, 0, true) && setPageState(deps.db, id, 0, true)).toBe(true);
+  expect(ps(deps.db, "nope", 0, true)).toBe(false);
+  for (const [i, c] of [[3, true], [-1, true], [0.5, true], [NaN, true], [0, "yes"]] as const) expect(ps(deps.db, id, i, c as boolean)).toBe(false);
+  expect(ps(deps.db, id, 2, true) && ps(deps.db, id, 0, true) && ps(deps.db, id, 0, true)).toBe(true);
   expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[0,1,2]" }]);
-  setPageState(deps.db, id, 1, false); // two viewers: the other's ticks stay
+  ps(deps.db, id, 1, false); // two viewers: the other's ticks stay
   expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[0,2]" }]);
 });
 
 test("recentPages lists pages of the last 7 days with ids, tick counts and unticked labels, newest first, at most 5", async () => {
   const { llm, deps } = mk("- [ ] socks\n- [ ] **charger** & cable\n- [ ] " + "x".repeat(80));
   const id = idOf(await buildPage(deps, "Pack", "b"));
-  setPageState(deps.db, id, 0, true);
+  ps(deps.db, id, 0, true);
   expect(recentPages(deps.db, deps.clock.now())).toEqual([{ id, title: "Pack", ticked: 1, total: 3, left: ["charger & cable", "x".repeat(60)], editable: true }]);
   expect(recentPages(deps.db, deps.clock.now() + 8 * 86_400_000)).toEqual([]);
   llm.next(Array.from({ length: 12 }, (_, i) => `- [ ] i${i}`).join("\n"));
@@ -175,7 +176,7 @@ test("a page with NULL state (made before state existed) serves and counts its o
   deps.db.run("INSERT INTO pages(id, title, html, created_at) VALUES ('old', 'Old', '<input type=\"checkbox\" checked> done <input type=\"checkbox\"> todo', ?)", deps.clock.now());
   expect(getPage(deps.db, "old")!.html).toContain('data-i="0" checked> done <input type="checkbox" data-i="1"> todo');
   expect(recentPages(deps.db, deps.clock.now())[0]).toMatchObject({ ticked: 1, total: 2, left: ["todo"], editable: false });
-  expect(setPageState(deps.db, "old", 1, true)).toBe(true);
+  expect(ps(deps.db, "old", 1, true)).toBe(true);
   expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[0,1]" }]); // the first tick keeps the old mark
 });
 
@@ -197,7 +198,7 @@ test("buildPage with a page_id updates in place: same id and link, new content a
 test("ticks follow items across an edit: the model sees the real ticks, insert at top and removal keep the right boxes ticked", async () => {
   const { llm, deps } = mk("- [ ] a\n- [ ] b\n- [ ] c");
   const id = idOf(await buildPage(deps, "L", "b"));
-  setPageState(deps.db, id, 1, true);
+  ps(deps.db, id, 1, true);
   llm.next("- [ ] passport\n- [ ] a\n- [x] b\n- [ ] c"); // a model that keeps b's mark
   await buildPage(deps, "L", "add passport at the top", id);
   expect(JSON.stringify(llm.textCalls.at(-1))).toContain("- [ ] a\\n- [x] b\\n- [ ] c"); // it was shown the stored tick
@@ -218,4 +219,72 @@ test("the daily cap counts page-model calls: ten edits of one page exhaust it, t
   await buildPage(deps, "P", "b", id);
   expect(pagesLeftToday(deps.db, deps.clock.now())).toBe(false); // the 10th used it up
   expect(pagesLeftToday(deps.db, deps.clock.now() + 86_400_001)).toBe(true);
+});
+
+test("setPageState ignores a save whose seq is not above the box's last one, per box; a bad seq is rejected", async () => {
+  const { deps } = mk(BOXES);
+  const id = idOf(await buildPage(deps, "Pack", "b"));
+  const st = () => (deps.db.all("SELECT state FROM pages")[0] as { state: string }).state;
+  expect(setPageState(deps.db, id, 0, true, 5)).toBe(true);
+  expect(setPageState(deps.db, id, 0, false, 4)).toBe(true); // a late, older save: accepted as a request, not applied
+  expect(setPageState(deps.db, id, 0, false, 5)).toBe(true); // equal is not greater
+  expect(st()).toBe("[0,1]");
+  expect(setPageState(deps.db, id, 2, true, 1)).toBe(true); // another box has its own counter
+  expect(st()).toBe("[0,1,2]");
+  expect(setPageState(deps.db, id, 0, false, 6)).toBe(true);
+  expect(st()).toBe("[1,2]");
+  for (const q of [-1, 1.5, NaN, Infinity, "3", undefined]) expect(setPageState(deps.db, id, 1, false, q as number)).toBe(false);
+  expect(st()).toBe("[1,2]");
+});
+
+test("recentPages 'left' labels decode numeric and named entities, once", async () => {
+  const { deps } = mk("- [ ] it's &amp; \"q\" <b>\n- [ ] a&nbsp;b &#x27;x&#39; &amp;lt;");
+  await buildPage(deps, "E", "b");
+  expect(recentPages(deps.db, deps.clock.now())[0].left).toEqual(["it's & \"q\" <b>", "a b 'x' &lt;"]);
+});
+
+test("HTML-fragment source keeps a tick across an edit (no markers to rewrite: ticks carry by position)", async () => {
+  const frag = (n: number) => Array.from({ length: n }, (_, i) => `<ul><li><input type="checkbox"> item${i}</li></ul>`).join("");
+  const { llm, deps } = mk(frag(3));
+  const id = idOf(await buildPage(deps, "H", "b"));
+  ps(deps.db, id, 1, true);
+  llm.next(frag(3));
+  await buildPage(deps, "H", "tweak", id);
+  expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[1]" }]);
+  llm.next(frag(2)); // fewer boxes: ticks beyond the end drop
+  await buildPage(deps, "H", "shorter", id);
+  expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[1]" }]);
+});
+
+test("a blockquoted task item counts as a marker and an empty '- [ ]' item does not, so neither shifts ticks", async () => {
+  const src = "- [ ] a\n> - [ ] quoted\n- [ ]\n- [ ] c";
+  const { llm, deps } = mk(src);
+  const id = idOf(await buildPage(deps, "Q", "b"));
+  expect(getPage(deps.db, id)!.html.match(/ data-i="/g)).toHaveLength(3); // a, quoted, c
+  ps(deps.db, id, 2, true); // c
+  llm.next(src.replace("[ ] c", "[x] c")); // a model that keeps the mark it was shown
+  await buildPage(deps, "Q", "same", id);
+  expect(JSON.stringify(llm.textCalls.at(-1))).toContain("- [ ] a\\n> - [ ] quoted\\n- [ ]\\n- [x] c");
+  expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[2]" }]);
+});
+
+test("when markers and boxes disagree (a marker inside a code fence) the source is shown as stored and ticks carry by position", async () => {
+  const src = "```\n- [ ] not a box\n```\n\n- [ ] a\n- [ ] b";
+  const { llm, deps } = mk(src);
+  const id = idOf(await buildPage(deps, "F", "b"));
+  ps(deps.db, id, 1, true);
+  llm.next("- [ ] a\n- [ ] b\n- [ ] c");
+  await buildPage(deps, "F", "add c", id);
+  expect(JSON.stringify(llm.textCalls.at(-1))).toContain("```\\n- [ ] not a box\\n```\\n\\n- [ ] a\\n- [ ] b"); // untouched
+  expect(deps.db.all("SELECT state FROM pages")).toEqual([{ state: "[1]" }]);
+});
+
+test("the fence strip removes a fence around the whole output only, never a leading code block of a real page", async () => {
+  const wrapped = mk("```markdown\n# T\n\n- [ ] a\n```");
+  await buildPage(wrapped.deps, "T", "b");
+  expect((wrapped.deps.db.all("SELECT source FROM pages")[0] as { source: string }).source).toBe("# T\n\n- [ ] a");
+  const code = "```js\nlet x = 1;\n```\n\nthen text";
+  const real = mk(code);
+  await buildPage(real.deps, "T", "b");
+  expect((real.deps.db.all("SELECT source FROM pages")[0] as { source: string }).source).toBe(code);
 });

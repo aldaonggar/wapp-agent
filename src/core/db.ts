@@ -26,7 +26,7 @@ export function migrate(db: Db): void {
   if (!db.all("SELECT 1 FROM pragma_table_info('state') WHERE name='reminder_due'").length) db.run("ALTER TABLE state ADD COLUMN reminder_due INTEGER");
   if (!db.all("SELECT 1 FROM pragma_table_info('reminders') WHERE name='relative'").length) db.run("ALTER TABLE reminders ADD COLUMN relative INTEGER DEFAULT 0");
   if (!db.all("SELECT 1 FROM pragma_table_info('reminders') WHERE name='attempted_at'").length) db.run("ALTER TABLE reminders ADD COLUMN attempted_at INTEGER");
-  for (const c of ["state TEXT", "source TEXT", "updated_at INTEGER"]) if (!db.all("SELECT 1 FROM pragma_table_info('pages') WHERE name=?", c.split(" ")[0]).length) db.run(`ALTER TABLE pages ADD COLUMN ${c}`);
+  for (const c of ["state TEXT", "source TEXT", "updated_at INTEGER", "seqs TEXT"]) if (!db.all("SELECT 1 FROM pragma_table_info('pages') WHERE name=?", c.split(" ")[0]).length) db.run(`ALTER TABLE pages ADD COLUMN ${c}`);
 }
 
 const plain = (r: Record<string, unknown>): Row => {

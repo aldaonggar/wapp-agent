@@ -121,16 +121,16 @@ test("GET /p/<key>/<id> serves the page with the locked-down headers; 404 for an
 
 test("POST /p/<key>/<id> stores ticks (204); bad JSON, wrong type, oversize and rejected state are 400; wrong key or id is 404", async () => {
   const K = "a".repeat(64), ID = "A".repeat(22);
-  const saved: [number, boolean][] = [];
+  const saved: [number, boolean, number][] = [];
   const env = { CONTACT: {
     idFromString: (k: string) => { if (k !== K) throw new Error("invalid id"); return k; },
-    get: () => ({ page: async (id: string) => (id === ID ? { html: "", title: "" } : null), setPageState: async (_: string, i: number, c: boolean) => { if (i > 2) return false; saved.push([i, c]); return true; } }),
+    get: () => ({ page: async (id: string) => (id === ID ? { html: "", title: "" } : null), setPageState: async (_: string, i: number, c: boolean, q: number) => { if (i > 2) return false; saved.push([i, c, q]); return true; } }),
   } } as unknown as Env;
   const post = (path: string, body: string, type = "application/json") => worker.fetch(new Request("https://x" + path, { method: "POST", body, headers: { "content-type": type } }), env, ctx);
   const p = `/p/${K}/${ID}`;
-  expect((await post(p, '{"i":2,"checked":true}')).status).toBe(204);
-  expect(saved).toEqual([[2, true]]);
-  for (const [b, t] of [["{nope", "application/json"], ["null", "application/json"], ['{"i":0,"checked":"x"}', "application/json"], ['{"i":"0","checked":true}', "application/json"], ['{"i":9,"checked":true}', "application/json"], ['{"i":0,"checked":true}', "text/plain"], [JSON.stringify({ i: 0, checked: true, pad: "x".repeat(500) }), "application/json"]]) expect([b.slice(0, 12), (await post(p, b, t)).status]).toEqual([b.slice(0, 12), 400]);
-  expect((await post(`/p/${"b".repeat(64)}/${ID}`, '{"i":0,"checked":true}')).status).toBe(404);
-  expect((await post(`/p/${K}/${"B".repeat(22)}`, '{"i":0,"checked":true}')).status).toBe(404);
+  expect((await post(p, '{"i":2,"checked":true,"seq":7}')).status).toBe(204);
+  expect(saved).toEqual([[2, true, 7]]);
+  for (const [b, t] of [["{nope", "application/json"], ["null", "application/json"], ['{"i":0,"checked":"x","seq":1}', "application/json"], ['{"i":"0","checked":true,"seq":1}', "application/json"], ['{"i":9,"checked":true,"seq":1}', "application/json"], ['{"i":0,"checked":true,"seq":1}', "text/plain"], ['{"i":0,"checked":true}', "application/json"], ['{"i":0,"checked":true,"seq":1.5}', "application/json"], ['{"i":0,"checked":true,"seq":-1}', "application/json"], ['{"i":0,"checked":true,"seq":"1"}', "application/json"], [JSON.stringify({ i: 0, checked: true, seq: 1, pad: "x".repeat(500) }), "application/json"]]) expect([b.slice(0, 12), (await post(p, b, t)).status]).toEqual([b.slice(0, 12), 400]);
+  expect((await post(`/p/${"b".repeat(64)}/${ID}`, '{"i":0,"checked":true,"seq":1}')).status).toBe(404);
+  expect((await post(`/p/${K}/${"B".repeat(22)}`, '{"i":0,"checked":true,"seq":1}')).status).toBe(404);
 });
