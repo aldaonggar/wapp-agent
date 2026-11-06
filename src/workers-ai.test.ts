@@ -67,7 +67,7 @@ test("ttsViaBinding asks aura-1 for OGG/Opus as a raw response and labels the by
   let res = new Response(new Uint8Array([79, 103, 103, 83]), { headers: { "content-type": "audio/mpeg" } }); // the service mislabels the container
   const ai = { run: async (m: string, i: unknown, o: unknown) => { seen.push([m, i, o]); return res; } } as unknown as Ai;
   expect(await ttsViaBinding(ai)("hi there")).toEqual({ bytes: new Uint8Array([79, 103, 103, 83]), mime: "audio/ogg" });
-  expect(seen).toEqual([["@cf/deepgram/aura-1", { text: "hi there", encoding: "opus", container: "ogg" }, { returnRawResponse: true }]]);
+  expect(seen).toEqual([["@cf/deepgram/aura-1", { text: "hi there", encoding: "opus", container: "ogg", bit_rate: 48000 }, { returnRawResponse: true }]]);
   res = new Response("quota", { status: 429 });
   await expect(ttsViaBinding(ai)("hi")).rejects.toThrow(/aura-1: 429 quota/);
 });

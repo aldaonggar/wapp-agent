@@ -66,7 +66,7 @@ export function toBase64(bytes: Uint8Array): string {
 // The service labels the body audio/mpeg whatever the container, so the mime is set here.
 export function ttsViaBinding(ai: Ai): NonNullable<Deps["tts"]> {
   return async (text) => {
-    const res = await (ai.run as (m: string, i: unknown, o: unknown) => Promise<Response>)(TTS, { text, encoding: "opus", container: "ogg" }, { returnRawResponse: true });
+    const res = await (ai.run as (m: string, i: unknown, o: unknown) => Promise<Response>)(TTS, { text, encoding: "opus", container: "ogg", bit_rate: 48000 }, { returnRawResponse: true });
     if (!res.ok) throw new Error(`aura-1: ${res.status} ${(await res.text()).slice(0, 200)}`);
     return { bytes: new Uint8Array(await res.arrayBuffer()), mime: "audio/ogg" };
   };
